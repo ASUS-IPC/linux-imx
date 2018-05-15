@@ -3251,6 +3251,7 @@ struct cfg80211_ops {
  *	beaconing mode (AP, IBSS, Mesh, ...).
  * @WIPHY_FLAG_HAS_STATIC_WEP: The device supports static WEP key installation
  *	before connection.
+ *  @WIPHY_FLAG_DFS_OFFLOAD: The driver handles all the DFS related operations.
  */
 enum wiphy_flags {
 	/* use hole at 0 */
