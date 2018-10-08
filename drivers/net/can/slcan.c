@@ -536,6 +536,7 @@ static struct slcan *slc_alloc(dev_t line)
 
 	dev->base_addr  = i;
 	sl = netdev_priv(dev);
+	dev->ml_priv = (void *)sl + ALIGN(sizeof(*sl), NETDEV_ALIGN);
 
 	/* Initialize channel control data */
 	sl->magic = SLCAN_MAGIC;
