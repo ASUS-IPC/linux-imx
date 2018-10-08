@@ -176,7 +176,7 @@ void can_stat_update(unsigned long data)
 	pkg_stats->matches_delta   = 0;
 
 	/* restart timer (one second) */
-	mod_timer(&net->can.can_stattimer, round_jiffies(jiffies + HZ));
+	mod_timer(&net->can.stattimer, round_jiffies(jiffies + HZ));
 }
 
 /*
@@ -221,7 +221,7 @@ static int can_stats_proc_show(struct seq_file *m, void *v)
 
 	seq_putc(m, '\n');
 
-	if (net->can.can_stattimer.function == can_stat_update) {
+	if (net->can.stattimer.function == can_stat_update) {
 		seq_printf(m, " %8ld %% total match ratio (RXMR)\n",
 				pkg_stats->total_rx_match_ratio);
 
@@ -291,7 +291,7 @@ static int can_reset_stats_proc_show(struct seq_file *m, void *v)
 
 	user_reset = 1;
 
-	if (net->can.can_stattimer.function == can_stat_update) {
+	if (net->can.stattimer.function == can_stat_update) {
 		seq_printf(m, "Scheduled statistic reset #%ld.\n",
 				rcv_lists_stats->stats_reset + 1);
 	} else {
@@ -361,7 +361,7 @@ static int can_rcvlist_proc_show(struct seq_file *m, void *v)
 	rcu_read_lock();
 
 	/* receive list for 'all' CAN devices (dev == NULL) */
-	d = net->can.can_rx_alldev_list;
+	d = net->can.rx_alldev_list;
 	can_rcvlist_proc_show_one(m, idx, NULL, d);
 
 	/* receive list for registered CAN devices */
@@ -426,7 +426,7 @@ static int can_rcvlist_sff_proc_show(struct seq_file *m, void *v)
 	rcu_read_lock();
 
 	/* sff receive list for 'all' CAN devices (dev == NULL) */
-	d = net->can.can_rx_alldev_list;
+	d = net->can.rx_alldev_list;
 	can_rcvlist_proc_show_array(m, NULL, d->rx_sff, ARRAY_SIZE(d->rx_sff));
 
 	/* sff receive list for registered CAN devices */
@@ -470,7 +470,7 @@ static int can_rcvlist_eff_proc_show(struct seq_file *m, void *v)
 	rcu_read_lock();
 
 	/* eff receive list for 'all' CAN devices (dev == NULL) */
-	d = net->can.can_rx_alldev_list;
+	d = net->can.rx_alldev_list;
 	can_rcvlist_proc_show_array(m, NULL, d->rx_eff, ARRAY_SIZE(d->rx_eff));
 
 	/* eff receive list for registered CAN devices */
