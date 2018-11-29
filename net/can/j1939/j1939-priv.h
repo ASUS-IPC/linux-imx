@@ -63,6 +63,7 @@ struct j1939_priv {
 	struct list_head tp_sessionq;
 	struct list_head tp_extsessionq;
 	wait_queue_head_t tp_wait;
+	unsigned int tp_max_packet_size;
 };
 
 void j1939_ecu_put(struct j1939_ecu *ecu);

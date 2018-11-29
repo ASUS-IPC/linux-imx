@@ -41,7 +41,6 @@ enum j1939_xtp_abort {
 #define J1939_MAX_ETP_PACKET_SIZE (7 * 0x00ffffff)
 
 static unsigned int j1939_tp_block = 255;
-static unsigned int j1939_tp_max_packet_size = J1939_MAX_ETP_PACKET_SIZE;
 static unsigned int j1939_tp_retry_ms = 20;
 static unsigned int j1939_tp_packet_delay;
 static unsigned int j1939_tp_padding = 1;
@@ -1018,8 +1017,7 @@ static void j1939_xtp_rx_rts(struct j1939_priv *priv, struct sk_buff *skb,
 			len = j1939_etp_ctl_to_size(dat);
 			if (len > J1939_MAX_ETP_PACKET_SIZE)
 				abort = J1939_XTP_ABORT_FAULT;
-			else if (j1939_tp_max_packet_size &&
-				 (len > j1939_tp_max_packet_size))
+			else if (len > priv->tp_max_packet_size)
 				abort = J1939_XTP_ABORT_RESOURCE;
 			else if (len <= J1939_MAX_TP_PACKET_SIZE)
 				abort = J1939_XTP_ABORT_FAULT;
@@ -1027,8 +1025,7 @@ static void j1939_xtp_rx_rts(struct j1939_priv *priv, struct sk_buff *skb,
 			len = j1939_tp_ctl_to_size(dat);
 			if (len > J1939_MAX_TP_PACKET_SIZE)
 				abort = J1939_XTP_ABORT_FAULT;
-			else if (j1939_tp_max_packet_size &&
-				 (len > j1939_tp_max_packet_size))
+			else if (len > priv->tp_max_packet_size)
 				abort = J1939_XTP_ABORT_RESOURCE;
 		}
 		if (abort) {
@@ -1232,7 +1229,7 @@ int j1939_tp_send(struct j1939_priv *priv, struct sk_buff *skb)
 		/* avoid conflict */
 		return -EDOM;
 
-	if (skb->len > j1939_tp_max_packet_size)
+	if (skb->len > priv->tp_max_packet_size)
 		return -EMSGSIZE;
 
 	if (skb->len > J1939_MAX_TP_PACKET_SIZE)
@@ -1394,4 +1391,5 @@ void j1939_tp_init(struct j1939_priv *priv)
 	INIT_LIST_HEAD(&priv->tp_sessionq);
 	INIT_LIST_HEAD(&priv->tp_extsessionq);
 	init_waitqueue_head(&priv->tp_wait);
+	priv->tp_max_packet_size = J1939_MAX_ETP_PACKET_SIZE;
 }
