@@ -953,10 +953,19 @@ struct j1939_session *j1939_xtp_rx_rts_new(struct j1939_priv *priv,
 					   struct sk_buff *skb, bool extd)
 {
 	enum j1939_xtp_abort abort = J1939_XTP_ABORT_NO_ERROR;
+	struct j1939_sk_buff_cb *skcb = j1939_skb_to_cb(skb);
 	struct j1939_session *session;
 	const u8 *dat;
 	pgn_t pgn;
 	int len;
+
+	if (j1939_tp_im_transmitter(skb)) {
+		netdev_alert(priv->ndev, "%s: I should tx (%i %02x %02x)\n",
+			     __func__, can_skb_prv(skb)->ifindex,
+			     skcb->addr.sa, skcb->addr.da);
+
+		return NULL;
+	}
 
 	dat = skb->data;
 	pgn = j1939_xtp_ctl_to_pgn(dat);
@@ -1009,6 +1018,52 @@ struct j1939_session *j1939_xtp_rx_rts_new(struct j1939_priv *priv,
 	return session;
 }
 
+static int j1939_xtp_rx_rts_current(struct j1939_session *session,
+				struct sk_buff *skb, bool extd)
+{
+	struct j1939_sk_buff_cb *skcb = j1939_skb_to_cb(skb);
+	struct j1939_priv *priv = session->priv;
+	const u8 *dat;
+	pgn_t pgn;
+
+	dat = skb->data;
+	pgn = j1939_xtp_ctl_to_pgn(dat);
+
+	if (!j1939_tp_im_transmitter(skb)) {
+		/* RTS on pending connection */
+		j1939_session_timers_cancel(session);
+		j1939_session_cancel(session, J1939_XTP_ABORT_BUSY);
+
+		if (pgn != session->skcb->addr.pgn &&
+		    dat[0] != J1939_TP_CMD_BAM)
+			j1939_xtp_tx_abort(priv, skb, extd, true,
+					   J1939_XTP_ABORT_BUSY, pgn);
+
+		return -EBUSY;
+	}
+
+	if (session->last_cmd != 0) {
+		/* we received a second rts on the same connection */
+		netdev_alert(priv->ndev, "%s: connection exists (%i %02x %02x)\n",
+			     __func__, can_skb_prv(skb)->ifindex, skcb->addr.sa,
+			     skcb->addr.da);
+
+		j1939_session_timers_cancel(session);
+		j1939_session_cancel(session, J1939_XTP_ABORT_BUSY);
+
+		return -EBUSY;
+	}
+
+	/* make sure 'sa' & 'da' are correct !
+	 * They may be 'not filled in yet' for sending
+	 * skb's, since they did not pass the Address Claim ever.
+	 */
+	session->skcb->addr.sa = skcb->addr.sa;
+	session->skcb->addr.da = skcb->addr.da;
+
+	return 0;
+}
+
 static void j1939_xtp_rx_rts(struct j1939_priv *priv, struct sk_buff *skb,
 			     bool extd)
 {
@@ -1032,44 +1087,9 @@ static void j1939_xtp_rx_rts(struct j1939_priv *priv, struct sk_buff *skb,
 	 */
 	session = j1939_session_get_by_skb(priv, j1939_sessionq(priv, extd),
 					   skb, false);
-	if (session && !j1939_tp_im_transmitter(skb)) {
-		/* RTS on pending connection */
-		j1939_session_timers_cancel(session);
-		j1939_session_cancel(session, J1939_XTP_ABORT_BUSY);
-
-		if (pgn != session->skcb->addr.pgn &&
-		    dat[0] != J1939_TP_CMD_BAM)
-			j1939_xtp_tx_abort(priv, skb, extd, true,
-					   J1939_XTP_ABORT_BUSY, pgn);
-
-		goto out_session_put;
-	} else if (!session && j1939_tp_im_transmitter(skb)) {
-		netdev_alert(priv->ndev, "%s: I should tx (%i %02x %02x)\n",
-			     __func__, can_skb_prv(skb)->ifindex,
-			     skcb->addr.sa, skcb->addr.da);
-
-		return;
-	}
-
-	if (session && session->last_cmd != 0) {
-		/* we received a second rts on the same connection */
-		netdev_alert(priv->ndev, "%s: connection exists (%i %02x %02x)\n",
-			     __func__, can_skb_prv(skb)->ifindex, skcb->addr.sa,
-			     skcb->addr.da);
-
-		j1939_session_timers_cancel(session);
-		j1939_session_cancel(session, J1939_XTP_ABORT_BUSY);
-
-		goto out_session_put;
-	}
-
 	if (session) {
-		/* make sure 'sa' & 'da' are correct !
-		 * They may be 'not filled in yet' for sending
-		 * skb's, since they did not pass the Address Claim ever.
-		 */
-		session->skcb->addr.sa = skcb->addr.sa;
-		session->skcb->addr.da = skcb->addr.da;
+		if (j1939_xtp_rx_rts_current(session, skb, extd))
+			goto out_session_put;
 	} else {
 		session = j1939_xtp_rx_rts_new(priv, skb, extd);
 		if (!session)
@@ -1084,11 +1104,6 @@ static void j1939_xtp_rx_rts(struct j1939_priv *priv, struct sk_buff *skb,
 			j1939_tp_schedule_txtimer(session, 0);
 	}
 
-	/* as soon as it's inserted, things can go fast
-	 * protect against a long delay
-	 * between spin_unlock & next statement
-	 * so, only release here, at the end
-	 */
  out_session_put:
 	j1939_session_put(session);
 }
