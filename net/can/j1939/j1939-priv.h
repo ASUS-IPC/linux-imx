@@ -144,7 +144,7 @@ static inline struct j1939_sk_buff_cb *j1939_skb_to_cb(struct sk_buff *skb)
 	return (struct j1939_sk_buff_cb *)skb->cb;
 }
 
-int j1939_send(struct sk_buff *skb);
+int j1939_send_one(struct j1939_priv *priv, struct sk_buff *skb);
 void j1939_sk_recv(struct sk_buff *skb);
 
 /* stack entries */

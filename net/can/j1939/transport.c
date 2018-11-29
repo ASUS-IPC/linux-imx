@@ -369,12 +369,14 @@ static struct sk_buff *j1939_tp_tx_dat_new(struct sk_buff *related,
 }
 
 /* TP transmit packet functions */
-static int j1939_tp_tx_dat(struct sk_buff *related, bool extd,
+static int j1939_tp_tx_dat(struct j1939_session *session,
 			   const u8 *dat, int len)
 {
+	struct j1939_priv *priv = session->priv;
 	struct sk_buff *skb;
 
-	skb = j1939_tp_tx_dat_new(related, extd, false, false);
+	skb = j1939_tp_tx_dat_new(session->skb,
+				  session->extd, false, false);
 	if (IS_ERR(skb))
 		return PTR_ERR(skb);
 
@@ -382,10 +384,11 @@ static int j1939_tp_tx_dat(struct sk_buff *related, bool extd,
 	if (j1939_tp_padding && len < 8)
 		memset(skb_put(skb, 8 - len), 0xff, 8 - len);
 
-	return j1939_send(skb);
+	return j1939_send_one(priv, skb);
 }
 
-static int j1939_xtp_do_tx_ctl(struct sk_buff *related, bool extd,
+static int j1939_xtp_do_tx_ctl(struct j1939_priv *priv,
+			       struct sk_buff *related, bool extd,
 			       bool swap_src_dst, pgn_t pgn, const u8 *dat)
 {
 	struct sk_buff *skb;
@@ -404,18 +407,22 @@ static int j1939_xtp_do_tx_ctl(struct sk_buff *related, bool extd,
 	skdat[6] = (pgn >> 8);
 	skdat[7] = (pgn >> 16);
 
-	return j1939_send(skb);
+	return j1939_send_one(priv, skb);
 }
 
 static inline int j1939_tp_tx_ctl(struct j1939_session *session,
 				  bool swap_src_dst, const u8 *dat)
 {
-	return j1939_xtp_do_tx_ctl(session->skb, session->extd, swap_src_dst,
+	struct j1939_priv *priv = session->priv;
+
+	return j1939_xtp_do_tx_ctl(priv, session->skb, session->extd,
+				   swap_src_dst,
 				   session->skcb->addr.pgn, dat);
 }
 
-static int j1939_xtp_tx_abort(struct sk_buff *related, bool extd,
-			      bool swap_src_dst, enum j1939_xtp_abort err,
+static int j1939_xtp_tx_abort(struct j1939_priv *priv, struct sk_buff *related,
+			      bool extd, bool swap_src_dst,
+			      enum j1939_xtp_abort err,
 			      pgn_t pgn)
 {
 	u8 dat[5];
@@ -429,7 +436,7 @@ static int j1939_xtp_tx_abort(struct sk_buff *related, bool extd,
 		dat[1] = J1939_XTP_ABORT_GENERIC;
 	else
 		dat[1] = err;
-	return j1939_xtp_do_tx_ctl(related, extd, swap_src_dst, pgn, dat);
+	return j1939_xtp_do_tx_ctl(priv, related, extd, swap_src_dst, pgn, dat);
 }
 
 static inline void j1939_tp_schedule_txtimer(struct j1939_session *session,
@@ -596,8 +603,7 @@ static int j1939_tp_txnext(struct j1939_session *session)
 			if (len > 7)
 				len = 7;
 			memcpy(&dat[1], &tpdat[offset], len);
-			ret = j1939_tp_tx_dat(session->skb, session->extd,
-					      dat, len + 1);
+			ret = j1939_tp_tx_dat(session, dat, len + 1);
 			if (ret < 0)
 				break;
 			session->last_txcmd = 0xff;
@@ -660,10 +666,12 @@ static void j1939_session_completed(struct j1939_session *session)
 static void j1939_session_cancel(struct j1939_session *session,
 				 enum j1939_xtp_abort err)
 {
+	struct j1939_priv *priv = session->priv;
+
 	/* do not send aborts on incoming broadcasts */
 	if (err && j1939_tp_im_involved_anydir(session->skb) &&
 	    !j1939_cb_is_broadcast(session->skcb))
-		j1939_xtp_tx_abort(session->skb, session->extd,
+		j1939_xtp_tx_abort(priv, session->skb, session->extd,
 				   !(session->skcb->src_flags & J1939_ECU_LOCAL),
 				   err, session->skcb->addr.pgn);
 
@@ -702,7 +710,7 @@ static void j1939_xtp_rx_bad_message_one(struct j1939_priv *priv,
 		j1939_session_cancel(session, J1939_XTP_ABORT_FAULT);
 		goto out_session_put;
 	}
-	j1939_xtp_tx_abort(skb, extd, false, J1939_XTP_ABORT_FAULT, pgn);
+	j1939_xtp_tx_abort(priv, skb, extd, false, J1939_XTP_ABORT_FAULT, pgn);
 	if (!session)
 		return;
 
@@ -778,7 +786,8 @@ static void j1939_xtp_rx_eoma(struct j1939_priv *priv, struct sk_buff *skb,
 
 	j1939_session_timers_cancel(session);
 	if (session->skcb->addr.pgn != pgn) {
-		j1939_xtp_tx_abort(skb, extd, true, J1939_XTP_ABORT_BUSY, pgn);
+		j1939_xtp_tx_abort(priv, skb, extd, true, J1939_XTP_ABORT_BUSY,
+				   pgn);
 		j1939_session_cancel(session, J1939_XTP_ABORT_BUSY);
 	} else {
 		/* transmitted without problems */
@@ -807,7 +816,8 @@ static void j1939_xtp_rx_cts(struct j1939_priv *priv, struct sk_buff *skb,
 
 	if (session->skcb->addr.pgn != pgn) {
 		/* what to do? */
-		j1939_xtp_tx_abort(skb, extd, true, J1939_XTP_ABORT_BUSY, pgn);
+		j1939_xtp_tx_abort(priv, skb, extd, true, J1939_XTP_ABORT_BUSY,
+				   pgn);
 		j1939_session_timers_cancel(session);
 		j1939_session_cancel(session, J1939_XTP_ABORT_BUSY);
 		goto out_session_put;
@@ -970,7 +980,7 @@ static void j1939_xtp_rx_rts(struct j1939_priv *priv, struct sk_buff *skb,
 
 		if (pgn != session->skcb->addr.pgn &&
 		    dat[0] != J1939_TP_CMD_BAM)
-			j1939_xtp_tx_abort(skb, extd, true,
+			j1939_xtp_tx_abort(priv, skb, extd, true,
 					   J1939_XTP_ABORT_BUSY, pgn);
 
 		goto out_session_put;
@@ -1022,13 +1032,13 @@ static void j1939_xtp_rx_rts(struct j1939_priv *priv, struct sk_buff *skb,
 				abort = J1939_XTP_ABORT_RESOURCE;
 		}
 		if (abort) {
-			j1939_xtp_tx_abort(skb, extd, true, abort, pgn);
+			j1939_xtp_tx_abort(priv, skb, extd, true, abort, pgn);
 			return;
 		}
 
 		session = j1939_session_fresh_new(priv, len, skb, pgn);
 		if (!session) {
-			j1939_xtp_tx_abort(skb, extd, true,
+			j1939_xtp_tx_abort(priv, skb, extd, true,
 					   J1939_XTP_ABORT_RESOURCE, pgn);
 			return;
 		}
@@ -1086,7 +1096,8 @@ static void j1939_xtp_rx_dpo(struct j1939_priv *priv, struct sk_buff *skb,
 
 	if (session->skcb->addr.pgn != pgn) {
 		netdev_info(priv->ndev, "%s: different pgn\n", __func__);
-		j1939_xtp_tx_abort(skb, true, true, J1939_XTP_ABORT_BUSY, pgn);
+		j1939_xtp_tx_abort(priv, skb, true, true, J1939_XTP_ABORT_BUSY,
+				   pgn);
 		j1939_session_timers_cancel(session);
 		j1939_session_cancel(session, J1939_XTP_ABORT_BUSY);
 		goto out_session_put;

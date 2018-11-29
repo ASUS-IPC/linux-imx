@@ -618,6 +618,7 @@ static int j1939_sk_sendmsg(struct socket *sock, struct msghdr *msg,
 	struct j1939_sock *jsk = j1939_sk(sk);
 	struct sockaddr_can *addr = msg->msg_name;
 	struct j1939_sk_buff_cb *skcb;
+	struct j1939_priv *priv;
 	struct sk_buff *skb;
 	struct net_device *ndev;
 	int ifindex;
@@ -709,7 +710,17 @@ static int j1939_sk_sendmsg(struct socket *sock, struct msghdr *msg,
 		j1939_sock_pending_add(&jsk->sk);
 	}
 
-	ret = j1939_send(skb);
+	priv = j1939_priv_get_by_ndev(ndev);
+	if (!priv)
+		return -EINVAL;
+
+	if (skb->len > 8)
+		/* re-route via transport protocol */
+		ret = j1939_tp_send(priv, skb);
+	else
+		ret = j1939_send_one(priv, skb);
+
+	j1939_priv_put(priv);
 	if (ret < 0)
 		j1939_sock_pending_del(&jsk->sk);
 

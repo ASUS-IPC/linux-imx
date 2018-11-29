@@ -232,7 +232,7 @@ struct j1939_priv *j1939_priv_get_by_ndev(struct net_device *ndev)
 	return priv;
 }
 
-static int j1939_send_one(struct j1939_priv *priv, struct sk_buff *skb)
+int j1939_send_one(struct j1939_priv *priv, struct sk_buff *skb)
 {
 	int ret, dlc;
 	canid_t canid;
@@ -273,26 +273,6 @@ static int j1939_send_one(struct j1939_priv *priv, struct sk_buff *skb)
 
  failed:
 	consume_skb(skb);
-	return ret;
-}
-
-int j1939_send(struct sk_buff *skb)
-{
-	struct j1939_priv *priv;
-	int ret;
-
-	priv = j1939_priv_get_by_ndev(skb->dev);
-	if (!priv)
-		return -EINVAL;
-
-	if (skb->len > 8)
-		/* re-route via transport protocol */
-		ret = j1939_tp_send(priv, skb);
-	else
-		ret = j1939_send_one(priv, skb);
-
-	j1939_priv_put(priv);
-
 	return ret;
 }
 
