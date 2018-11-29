@@ -948,12 +948,72 @@ static int j1939_session_insert(struct j1939_session *session)
 	return ret;
 }
 
+
+struct j1939_session *j1939_xtp_rx_rts_new(struct j1939_priv *priv,
+					   struct sk_buff *skb, bool extd)
+{
+	enum j1939_xtp_abort abort = J1939_XTP_ABORT_NO_ERROR;
+	struct j1939_session *session;
+	const u8 *dat;
+	pgn_t pgn;
+	int len;
+
+	dat = skb->data;
+	pgn = j1939_xtp_ctl_to_pgn(dat);
+
+	if (extd) {
+		len = j1939_etp_ctl_to_size(dat);
+		if (len > J1939_MAX_ETP_PACKET_SIZE)
+			abort = J1939_XTP_ABORT_FAULT;
+		else if (len > priv->tp_max_packet_size)
+			abort = J1939_XTP_ABORT_RESOURCE;
+		else if (len <= J1939_MAX_TP_PACKET_SIZE)
+			abort = J1939_XTP_ABORT_FAULT;
+	} else {
+		len = j1939_tp_ctl_to_size(dat);
+		if (len > J1939_MAX_TP_PACKET_SIZE)
+			abort = J1939_XTP_ABORT_FAULT;
+		else if (len > priv->tp_max_packet_size)
+			abort = J1939_XTP_ABORT_RESOURCE;
+	}
+	if (abort) {
+		j1939_xtp_tx_abort(priv, skb, extd, true, abort, pgn);
+		return NULL;
+	}
+
+	session = j1939_session_fresh_new(priv, len, skb, pgn);
+	if (!session) {
+		j1939_xtp_tx_abort(priv, skb, extd, true,
+				   J1939_XTP_ABORT_RESOURCE, pgn);
+		return NULL;
+	}
+	session->extd = extd;
+
+	/* initialize the control buffer: plain copy */
+	session->pkt.total = (len + 6) / 7;
+	session->pkt.block = 0xff;
+	if (!extd) {
+		if (dat[3] != session->pkt.total)
+			netdev_alert(priv->ndev, "%s: strange total, %u != %u\n",
+				     __func__, session->pkt.total,
+				     dat[3]);
+		session->pkt.total = dat[3];
+		session->pkt.block = min(dat[3], dat[4]);
+	}
+
+	session->pkt.done = 0;
+	session->pkt.tx = 0;
+
+	WARN_ON_ONCE(j1939_session_insert(session));
+
+	return session;
+}
+
 static void j1939_xtp_rx_rts(struct j1939_priv *priv, struct sk_buff *skb,
 			     bool extd)
 {
 	struct j1939_sk_buff_cb *skcb = j1939_skb_to_cb(skb);
 	struct j1939_session *session;
-	int len;
 	const u8 *dat;
 	pgn_t pgn;
 
@@ -1011,52 +1071,9 @@ static void j1939_xtp_rx_rts(struct j1939_priv *priv, struct sk_buff *skb,
 		session->skcb->addr.sa = skcb->addr.sa;
 		session->skcb->addr.da = skcb->addr.da;
 	} else {
-		enum j1939_xtp_abort abort = J1939_XTP_ABORT_NO_ERROR;
-
-		if (extd) {
-			len = j1939_etp_ctl_to_size(dat);
-			if (len > J1939_MAX_ETP_PACKET_SIZE)
-				abort = J1939_XTP_ABORT_FAULT;
-			else if (len > priv->tp_max_packet_size)
-				abort = J1939_XTP_ABORT_RESOURCE;
-			else if (len <= J1939_MAX_TP_PACKET_SIZE)
-				abort = J1939_XTP_ABORT_FAULT;
-		} else {
-			len = j1939_tp_ctl_to_size(dat);
-			if (len > J1939_MAX_TP_PACKET_SIZE)
-				abort = J1939_XTP_ABORT_FAULT;
-			else if (len > priv->tp_max_packet_size)
-				abort = J1939_XTP_ABORT_RESOURCE;
-		}
-		if (abort) {
-			j1939_xtp_tx_abort(priv, skb, extd, true, abort, pgn);
+		session = j1939_xtp_rx_rts_new(priv, skb, extd);
+		if (!session)
 			return;
-		}
-
-		session = j1939_session_fresh_new(priv, len, skb, pgn);
-		if (!session) {
-			j1939_xtp_tx_abort(priv, skb, extd, true,
-					   J1939_XTP_ABORT_RESOURCE, pgn);
-			return;
-		}
-		session->extd = extd;
-
-		/* initialize the control buffer: plain copy */
-		session->pkt.total = (len + 6) / 7;
-		session->pkt.block = 0xff;
-		if (!extd) {
-			if (dat[3] != session->pkt.total)
-				netdev_alert(priv->ndev, "%s: strange total, %u != %u\n",
-					     __func__, session->pkt.total,
-					     dat[3]);
-			session->pkt.total = dat[3];
-			session->pkt.block = min(dat[3], dat[4]);
-		}
-
-		session->pkt.done = 0;
-		session->pkt.tx = 0;
-
-		WARN_ON_ONCE(j1939_session_insert(session));
 	}
 	session->last_cmd = dat[0];
 
