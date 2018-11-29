@@ -1099,10 +1099,9 @@ static void j1939_xtp_rx_rts(struct j1939_priv *priv, struct sk_buff *skb,
 
 	j1939_tp_set_rxtimeout(session, 1250);
 
-	if (j1939_tp_im_receiver(session->skb)) {
-		if (extd || dat[0] != J1939_TP_CMD_BAM)
-			j1939_tp_schedule_txtimer(session, 0);
-	}
+	if ((dat[0] != J1939_TP_CMD_BAM) &&
+	    j1939_tp_im_receiver(session->skb))
+		j1939_tp_schedule_txtimer(session, 0);
 
  out_session_put:
 	j1939_session_put(session);
