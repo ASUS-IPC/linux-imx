@@ -1222,6 +1222,7 @@ int j1939_tp_send(struct j1939_priv *priv, struct sk_buff *skb)
 {
 	struct j1939_sk_buff_cb *skcb = j1939_skb_to_cb(skb);
 	struct j1939_session *session;
+	bool extd = J1939_REGULAR;
 	int ret;
 
 	if (skcb->addr.pgn == J1939_TP_PGN_DAT ||
@@ -1230,10 +1231,14 @@ int j1939_tp_send(struct j1939_priv *priv, struct sk_buff *skb)
 	    skcb->addr.pgn == J1939_ETP_PGN_CTL)
 		/* avoid conflict */
 		return -EDOM;
-	if (skb->len > J1939_MAX_ETP_PACKET_SIZE ||
-	    (j1939_tp_max_packet_size && skb->len > j1939_tp_max_packet_size))
+
+	if (skb->len > j1939_tp_max_packet_size)
 		return -EMSGSIZE;
-	if (skb->len > J1939_MAX_TP_PACKET_SIZE && j1939_cb_is_broadcast(skcb))
+
+	if (skb->len > J1939_MAX_TP_PACKET_SIZE)
+		extd = J1939_EXTENDED;
+
+	if (extd && j1939_cb_is_broadcast(skcb))
 		return -EDESTADDRREQ;
 
 	/* fill in addresses from names */
@@ -1254,10 +1259,7 @@ int j1939_tp_send(struct j1939_priv *priv, struct sk_buff *skb)
 	if (!session)
 		return -ENOMEM;
 
-	if (skb->len > J1939_MAX_TP_PACKET_SIZE)
-		session->extd = J1939_EXTENDED;
-	else
-		session->extd = J1939_REGULAR;
+	session->extd = extd;
 	session->transmission = true;
 	session->pkt.total = (skb->len + 6) / 7;
 	session->pkt.block = session->extd ? 255 :
