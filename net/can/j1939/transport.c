@@ -1293,6 +1293,9 @@ int j1939_tp_send(struct j1939_priv *priv, struct sk_buff *skb)
 	if (!session)
 		return -ENOMEM;
 
+	/* skb is recounted in j1939_session_new() */
+	WARN_ON_ONCE(skb_unref(skb));
+
 	session->extd = extd;
 	session->transmission = true;
 	session->pkt.total = (skb->len + 6) / 7;
