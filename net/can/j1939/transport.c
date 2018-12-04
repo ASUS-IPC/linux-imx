@@ -125,6 +125,7 @@ static void j1939_session_destroy(struct j1939_session *session)
 	j1939_session_list_lock(session->priv);
 	j1939_session_list_del(session);
 	j1939_session_list_unlock(session->priv);
+	WARN_ON_ONCE(skb_shared(session->skb));
 	kfree_skb(session->skb);
 	j1939_priv_put(session->priv);
 	kfree(session);
