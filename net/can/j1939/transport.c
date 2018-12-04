@@ -1054,6 +1054,12 @@ static int j1939_xtp_rx_rts_current(struct j1939_session *session,
 		return -EBUSY;
 	}
 
+	if (session->skcb->addr.sa != skcb->addr.sa ||
+	    session->skcb->addr.da != skcb->addr.da)
+		netdev_warn(priv->ndev, "%s: session->skcb->addr.sa=0x%02x skcb->addr.sa=0x%02x session->skcb->addr.da=0x%02x skcb->addr.da=0x%02x\n",
+			    __func__,
+			    session->skcb->addr.sa, skcb->addr.sa,
+			    session->skcb->addr.da, skcb->addr.da);
 	/* make sure 'sa' & 'da' are correct !
 	 * They may be 'not filled in yet' for sending
 	 * skb's, since they did not pass the Address Claim ever.
