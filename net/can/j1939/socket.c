@@ -101,6 +101,13 @@ static inline void j1939_sock_pending_add(struct sock *sk)
 	atomic_inc(&jsk->skb_pending);
 }
 
+static int j1939_sock_pending_get(struct sock *sk)
+{
+	struct j1939_sock *jsk = j1939_sk(sk);
+
+	return atomic_read(&jsk->skb_pending);
+}
+
 void j1939_sock_pending_del(struct sock *sk)
 {
 	struct j1939_sock *jsk = j1939_sk(sk);
@@ -404,6 +411,9 @@ static int j1939_sk_release(struct socket *sock)
 
 	if (jsk->state & J1939_SOCK_BOUND) {
 		struct net_device *ndev;
+
+		wait_event_interruptible(jsk->waitq,
+					 j1939_sock_pending_get(&jsk->sk) == 0);
 
 		spin_lock_bh(&j1939_socks_lock);
 		list_del_init(&jsk->list);
