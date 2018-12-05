@@ -306,10 +306,10 @@ j1939_session *j1939_session_get_by_skb_locked(struct j1939_priv *priv,
 }
 
 static struct j1939_session *j1939_session_get_by_skb(struct j1939_priv *priv,
-						      struct list_head *root,
 						      struct sk_buff *skb,
-						      bool reverse)
+						      bool extd, bool reverse)
 {
+	struct list_head *root = j1939_sessionq(priv, extd);
 	struct j1939_session *session;
 
 	j1939_session_list_lock(priv);
@@ -703,8 +703,7 @@ static void j1939_xtp_rx_bad_message_one(struct j1939_priv *priv,
 	pgn_t pgn;
 
 	pgn = j1939_xtp_ctl_to_pgn(skb->data);
-	session = j1939_session_get_by_skb(priv, j1939_sessionq(priv, extd),
-					   skb, reverse);
+	session = j1939_session_get_by_skb(priv, skb, extd, reverse);
 	if (!session) {
 		j1939_xtp_tx_abort(priv, skb, extd, false, J1939_XTP_ABORT_FAULT, pgn);
 		return;
@@ -736,8 +735,7 @@ static void j1939_xtp_rx_abort_one(struct j1939_priv *priv, struct sk_buff *skb,
 	pgn_t pgn;
 
 	pgn = j1939_xtp_ctl_to_pgn(skb->data);
-	session = j1939_session_get_by_skb(priv, j1939_sessionq(priv, extd),
-					   skb, reverse);
+	session = j1939_session_get_by_skb(priv, skb, extd, reverse);
 	if (!session)
 		return;
 	if (session->transmission && !session->last_txcmd) {
@@ -775,8 +773,7 @@ static void j1939_xtp_rx_eoma(struct j1939_priv *priv, struct sk_buff *skb,
 
 	/* end of tx cycle */
 	pgn = j1939_xtp_ctl_to_pgn(skb->data);
-	session = j1939_session_get_by_skb(priv, j1939_sessionq(priv, extd),
-					   skb, true);
+	session = j1939_session_get_by_skb(priv, skb, extd, true);
 	if (!session) {
 		/* strange, we had EOMA on closed connection
 		 * do nothing, as EOMA closes the connection anyway
@@ -807,8 +804,7 @@ static void j1939_xtp_rx_cts(struct j1939_priv *priv, struct sk_buff *skb,
 
 	dat = skb->data;
 	pgn = j1939_xtp_ctl_to_pgn(skb->data);
-	session = j1939_session_get_by_skb(priv, j1939_sessionq(priv, extd),
-					   skb, true);
+	session = j1939_session_get_by_skb(priv, skb, extd, true);
 	if (!session) {
 		/* 'CTS shall be ignored' */
 		return;
@@ -933,9 +929,8 @@ static int j1939_session_insert(struct j1939_session *session)
 	struct j1939_session *pending;
 	int ret = 0;
 
-	pending = j1939_session_get_by_skb(priv,
-					   j1939_sessionq(priv, session->extd),
-					   session->skb, false);
+	pending = j1939_session_get_by_skb(priv, session->skb, session->extd,
+					   false);
 	if (pending) {
 		j1939_session_put(pending);
 		ret = -EAGAIN;
@@ -1092,8 +1087,7 @@ static void j1939_xtp_rx_rts(struct j1939_priv *priv, struct sk_buff *skb,
 	/* TODO: abort RTS when a similar
 	 * TP is pending in the other direction
 	 */
-	session = j1939_session_get_by_skb(priv, j1939_sessionq(priv, extd),
-					   skb, false);
+	session = j1939_session_get_by_skb(priv, skb, extd, false);
 	if (session) {
 		if (j1939_xtp_rx_rts_current(session, skb, extd))
 			goto out_session_put;
@@ -1122,8 +1116,7 @@ static void j1939_xtp_rx_dpo(struct j1939_priv *priv, struct sk_buff *skb,
 	const u8 *dat = skb->data;
 
 	pgn = j1939_xtp_ctl_to_pgn(dat);
-	session = j1939_session_get_by_skb(priv, j1939_sessionq(priv, extd),
-					   skb, false);
+	session = j1939_session_get_by_skb(priv, skb, extd, false);
 	if (!session) {
 		netdev_info(priv->ndev, "%s: no connection found\n", __func__);
 		return;
@@ -1158,8 +1151,7 @@ static void j1939_xtp_rx_dat(struct j1939_priv *priv, struct sk_buff *skb,
 	bool do_cts_eoma = false;
 	int packet;
 
-	session = j1939_session_get_by_skb(priv, j1939_sessionq(priv, extd),
-					   skb, false);
+	session = j1939_session_get_by_skb(priv, skb, extd, false);
 	if (!session) {
 		netdev_info(priv->ndev, "%s: no connection found\n", __func__);
 		return;
