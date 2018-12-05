@@ -705,16 +705,16 @@ static void j1939_xtp_rx_bad_message_one(struct j1939_priv *priv,
 	pgn = j1939_xtp_ctl_to_pgn(skb->data);
 	session = j1939_session_get_by_skb(priv, j1939_sessionq(priv, extd),
 					   skb, reverse);
-	if (session /*&& (session->skcb->addr.pgn == pgn)*/) {
-		/* do not allow TP control messages on 2 pgn's */
-		j1939_session_cancel(session, J1939_XTP_ABORT_FAULT);
-		goto out_session_put;
-	}
-	j1939_xtp_tx_abort(priv, skb, extd, false, J1939_XTP_ABORT_FAULT, pgn);
-	if (!session)
+	if (!session) {
+		j1939_xtp_tx_abort(priv, skb, extd, false, J1939_XTP_ABORT_FAULT, pgn);
 		return;
+	}
 
- out_session_put:
+	/* FIXME: extend session match to search for PGN? In case of BOM TP.
+	 * (session->skcb->addr.pgn == pgn)
+	 */
+	/* do not allow TP control messages on 2 pgn's */
+	j1939_session_cancel(session, J1939_XTP_ABORT_FAULT);
 	j1939_session_put(session);
 }
 
