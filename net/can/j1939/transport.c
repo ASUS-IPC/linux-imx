@@ -1323,72 +1323,85 @@ int j1939_tp_send(struct j1939_priv *priv, struct sk_buff *skb)
 	return ret;
 }
 
+static void j1939_tp_cmd_recv(struct j1939_priv *priv, struct sk_buff *skb,
+			      bool extd_pgn)
+{
+	bool extd = J1939_REGULAR;
+	const u8 *dat = skb->data;
+
+	switch (*dat) {
+	case J1939_ETP_CMD_RTS:
+		extd = J1939_EXTENDED;
+	case J1939_TP_CMD_BAM: /* falltrough */
+	case J1939_TP_CMD_RTS: /* falltrough */
+		if (extd != extd_pgn)
+			goto rx_bad_message;
+		j1939_xtp_rx_rts(priv, skb, extd);
+		break;
+
+	case J1939_ETP_CMD_CTS:
+		extd = J1939_EXTENDED;
+	case J1939_TP_CMD_CTS: /* falltrough */
+		if (extd != extd_pgn)
+			goto rx_bad_message;
+
+		j1939_xtp_rx_cts(priv, skb, extd_pgn);
+		break;
+
+	case J1939_ETP_CMD_DPO:
+		if (!extd_pgn)
+			goto rx_bad_message;
+
+		extd = J1939_EXTENDED;
+		j1939_xtp_rx_dpo(priv, skb, extd_pgn);
+		break;
+
+	case J1939_ETP_CMD_EOMA:
+		extd = J1939_EXTENDED;
+	case J1939_TP_CMD_EOMA: /* falltrough */
+		if (extd != extd_pgn)
+			goto rx_bad_message;
+
+		j1939_xtp_rx_eoma(priv, skb, extd_pgn);
+		break;
+
+	case J1939_ETP_CMD_ABORT: /* && J1939_TP_CMD_ABORT */
+		j1939_xtp_rx_abort(priv, skb, extd_pgn);
+		break;
+	default:
+		goto rx_bad_message;
+	}
+
+	return;
+
+rx_bad_message:
+	j1939_xtp_rx_bad_message(priv, skb, extd_pgn);
+}
+
 int j1939_tp_recv(struct j1939_priv *priv, struct sk_buff *skb)
 {
 	struct j1939_sk_buff_cb *skcb = j1939_skb_to_cb(skb);
-	const u8 *dat;
+	bool extd = J1939_REGULAR;
 
 	if (!j1939_tp_im_involved_anydir(skb))
 		return 0;
 
 	switch (skcb->addr.pgn) {
 	case J1939_ETP_PGN_DAT:
-		j1939_xtp_rx_dat(priv, skb, J1939_EXTENDED);
+		extd = J1939_EXTENDED;
+	case J1939_TP_PGN_DAT: /* falltrough */
+		j1939_xtp_rx_dat(priv, skb, extd);
 		break;
+
 	case J1939_ETP_PGN_CTL:
+		extd = J1939_EXTENDED;
+	case J1939_TP_PGN_CTL: /* falltrough */
 		if (skb->len < 8) {
-			j1939_xtp_rx_bad_message(priv, skb, J1939_EXTENDED);
+			j1939_xtp_rx_bad_message(priv, skb, extd);
 			break;
 		}
-		dat = skb->data;
-		switch (*dat) {
-		case J1939_ETP_CMD_RTS:
-			j1939_xtp_rx_rts(priv, skb, J1939_EXTENDED);
-			break;
-		case J1939_ETP_CMD_CTS:
-			j1939_xtp_rx_cts(priv, skb, J1939_EXTENDED);
-			break;
-		case J1939_ETP_CMD_DPO:
-			j1939_xtp_rx_dpo(priv, skb, J1939_EXTENDED);
-			break;
-		case J1939_ETP_CMD_EOMA:
-			j1939_xtp_rx_eoma(priv, skb, J1939_EXTENDED);
-			break;
-		case J1939_ETP_CMD_ABORT:
-			j1939_xtp_rx_abort(priv, skb, J1939_EXTENDED);
-			break;
-		default:
-			j1939_xtp_rx_bad_message(priv, skb, J1939_EXTENDED);
-			break;
-		}
-		break;
-	case J1939_TP_PGN_DAT:
-		j1939_xtp_rx_dat(priv, skb, J1939_REGULAR);
-		break;
-	case J1939_TP_PGN_CTL:
-		if (skb->len < 8) {
-			j1939_xtp_rx_bad_message(priv, skb, J1939_REGULAR);
-			break;
-		}
-		dat = skb->data;
-		switch (*dat) {
-		case J1939_TP_CMD_BAM:
-		case J1939_TP_CMD_RTS:
-			j1939_xtp_rx_rts(priv, skb, J1939_REGULAR);
-			break;
-		case J1939_TP_CMD_CTS:
-			j1939_xtp_rx_cts(priv, skb, J1939_REGULAR);
-			break;
-		case J1939_TP_CMD_EOMA:
-			j1939_xtp_rx_eoma(priv, skb, J1939_REGULAR);
-			break;
-		case J1939_TP_CMD_ABORT:
-			j1939_xtp_rx_abort(priv, skb, J1939_REGULAR);
-			break;
-		default:
-			j1939_xtp_rx_bad_message(priv, skb, J1939_REGULAR);
-			break;
-		}
+
+		j1939_tp_cmd_recv(priv, skb, extd);
 		break;
 	default:
 		return 0; /* no problem */
