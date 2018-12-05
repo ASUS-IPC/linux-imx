@@ -104,9 +104,10 @@ static inline void j1939_session_list_unlock(struct j1939_priv *priv)
 	spin_unlock_bh(&priv->tp_session_list_lock);
 }
 
-static void j1939_session_list_add(struct j1939_session *session,
-				   struct list_head *list)
+static void j1939_session_list_add(struct j1939_session *session)
 {
+	struct list_head *list = j1939_sessionq(session->priv, session->extd);
+
 	list_add_tail(&session->list, list);
 }
 
@@ -936,8 +937,7 @@ static int j1939_session_insert(struct j1939_session *session)
 		ret = -EAGAIN;
 	} else {
 		j1939_session_list_lock(priv);
-		j1939_session_list_add(session,
-				       j1939_sessionq(priv, session->extd));
+		j1939_session_list_add(session);
 		j1939_session_list_unlock(priv);
 	}
 
