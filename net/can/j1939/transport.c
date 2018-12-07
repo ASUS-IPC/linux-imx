@@ -68,6 +68,7 @@ struct j1939_session {
 	u8 last_cmd, last_txcmd;
 	bool transmission;
 	bool extd;
+	unsigned int total_message_size; /* Total message size, number of bytes */
 	struct {
 		/* these do not require 16 bit, they should fit in u8
 		 * but putting in int makes it easier to deal with
@@ -475,15 +476,15 @@ static int j1939_tp_txnext(struct j1939_session *session)
 	case 0:
 		if (!j1939_tp_im_transmitter(session->skb))
 			break;
-		dat[1] = (session->skb->len >> 0);
-		dat[2] = (session->skb->len >> 8);
+		dat[1] = (session->total_message_size >> 0);
+		dat[2] = (session->total_message_size >> 8);
 		dat[3] = session->pkt.total;
 		if (session->extd) {
 			dat[0] = J1939_ETP_CMD_RTS;
-			dat[1] = (session->skb->len >> 0);
-			dat[2] = (session->skb->len >> 8);
-			dat[3] = (session->skb->len >> 16);
-			dat[4] = (session->skb->len >> 24);
+			dat[1] = (session->total_message_size >> 0);
+			dat[2] = (session->total_message_size >> 8);
+			dat[3] = (session->total_message_size >> 16);
+			dat[4] = (session->total_message_size >> 24);
 		} else if (j1939_cb_is_broadcast(&session->skcb)) {
 			dat[0] = J1939_TP_CMD_BAM;
 			/* fake cts for broadcast */
@@ -565,14 +566,14 @@ static int j1939_tp_txnext(struct j1939_session *session)
 			if (session->pkt.done >= session->pkt.total) {
 				if (session->extd) {
 					dat[0] = J1939_ETP_CMD_EOMA;
-					dat[1] = session->skb->len >> 0;
-					dat[2] = session->skb->len >> 8;
-					dat[3] = session->skb->len >> 16;
-					dat[4] = session->skb->len >> 24;
+					dat[1] = session->total_message_size >> 0;
+					dat[2] = session->total_message_size >> 8;
+					dat[3] = session->total_message_size >> 16;
+					dat[4] = session->total_message_size >> 24;
 				} else {
 					dat[0] = J1939_TP_CMD_EOMA;
-					dat[1] = session->skb->len;
-					dat[2] = session->skb->len >> 8;
+					dat[1] = session->total_message_size;
+					dat[2] = session->total_message_size >> 8;
 					dat[3] = session->pkt.total;
 				}
 				if (dat[0] == session->last_txcmd)
@@ -604,7 +605,7 @@ static int j1939_tp_txnext(struct j1939_session *session)
 		while (session->pkt.tx < pkt_end) {
 			dat[0] = session->pkt.tx - session->pkt.dpo + 1;
 			offset = session->pkt.tx * 7;
-			len = session->skb->len - offset;
+			len = session->total_message_size - offset;
 			if (len > 7)
 				len = 7;
 			memcpy(&dat[1], &tpdat[offset], len);
@@ -865,6 +866,7 @@ static struct j1939_session *j1939_session_new(struct j1939_priv *priv,
 
 	j1939_priv_get(priv);
 	session->priv = priv;
+	session->total_message_size = skb->len;
 	/* corresponding skb_unref() is in j1939_session_fresh_new */
 	session->skb = skb_get(skb);
 	skcb = j1939_skb_to_cb(session->skb);
@@ -1128,7 +1130,7 @@ static void j1939_xtp_rx_dat(struct j1939_priv *priv, struct sk_buff *skb,
 			    __func__);
 		goto out_session_unlock;
 	}
-	nbytes = session->skb->len - offset;
+	nbytes = session->total_message_size - offset;
 	if (nbytes > 7)
 		nbytes = 7;
 	if (nbytes <= 0 || (nbytes + 1) > skb->len) {
