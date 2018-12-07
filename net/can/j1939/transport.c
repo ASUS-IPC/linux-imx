@@ -268,9 +268,6 @@ static bool j1939_session_match(struct j1939_session *session,
 	struct j1939_addr *se_addr = &se_skcb->addr;
 	struct j1939_addr *sk_addr = &skcb->addr;
 
-
-	if (can_skb_prv(session->skb)->ifindex != can_skb_prv(skb)->ifindex)
-		return false;
 	if (reverse) {
 		if (se_addr->src_name) {
 			if (se_addr->src_name != sk_addr->dst_name)
@@ -1411,19 +1408,14 @@ int j1939_tp_recv(struct j1939_priv *priv, struct sk_buff *skb)
 int j1939_tp_rmdev_notifier(struct j1939_priv *priv)
 {
 	struct j1939_session *session, *saved;
-	struct net_device *ndev = priv->ndev;
 
 	j1939_session_list_lock(priv);
 	list_for_each_entry_safe(session, saved,
 				 &priv->tp_sessionq, list) {
-		if (can_skb_prv(session->skb)->ifindex != ndev->ifindex)
-			continue;
 		j1939_session_timers_cancel(session);
 	}
 	list_for_each_entry_safe(session, saved,
 				 &priv->tp_extsessionq, list) {
-		if (can_skb_prv(session->skb)->ifindex != ndev->ifindex)
-			continue;
 		j1939_session_timers_cancel(session);
 	}
 	j1939_session_list_unlock(priv);
