@@ -118,24 +118,28 @@ struct j1939_addr {
 
 /* control buffer of the sk_buff */
 struct j1939_sk_buff_cb {
-	struct j1939_addr addr;
-	priority_t priority;
-
-	/* Flags for quick lookups during skb processing
-	 * These are set in the receive path only
-	 */
-#define J1939_ECU_LOCAL	BIT(0)
-	u32 src_flags;
-	u32 dst_flags;
-
-	/* for tx, MSG_SYN will be used to sync on sockets */
-	u32 msg_flags;
-
 	/* j1939 clones incoming skb's.
 	 * insock saves the incoming skb->sk
 	 * to determine local generated packets
 	 */
 	struct sock *insock;
+
+	/* Offset in bytes withing one ETP session */
+	u32 offset;
+
+	/* for tx, MSG_SYN will be used to sync on sockets */
+	u32 msg_flags;
+
+	struct j1939_addr addr;
+
+	/* Flags for quick lookups during skb processing
+	 * These are set in the receive path only
+	 */
+#define J1939_ECU_LOCAL	BIT(0)
+	u8 src_flags;
+	u8 dst_flags;
+
+	priority_t priority;
 };
 
 static inline struct j1939_sk_buff_cb *j1939_skb_to_cb(struct sk_buff *skb)
