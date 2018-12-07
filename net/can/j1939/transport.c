@@ -69,13 +69,26 @@ struct j1939_session {
 	bool transmission;
 	bool extd;
 	unsigned int total_message_size; /* Total message size, number of bytes */
+
+	/* Packets counters for a (extended) transfer session. The packet is
+	 * maximal of 7 bytes. */
 	struct {
-		/* these do not require 16 bit, they should fit in u8
-		 * but putting in int makes it easier to deal with
-		 */
-		unsigned int total, done, last, tx;
-		unsigned int block; /* for TP */
-		unsigned int dpo; /* for ETP */
+		/* total - total number of packets for this session */
+		unsigned int total;
+		/* last - last packet of a transfer block after which responder
+		 * should send ETP.CM_CTS and originator ETP.CM_DPO */
+		unsigned int last;
+		/* tx - number of packets send by originator node.
+		 * this counter can be set back if responder node didn't
+		 * received all packets send by originator. */
+		unsigned int tx;
+		/* done - number of packets received and confirmed by
+		 * responder */
+		unsigned int done;
+		/* block - amount of packets expected in one block */
+		unsigned int block;
+		/* dpo - ETP.CM_DPO, Data Packet Offset */
+		unsigned int dpo;
 	} pkt;
 	struct hrtimer txtimer, rxtimer;
 };
