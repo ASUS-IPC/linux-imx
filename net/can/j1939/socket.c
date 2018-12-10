@@ -679,20 +679,47 @@ failure:
 }
 
 static int j1939_sk_send_multi(struct j1939_priv *priv,  struct sock *sk,
-			       struct msghdr *msg, size_t size)
+			       struct msghdr *msg, size_t complete_size)
 
 {
-	struct j1939_session *session;
+	struct j1939_session *session = NULL;
 	struct sk_buff *skb;
-	int ret;
+	size_t segment_size, todo_size, done_size = 0;
+	int ret = 0;
 
-	skb = j1939_sk_alloc_skb(priv->ndev, sk, msg, size, &ret);
-	if (ret)
-		return ret;
+	segment_size = todo_size = complete_size;
 
-	session = j1939_tp_send(priv, skb, size);
-	if (IS_ERR(session))
-		return PTR_ERR(session);
+	while (todo_size) {
+		struct j1939_sk_buff_cb *skcb;
+
+		if (todo_size > J1939_MAX_TP_PACKET_SIZE)
+			segment_size = J1939_MAX_TP_PACKET_SIZE;
+		else
+			segment_size = todo_size;
+
+		/* Allocate skb for one segment */
+		skb = j1939_sk_alloc_skb(priv->ndev, sk, msg, segment_size, &ret);
+		if (ret)
+			break;
+
+		skcb = j1939_skb_to_cb(skb);
+		skcb->offset  = done_size;
+
+		todo_size -= segment_size;
+		done_size += segment_size;
+
+		if (!session) {
+			/* create new session with complete_size and attach
+			 * skb segment
+			 */
+			session = j1939_tp_send(priv, skb, complete_size);
+			if (IS_ERR(session))
+				return PTR_ERR(session);
+		} else {
+			j1939_session_skb_queue(session, skb);
+		}
+
+	}
 
 	j1939_session_put(session);
 
