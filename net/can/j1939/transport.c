@@ -896,7 +896,7 @@ static void j1939_xtp_rx_cts(struct j1939_session *session, struct sk_buff *skb,
 }
 
 static struct j1939_session *j1939_session_new(struct j1939_priv *priv,
-					       struct sk_buff *skb)
+					       struct sk_buff *skb, size_t size)
 {
 	struct j1939_session *session;
 	struct j1939_sk_buff_cb *skcb;
@@ -910,7 +910,7 @@ static struct j1939_session *j1939_session_new(struct j1939_priv *priv,
 
 	j1939_priv_get(priv);
 	session->priv = priv;
-	session->total_message_size = skb->len;
+	session->total_message_size = size;
 
 	skb_queue_head_init(&session->skb_queue);
 	skb_queue_tail(&session->skb_queue, skb);
@@ -950,7 +950,7 @@ static struct j1939_session *j1939_session_fresh_new(struct j1939_priv *priv,
 	j1939_fix_cb(skcb);
 	skcb->addr.pgn = pgn;
 
-	session = j1939_session_new(priv, skb);
+	session = j1939_session_new(priv, skb, skb->len);
 	if (!session) {
 		kfree_skb(skb);
 		return NULL;
@@ -1254,10 +1254,10 @@ struct j1939_session *j1939_tp_send(struct j1939_priv *priv,
 		/* avoid conflict */
 		return ERR_PTR(-EDOM);
 
-	if (skb->len > priv->tp_max_packet_size)
+	if (size > priv->tp_max_packet_size)
 		return ERR_PTR(-EMSGSIZE);
 
-	if (skb->len > J1939_MAX_TP_PACKET_SIZE)
+	if (size > J1939_MAX_TP_PACKET_SIZE)
 		extd = J1939_EXTENDED;
 
 	if (extd && j1939_cb_is_broadcast(skcb))
@@ -1277,14 +1277,14 @@ struct j1939_session *j1939_tp_send(struct j1939_priv *priv,
 	skcb->src_flags |= J1939_ECU_LOCAL;
 
 	/* prepare new session */
-	session = j1939_session_new(priv, skb);
+	session = j1939_session_new(priv, skb, size);
 	if (!session)
 		return ERR_PTR(-ENOMEM);
 
 	/* skb is recounted in j1939_session_new() */
 	session->extd = extd;
 	session->transmission = true;
-	session->pkt.total = (skb->len + 6) / 7;
+	session->pkt.total = (size + 6) / 7;
 	session->pkt.block = session->extd ? 255 :
 		min(j1939_tp_block ?: 255, session->pkt.total);
 
