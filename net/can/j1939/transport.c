@@ -37,61 +37,10 @@ enum j1939_xtp_abort {
 	J1939_XTP_ABORT_FAULT = 5,
 };
 
-#define J1939_MAX_TP_PACKET_SIZE (7 * 0xff)
-#define J1939_MAX_ETP_PACKET_SIZE (7 * 0x00ffffff)
-
 static unsigned int j1939_tp_block = 255;
 static unsigned int j1939_tp_retry_ms = 20;
 static unsigned int j1939_tp_packet_delay;
 static unsigned int j1939_tp_padding = 1;
-
-struct j1939_session {
-	struct j1939_priv *priv;
-	struct list_head list;
-	struct kref kref;
-	spinlock_t lock;
-
-	/* ifindex, src, dst, pgn define the session block
-	 * the are _never_ modified after insertion in the list
-	 * this decreases locking problems a _lot_
-	 */
-	struct j1939_sk_buff_cb skcb;
-	struct sk_buff_head skb_queue;
-
-	/* all tx related stuff (last_txcmd, pkt.tx)
-	 * is protected (modified only) with the txtimer hrtimer
-	 * 'total' & 'block' are never changed,
-	 * last_cmd, last & block are protected by ->lock
-	 * this means that the tx may run after cts is received that should
-	 * have stopped tx, but this time discrepancy is never avoided anyhow
-	 */
-	u8 last_cmd, last_txcmd;
-	bool transmission;
-	bool extd;
-	unsigned int total_message_size; /* Total message size, number of bytes */
-
-	/* Packets counters for a (extended) transfer session. The packet is
-	 * maximal of 7 bytes. */
-	struct {
-		/* total - total number of packets for this session */
-		unsigned int total;
-		/* last - last packet of a transfer block after which responder
-		 * should send ETP.CM_CTS and originator ETP.CM_DPO */
-		unsigned int last;
-		/* tx - number of packets send by originator node.
-		 * this counter can be set back if responder node didn't
-		 * received all packets send by originator. */
-		unsigned int tx;
-		/* done - number of packets received and confirmed by
-		 * responder */
-		unsigned int done;
-		/* block - amount of packets expected in one block */
-		unsigned int block;
-		/* dpo - ETP.CM_DPO, Data Packet Offset */
-		unsigned int dpo;
-	} pkt;
-	struct hrtimer txtimer, rxtimer;
-};
 
 /* helpers */
 static inline void j1939_fix_cb(struct j1939_sk_buff_cb *skcb)
@@ -130,7 +79,7 @@ static void j1939_session_list_del(struct j1939_session *session)
 	list_del_init(&session->list);
 }
 
-static inline void j1939_session_get(struct j1939_session *session)
+void j1939_session_get(struct j1939_session *session)
 {
 	kref_get(&session->kref);
 }
@@ -153,7 +102,7 @@ static void __j1939_session_release(struct kref *kref)
 	j1939_session_destroy(session);
 }
 
-static inline void j1939_session_put(struct j1939_session *session)
+void j1939_session_put(struct j1939_session *session)
 {
 	kref_put(&session->kref, __j1939_session_release);
 }
@@ -1290,7 +1239,8 @@ static inline int j1939_tp_tx_initial(struct j1939_session *session)
 }
 
 /* j1939 main intf */
-int j1939_tp_send(struct j1939_priv *priv, struct sk_buff *skb)
+struct j1939_session *j1939_tp_send(struct j1939_priv *priv,
+				    struct sk_buff *skb, size_t size)
 {
 	struct j1939_sk_buff_cb *skcb = j1939_skb_to_cb(skb);
 	struct j1939_session *session;
@@ -1302,21 +1252,21 @@ int j1939_tp_send(struct j1939_priv *priv, struct sk_buff *skb)
 	    skcb->addr.pgn == J1939_ETP_PGN_DAT ||
 	    skcb->addr.pgn == J1939_ETP_PGN_CTL)
 		/* avoid conflict */
-		return -EDOM;
+		return ERR_PTR(-EDOM);
 
 	if (skb->len > priv->tp_max_packet_size)
-		return -EMSGSIZE;
+		return ERR_PTR(-EMSGSIZE);
 
 	if (skb->len > J1939_MAX_TP_PACKET_SIZE)
 		extd = J1939_EXTENDED;
 
 	if (extd && j1939_cb_is_broadcast(skcb))
-		return -EDESTADDRREQ;
+		return ERR_PTR(-EDESTADDRREQ);
 
 	/* fill in addresses from names */
 	ret = j1939_ac_fixup(priv, skb);
 	if (unlikely(ret))
-		return ret;
+		return ERR_PTR(ret);
 
 	/* fix dst_flags, it may be used there soon */
 	if (j1939_address_is_unicast(skcb->addr.da) &&
@@ -1329,7 +1279,7 @@ int j1939_tp_send(struct j1939_priv *priv, struct sk_buff *skb)
 	/* prepare new session */
 	session = j1939_session_new(priv, skb);
 	if (!session)
-		return -ENOMEM;
+		return ERR_PTR(-ENOMEM);
 
 	/* skb is recounted in j1939_session_new() */
 	session->extd = extd;
@@ -1356,14 +1306,13 @@ int j1939_tp_send(struct j1939_priv *priv, struct sk_buff *skb)
 		goto failed;
 
 	/* transmission started */
-	j1939_session_put(session);
-	return 0;
+	return session;
 
  failed:
 	j1939_session_timers_cancel(session);
 	j1939_session_cancel(session, J1939_XTP_ABORT_NO_ERROR);
 	j1939_session_put(session);
-	return ret;
+	return ERR_PTR(ret);
 }
 
 static void j1939_tp_cmd_recv(struct j1939_priv *priv, struct sk_buff *skb,
