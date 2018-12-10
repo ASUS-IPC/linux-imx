@@ -621,13 +621,69 @@ static int j1939_sk_recvmsg(struct socket *sock, struct msghdr *msg,
 	return size;
 }
 
+static struct sk_buff *j1939_sk_alloc_skb(struct net_device *ndev, struct sock *sk,
+			      struct msghdr *msg, size_t size, int *errcode)
+{
+	struct j1939_sock *jsk = j1939_sk(sk);
+	struct j1939_sk_buff_cb *skcb;
+	struct sk_buff *skb;
+	int ret;
+
+	skb = sock_alloc_send_skb(sk,
+				  size +
+				  sizeof(struct can_frame) -
+				  sizeof(((struct can_frame *)NULL)->data) +
+				  sizeof(struct can_skb_priv),
+				  msg->msg_flags & MSG_DONTWAIT, &ret);
+	if (!skb)
+		goto failure;
+
+	can_skb_reserve(skb);
+	can_skb_prv(skb)->ifindex = ndev->ifindex;
+	can_skb_prv(skb)->skbcnt = 0;
+	skb_reserve(skb, offsetof(struct can_frame, data));
+
+	ret = memcpy_from_msg(skb_put(skb, size), msg, size);
+	if (ret < 0)
+		goto free_skb;
+	sock_tx_timestamp(sk, skb->sk->sk_tsflags, &skb_shinfo(skb)->tx_flags);
+
+	skb->dev = ndev;
+
+	skcb = j1939_skb_to_cb(skb);
+	memset(skcb, 0, sizeof(*skcb));
+	skcb->addr = jsk->addr;
+	skcb->priority = j1939_prio(sk->sk_priority);
+	skcb->msg_flags = msg->msg_flags;
+
+	if (msg->msg_name) {
+		struct sockaddr_can *addr = msg->msg_name;
+
+		if (addr->can_addr.j1939.name ||
+		    addr->can_addr.j1939.addr != J1939_NO_ADDR) {
+			skcb->addr.dst_name = addr->can_addr.j1939.name;
+			skcb->addr.da = addr->can_addr.j1939.addr;
+		}
+		if (j1939_pgn_is_valid(addr->can_addr.j1939.pgn))
+			skcb->addr.pgn = addr->can_addr.j1939.pgn;
+	}
+
+	*errcode = ret;
+	return skb;
+
+free_skb:
+	kfree_skb(skb);
+failure:
+	*errcode = ret;
+	return NULL;
+}
+
 static int j1939_sk_sendmsg(struct socket *sock, struct msghdr *msg,
 			    size_t size)
 {
 	struct sock *sk = sock->sk;
 	struct j1939_sock *jsk = j1939_sk(sk);
 	struct sockaddr_can *addr = msg->msg_name;
-	struct j1939_sk_buff_cb *skcb;
 	struct j1939_priv *priv;
 	struct sk_buff *skb;
 	struct net_device *ndev;
@@ -662,51 +718,12 @@ static int j1939_sk_sendmsg(struct socket *sock, struct msghdr *msg,
 	if (!ndev)
 		return -ENXIO;
 
-	skb = sock_alloc_send_skb(sk,
-				  size +
-				  sizeof(struct can_frame) -
-				  sizeof(((struct can_frame *)NULL)->data) +
-				  sizeof(struct can_skb_priv),
-				  msg->msg_flags & MSG_DONTWAIT, &ret);
+	skb = j1939_sk_alloc_skb(ndev, sk, msg, size, &ret);
 	if (!skb)
 		goto put_dev;
 
-	can_skb_reserve(skb);
-	can_skb_prv(skb)->ifindex = ndev->ifindex;
-	can_skb_prv(skb)->skbcnt = 0;
-	skb_reserve(skb, offsetof(struct can_frame, data));
-
-	ret = memcpy_from_msg(skb_put(skb, size), msg, size);
-	if (ret < 0)
-		goto free_skb;
-	sock_tx_timestamp(sk, skb->sk->sk_tsflags, &skb_shinfo(skb)->tx_flags);
-
-	skb->dev = ndev;
-
-	skcb = j1939_skb_to_cb(skb);
-	memset(skcb, 0, sizeof(*skcb));
-	skcb->addr = jsk->addr;
-	skcb->priority = j1939_prio(sk->sk_priority);
-	skcb->msg_flags = msg->msg_flags;
-
-	if (msg->msg_name) {
-		struct sockaddr_can *addr = msg->msg_name;
-
-		if (addr->can_addr.j1939.name ||
-		    addr->can_addr.j1939.addr != J1939_NO_ADDR) {
-			skcb->addr.dst_name = addr->can_addr.j1939.name;
-			skcb->addr.da = addr->can_addr.j1939.addr;
-		}
-		if (j1939_pgn_is_valid(addr->can_addr.j1939.pgn))
-			skcb->addr.pgn = addr->can_addr.j1939.pgn;
-	}
-	if (!j1939_pgn_is_valid(skcb->addr.pgn)) {
-		ret = -EINVAL;
-		goto free_skb;
-	}
-
-	if (skcb->msg_flags & MSG_SYN) {
-		if (skcb->msg_flags & MSG_DONTWAIT) {
+	if (msg->msg_flags & MSG_SYN) {
+		if (msg->msg_flags & MSG_DONTWAIT) {
 			ret = j1939_sock_pending_add_first(&jsk->sk);
 			if (ret > 0)
 				ret = -EAGAIN;
