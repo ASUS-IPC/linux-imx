@@ -678,6 +678,34 @@ failure:
 	return NULL;
 }
 
+static int j1939_sk_send_multi(struct j1939_priv *priv,  struct sock *sk,
+			       struct msghdr *msg, size_t size)
+
+{
+	struct sk_buff *skb;
+	int ret;
+
+	skb = j1939_sk_alloc_skb(priv->ndev, sk, msg, size, &ret);
+	if (ret)
+		return ret;
+
+	return j1939_tp_send(priv, skb);
+}
+
+static int j1939_sk_send_one(struct j1939_priv *priv,  struct sock *sk,
+			       struct msghdr *msg, size_t size)
+
+{
+	struct sk_buff *skb;
+	int ret;
+
+	skb = j1939_sk_alloc_skb(priv->ndev, sk, msg, size, &ret);
+	if (ret)
+		return ret;
+
+	return j1939_send_one(priv, skb);
+}
+
 static int j1939_sk_sendmsg(struct socket *sock, struct msghdr *msg,
 			    size_t size)
 {
@@ -685,7 +713,6 @@ static int j1939_sk_sendmsg(struct socket *sock, struct msghdr *msg,
 	struct j1939_sock *jsk = j1939_sk(sk);
 	struct sockaddr_can *addr = msg->msg_name;
 	struct j1939_priv *priv;
-	struct sk_buff *skb;
 	struct net_device *ndev;
 	int ifindex;
 	int ret;
@@ -718,10 +745,6 @@ static int j1939_sk_sendmsg(struct socket *sock, struct msghdr *msg,
 	if (!ndev)
 		return -ENXIO;
 
-	skb = j1939_sk_alloc_skb(ndev, sk, msg, size, &ret);
-	if (!skb)
-		goto put_dev;
-
 	if (msg->msg_flags & MSG_SYN) {
 		if (msg->msg_flags & MSG_DONTWAIT) {
 			ret = j1939_sock_pending_add_first(&jsk->sk);
@@ -732,7 +755,7 @@ static int j1939_sk_sendmsg(struct socket *sock, struct msghdr *msg,
 						       j1939_sock_pending_add_first(&jsk->sk));
 		}
 		if (ret < 0)
-			goto free_skb;
+			goto put_dev;
 	} else {
 		j1939_sock_pending_add(&jsk->sk);
 	}
@@ -741,11 +764,11 @@ static int j1939_sk_sendmsg(struct socket *sock, struct msghdr *msg,
 	if (!priv)
 		return -EINVAL;
 
-	if (skb->len > 8)
+	if (size > 8)
 		/* re-route via transport protocol */
-		ret = j1939_tp_send(priv, skb);
+		ret = j1939_sk_send_multi(priv, sk, msg, size);
 	else
-		ret = j1939_send_one(priv, skb);
+		ret = j1939_sk_send_one(priv, sk, msg, size);
 
 	j1939_priv_put(priv);
 	if (ret < 0)
@@ -754,8 +777,6 @@ static int j1939_sk_sendmsg(struct socket *sock, struct msghdr *msg,
 	dev_put(ndev);
 	return (ret < 0) ? ret : size;
 
- free_skb:
-	kfree_skb(skb);
  put_dev:
 	dev_put(ndev);
 	return ret;
