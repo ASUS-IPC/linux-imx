@@ -1079,9 +1079,9 @@ static int j1939_xtp_rx_rts_current(struct j1939_session *session,
 
 	if (session->last_cmd != 0) {
 		/* we received a second rts on the same connection */
-		netdev_alert(priv->ndev, "%s: connection exists (%i %02x %02x)\n",
+		netdev_alert(priv->ndev, "%s: connection exists (%i %02x %02x). last cmd: %x\n",
 			     __func__, can_skb_prv(skb)->ifindex, skcb->addr.sa,
-			     skcb->addr.da);
+			     skcb->addr.da, session->last_cmd);
 
 		j1939_session_timers_cancel(session);
 		j1939_session_cancel(session, J1939_XTP_ABORT_BUSY);
