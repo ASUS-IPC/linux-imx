@@ -701,8 +701,7 @@ static enum hrtimer_restart j1939_tp_rxtimer(struct hrtimer *hrtimer)
 						     rxtimer);
 	struct j1939_priv *priv = session->priv;
 
-	netdev_alert(priv->ndev, "%s: timeout on %i\n", __func__,
-		     can_skb_prv(session->skb)->ifindex);
+	netdev_alert(priv->ndev, "%s: timeout\n", __func__);
 	j1939_session_txtimer_cancel(session);
 	j1939_session_cancel(session, J1939_XTP_ABORT_TIMEOUT);
 	j1939_session_put(session);
