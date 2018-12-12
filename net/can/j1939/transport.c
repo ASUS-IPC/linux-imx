@@ -766,21 +766,14 @@ static void j1939_xtp_rx_abort(struct j1939_priv *priv, struct sk_buff *skb,
 	j1939_xtp_rx_abort_one(priv, skb, extd, true);
 }
 
-static void j1939_xtp_rx_eoma(struct j1939_priv *priv, struct sk_buff *skb,
+static void j1939_xtp_rx_eoma(struct j1939_session *session, struct sk_buff *skb,
 			      bool extd)
 {
-	struct j1939_session *session;
+	struct j1939_priv *priv = session->priv;
 	pgn_t pgn;
 
 	/* end of tx cycle */
 	pgn = j1939_xtp_ctl_to_pgn(skb->data);
-	session = j1939_session_get_by_skb(priv, skb, extd, true);
-	if (!session) {
-		/* strange, we had EOMA on closed connection
-		 * do nothing, as EOMA closes the connection anyway
-		 */
-		return;
-	}
 
 	j1939_session_timers_cancel(session);
 	if (session->skcb->addr.pgn != pgn) {
@@ -791,25 +784,18 @@ static void j1939_xtp_rx_eoma(struct j1939_priv *priv, struct sk_buff *skb,
 		/* transmitted without problems */
 		j1939_session_completed(session);
 	}
-
-	j1939_session_put(session);
 }
 
-static void j1939_xtp_rx_cts(struct j1939_priv *priv, struct sk_buff *skb,
+static void j1939_xtp_rx_cts(struct j1939_session *session, struct sk_buff *skb,
 			     bool extd)
 {
-	struct j1939_session *session;
+	struct j1939_priv *priv = session->priv;
 	pgn_t pgn;
 	unsigned int pkt;
 	const u8 *dat;
 
 	dat = skb->data;
 	pgn = j1939_xtp_ctl_to_pgn(skb->data);
-	session = j1939_session_get_by_skb(priv, skb, extd, true);
-	if (!session) {
-		/* 'CTS shall be ignored' */
-		return;
-	}
 
 	if (session->skcb->addr.pgn != pgn) {
 		/* what to do? */
@@ -850,7 +836,6 @@ static void j1939_xtp_rx_cts(struct j1939_priv *priv, struct sk_buff *skb,
 		/* CTS(0) */
 		j1939_tp_set_rxtimeout(session, 550);
 	}
-	j1939_session_put(session);
 	return;
 
  out_session_unlock:
@@ -1066,61 +1051,13 @@ static int j1939_xtp_rx_rts_current(struct j1939_session *session,
 	return 0;
 }
 
-static void j1939_xtp_rx_rts(struct j1939_priv *priv, struct sk_buff *skb,
-			     bool extd)
+static void j1939_xtp_rx_dpo(struct j1939_session *session, struct sk_buff *skb)
 {
-	struct j1939_sk_buff_cb *skcb = j1939_skb_to_cb(skb);
-	struct j1939_session *session;
-	const u8 *dat;
-	pgn_t pgn;
-
-	dat = skb->data;
-	pgn = j1939_xtp_ctl_to_pgn(dat);
-
-	if (dat[0] == J1939_TP_CMD_RTS && j1939_cb_is_broadcast(skcb)) {
-		netdev_alert(priv->ndev, "%s: rts without destination (%i %02x)\n",
-			     __func__, can_skb_prv(skb)->ifindex,
-			     skcb->addr.sa);
-		return;
-	}
-
-	/* TODO: abort RTS when a similar
-	 * TP is pending in the other direction
-	 */
-	session = j1939_session_get_by_skb(priv, skb, extd, false);
-	if (session) {
-		if (j1939_xtp_rx_rts_current(session, skb, extd))
-			goto out_session_put;
-	} else {
-		session = j1939_xtp_rx_rts_new(priv, skb, extd);
-		if (!session)
-			return;
-	}
-	session->last_cmd = dat[0];
-
-	j1939_tp_set_rxtimeout(session, 1250);
-
-	if ((dat[0] != J1939_TP_CMD_BAM) &&
-	    j1939_tp_im_receiver(session->skb))
-		j1939_tp_schedule_txtimer(session, 0);
-
- out_session_put:
-	j1939_session_put(session);
-}
-
-static void j1939_xtp_rx_dpo(struct j1939_priv *priv, struct sk_buff *skb,
-			     bool extd)
-{
-	struct j1939_session *session;
+	struct j1939_priv *priv = session->priv;
 	pgn_t pgn;
 	const u8 *dat = skb->data;
 
 	pgn = j1939_xtp_ctl_to_pgn(dat);
-	session = j1939_session_get_by_skb(priv, skb, extd, false);
-	if (!session) {
-		netdev_info(priv->ndev, "%s: no connection found\n", __func__);
-		return;
-	}
 
 	if (session->skcb->addr.pgn != pgn) {
 		netdev_info(priv->ndev, "%s: different pgn\n", __func__);
@@ -1128,15 +1065,13 @@ static void j1939_xtp_rx_dpo(struct j1939_priv *priv, struct sk_buff *skb,
 				   pgn);
 		j1939_session_timers_cancel(session);
 		j1939_session_cancel(session, J1939_XTP_ABORT_BUSY);
-		goto out_session_put;
+		return;
 	}
 
 	/* transmitted without problems */
 	session->pkt.dpo = j1939_etp_ctl_to_packet(skb->data);
 	session->last_cmd = dat[0];
 	j1939_tp_set_rxtimeout(session, 750);
- out_session_put:
-	j1939_session_put(session);
 }
 
 static void j1939_xtp_rx_dat(struct j1939_priv *priv, struct sk_buff *skb,
@@ -1326,6 +1261,8 @@ int j1939_tp_send(struct j1939_priv *priv, struct sk_buff *skb)
 static void j1939_tp_cmd_recv(struct j1939_priv *priv, struct sk_buff *skb,
 			      bool extd_pgn)
 {
+	struct j1939_sk_buff_cb *skcb = j1939_skb_to_cb(skb);
+	struct j1939_session *session;
 	bool extd = J1939_REGULAR;
 	const u8 *dat = skb->data;
 
@@ -1336,7 +1273,35 @@ static void j1939_tp_cmd_recv(struct j1939_priv *priv, struct sk_buff *skb,
 	case J1939_TP_CMD_RTS: /* falltrough */
 		if (extd != extd_pgn)
 			goto rx_bad_message;
-		j1939_xtp_rx_rts(priv, skb, extd);
+
+		if (*dat == J1939_TP_CMD_RTS && j1939_cb_is_broadcast(skcb)) {
+			netdev_alert(priv->ndev, "%s: rts without destination (%i %02x)\n",
+				     __func__, can_skb_prv(skb)->ifindex,
+				     skcb->addr.sa);
+			return;
+		}
+
+		session = j1939_session_get_by_skb(priv, skb, extd, false);
+		/* TODO: abort RTS when a similar
+		 * TP is pending in the other direction
+		 */
+		if (session) {
+			if (j1939_xtp_rx_rts_current(session, skb, extd))
+				break;
+		} else {
+			session = j1939_xtp_rx_rts_new(priv, skb, extd);
+			if (!session)
+				break;
+		}
+		session->last_cmd = dat[0];
+
+		j1939_tp_set_rxtimeout(session, 1250);
+
+		if ((dat[0] != J1939_TP_CMD_BAM) &&
+		    j1939_tp_im_receiver(session->skb))
+			j1939_tp_schedule_txtimer(session, 0);
+
+		j1939_session_put(session);
 		break;
 
 	case J1939_ETP_CMD_CTS:
@@ -1345,15 +1310,24 @@ static void j1939_tp_cmd_recv(struct j1939_priv *priv, struct sk_buff *skb,
 		if (extd != extd_pgn)
 			goto rx_bad_message;
 
-		j1939_xtp_rx_cts(priv, skb, extd_pgn);
+		session = j1939_session_get_by_skb(priv, skb, extd, true);
+		if (!session)
+			break;
+		j1939_xtp_rx_cts(session, skb, extd_pgn);
+		j1939_session_put(session);
 		break;
 
 	case J1939_ETP_CMD_DPO:
 		if (!extd_pgn)
 			goto rx_bad_message;
 
-		extd = J1939_EXTENDED;
-		j1939_xtp_rx_dpo(priv, skb, extd_pgn);
+		session = j1939_session_get_by_skb(priv, skb, J1939_EXTENDED, false);
+		if (!session) {
+			netdev_info(priv->ndev, "%s: no connection found\n", __func__);
+			break;
+		}
+		j1939_xtp_rx_dpo(session, skb);
+		j1939_session_put(session);
 		break;
 
 	case J1939_ETP_CMD_EOMA:
@@ -1362,7 +1336,11 @@ static void j1939_tp_cmd_recv(struct j1939_priv *priv, struct sk_buff *skb,
 		if (extd != extd_pgn)
 			goto rx_bad_message;
 
-		j1939_xtp_rx_eoma(priv, skb, extd_pgn);
+		session = j1939_session_get_by_skb(priv, skb, extd, true);
+		if (!session)
+			break;
+		j1939_xtp_rx_eoma(session, skb, extd_pgn);
+		j1939_session_put(session);
 		break;
 
 	case J1939_ETP_CMD_ABORT: /* && J1939_TP_CMD_ABORT */
