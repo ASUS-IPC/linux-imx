@@ -359,7 +359,8 @@ static void j1939_skbcb_swap(struct j1939_sk_buff_cb *skcb)
 	swap(skcb->dst_flags, skcb->src_flags);
 }
 
-static struct sk_buff *j1939_tp_tx_dat_new(struct sk_buff *related,
+static struct sk_buff *j1939_tp_tx_dat_new(struct j1939_priv *priv,
+					   struct j1939_sk_buff_cb *re_skcb,
 					   bool extd, bool ctl,
 					   bool swap_src_dst)
 {
@@ -371,16 +372,13 @@ static struct sk_buff *j1939_tp_tx_dat_new(struct sk_buff *related,
 	if (unlikely(!skb))
 		return ERR_PTR(-ENOMEM);
 
-	skb->dev = related->dev;
+	skb->dev = priv->ndev;
 	can_skb_reserve(skb);
-	can_skb_prv(skb)->ifindex = can_skb_prv(related)->ifindex;
+	can_skb_prv(skb)->ifindex = priv->ndev->ifindex;
 	/* reserve CAN header */
 	skb_reserve(skb, offsetof(struct can_frame, data));
-	skb->protocol = related->protocol;
-	skb->pkt_type = related->pkt_type;
-	skb->ip_summed = related->ip_summed;
 
-	memcpy(skb->cb, related->cb, sizeof(skb->cb));
+	memcpy(skb->cb, re_skcb, sizeof(skb->cb));
 	skcb = j1939_skb_to_cb(skb);
 	j1939_fix_cb(skcb);
 	if (swap_src_dst)
@@ -406,10 +404,9 @@ static int j1939_tp_tx_dat(struct j1939_session *session,
 			   const u8 *dat, int len)
 {
 	struct j1939_priv *priv = session->priv;
-	struct sk_buff *skb, *se_skb;
+	struct sk_buff *skb;
 
-	se_skb = j1939_session_skb_find(session);
-	skb = j1939_tp_tx_dat_new(se_skb, session->extd, false, false);
+	skb = j1939_tp_tx_dat_new(priv, &session->skcb, session->extd, false, false);
 	if (IS_ERR(skb))
 		return PTR_ERR(skb);
 
@@ -431,7 +428,7 @@ static int j1939_xtp_do_tx_ctl(struct j1939_priv *priv,
 	if (!j1939_tp_im_involved(re_skcb, swap_src_dst))
 		return 0;
 
-	skb = j1939_tp_tx_dat_new(related, extd, true, swap_src_dst);
+	skb = j1939_tp_tx_dat_new(priv, re_skcb, extd, true, swap_src_dst);
 	if (IS_ERR(skb))
 		return PTR_ERR(skb);
 
@@ -926,10 +923,9 @@ static struct j1939_session *j1939_session_new(struct j1939_priv *priv,
 
 static struct j1939_session *j1939_session_fresh_new(struct j1939_priv *priv,
 						     int size,
-						     struct sk_buff *rel_skb,
+						     const struct j1939_sk_buff_cb *rel_skcb,
 						     pgn_t pgn)
 {
-	const struct j1939_sk_buff_cb *rel_skcb = j1939_skb_to_cb(rel_skb);
 	struct sk_buff *skb;
 	struct j1939_sk_buff_cb *skcb;
 	struct j1939_session *session;
@@ -938,9 +934,9 @@ static struct j1939_session *j1939_session_fresh_new(struct j1939_priv *priv,
 	if (unlikely(!skb))
 		return NULL;
 
-	skb->dev = rel_skb->dev;
+	skb->dev = priv->ndev;
 	can_skb_reserve(skb);
-	can_skb_prv(skb)->ifindex = can_skb_prv(rel_skb)->ifindex;
+	can_skb_prv(skb)->ifindex = priv->ndev->ifindex;
 	skcb = j1939_skb_to_cb(skb);
 	memcpy(skcb, rel_skcb, sizeof(*skcb));
 	j1939_fix_cb(skcb);
@@ -1021,7 +1017,7 @@ struct j1939_session *j1939_xtp_rx_rts_new(struct j1939_priv *priv,
 		return NULL;
 	}
 
-	session = j1939_session_fresh_new(priv, len, skb, pgn);
+	session = j1939_session_fresh_new(priv, len, skcb, pgn);
 	if (!session) {
 		j1939_xtp_tx_abort(priv, skb, extd, true,
 				   J1939_XTP_ABORT_RESOURCE, pgn);
