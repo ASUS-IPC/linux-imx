@@ -237,10 +237,8 @@ static int j1939_tp_im_involved(struct j1939_sk_buff_cb *skcb, bool swap)
 		return j1939_tp_im_transmitter(skcb);
 }
 
-static int j1939_tp_im_involved_anydir(struct sk_buff *skb)
+static int j1939_tp_im_involved_anydir(struct j1939_sk_buff_cb *skcb)
 {
-	struct j1939_sk_buff_cb *skcb = j1939_skb_to_cb(skb);
-
 	return (skcb->src_flags | skcb->dst_flags) & J1939_ECU_LOCAL;
 }
 
@@ -712,7 +710,7 @@ static void j1939_session_cancel(struct j1939_session *session,
 	struct sk_buff *se_skb = j1939_session_skb_find(session);
 
 	/* do not send aborts on incoming broadcasts */
-	if (err && j1939_tp_im_involved_anydir(se_skb) &&
+	if (err && j1939_tp_im_involved_anydir(&session->skcb) &&
 	    !j1939_cb_is_broadcast(&session->skcb))
 		j1939_xtp_tx_abort(priv, se_skb, session->extd,
 				   !(session->skcb.src_flags & J1939_ECU_LOCAL),
@@ -1410,7 +1408,7 @@ int j1939_tp_recv(struct j1939_priv *priv, struct sk_buff *skb)
 	struct j1939_sk_buff_cb *skcb = j1939_skb_to_cb(skb);
 	bool extd = J1939_REGULAR;
 
-	if (!j1939_tp_im_involved_anydir(skb))
+	if (!j1939_tp_im_involved_anydir(skcb))
 		return 0;
 
 	switch (skcb->addr.pgn) {
