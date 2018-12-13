@@ -276,9 +276,8 @@ static inline unsigned int j1939_etp_ctl_to_size(const u8 *dat)
  * with reverse == true
  */
 static bool j1939_session_match(struct j1939_session *session,
-				struct sk_buff *skb, bool reverse)
+				struct j1939_sk_buff_cb *skcb, bool reverse)
 {
-	struct j1939_sk_buff_cb *skcb = j1939_skb_to_cb(skb);
 	struct j1939_sk_buff_cb *se_skcb = &session->skcb;
 	struct j1939_addr *se_addr = &se_skcb->addr;
 	struct j1939_addr *sk_addr = &skcb->addr;
@@ -317,9 +316,9 @@ static bool j1939_session_match(struct j1939_session *session,
 }
 
 static struct
-j1939_session *j1939_session_get_by_skb_locked(struct j1939_priv *priv,
+j1939_session *j1939_session_get_by_skcb_locked(struct j1939_priv *priv,
 					       struct list_head *root,
-					       struct sk_buff *skb,
+					       struct j1939_sk_buff_cb *skcb,
 					       bool reverse)
 {
 	struct j1939_session *session;
@@ -328,7 +327,7 @@ j1939_session *j1939_session_get_by_skb_locked(struct j1939_priv *priv,
 
 	list_for_each_entry(session, root, list) {
 		j1939_session_get(session);
-		if (j1939_session_match(session, skb, reverse))
+		if (j1939_session_match(session, skcb, reverse))
 			return session;
 		j1939_session_put(session);
 	}
@@ -336,15 +335,15 @@ j1939_session *j1939_session_get_by_skb_locked(struct j1939_priv *priv,
 	return NULL;
 }
 
-static struct j1939_session *j1939_session_get_by_skb(struct j1939_priv *priv,
-						      struct sk_buff *skb,
+static struct j1939_session *j1939_session_get_by_skcb(struct j1939_priv *priv,
+						      struct j1939_sk_buff_cb *skcb,
 						      bool extd, bool reverse)
 {
 	struct list_head *root = j1939_sessionq(priv, extd);
 	struct j1939_session *session;
 
 	j1939_session_list_lock(priv);
-	session = j1939_session_get_by_skb_locked(priv, root, skb, reverse);
+	session = j1939_session_get_by_skcb_locked(priv, root, skcb, reverse);
 	j1939_session_list_unlock(priv);
 
 	return session;
@@ -737,14 +736,13 @@ static void j1939_xtp_rx_bad_message_one(struct j1939_priv *priv,
 					 struct sk_buff *skb, bool extd,
 					 bool reverse)
 {
+	struct j1939_sk_buff_cb *skcb = j1939_skb_to_cb(skb);
 	struct j1939_session *session;
 	pgn_t pgn;
 
 	pgn = j1939_xtp_ctl_to_pgn(skb->data);
-	session = j1939_session_get_by_skb(priv, skb, extd, reverse);
+	session = j1939_session_get_by_skcb(priv, skcb, extd, reverse);
 	if (!session) {
-		struct j1939_sk_buff_cb *skcb = j1939_skb_to_cb(skb);
-
 		j1939_xtp_tx_abort(priv, skcb, extd, false, J1939_XTP_ABORT_FAULT, pgn);
 		return;
 	}
@@ -771,11 +769,12 @@ static void j1939_xtp_rx_bad_message(struct j1939_priv *priv,
 static void j1939_xtp_rx_abort_one(struct j1939_priv *priv, struct sk_buff *skb,
 				   bool extd, bool reverse)
 {
+	struct j1939_sk_buff_cb *skcb = j1939_skb_to_cb(skb);
 	struct j1939_session *session;
 	pgn_t pgn;
 
 	pgn = j1939_xtp_ctl_to_pgn(skb->data);
-	session = j1939_session_get_by_skb(priv, skb, extd, reverse);
+	session = j1939_session_get_by_skcb(priv, skcb, extd, reverse);
 	if (!session)
 		return;
 	if (session->transmission && !session->last_txcmd) {
@@ -957,12 +956,11 @@ static struct j1939_session *j1939_session_fresh_new(struct j1939_priv *priv,
 
 static int j1939_session_insert(struct j1939_session *session)
 {
-	struct sk_buff *se_skb = j1939_session_skb_find(session);
 	struct j1939_priv *priv = session->priv;
 	struct j1939_session *pending;
 	int ret = 0;
 
-	pending = j1939_session_get_by_skb(priv, se_skb, session->extd,
+	pending = j1939_session_get_by_skcb(priv, &session->skcb, session->extd,
 					   false);
 	if (pending) {
 		j1939_session_put(pending);
@@ -1136,7 +1134,8 @@ static void j1939_xtp_rx_dat(struct j1939_priv *priv, struct sk_buff *skb,
 	bool do_cts_eoma = false;
 	int packet;
 
-	session = j1939_session_get_by_skb(priv, skb, extd, false);
+	skcb = j1939_skb_to_cb(skb);
+	session = j1939_session_get_by_skcb(priv, skcb, extd, false);
 	if (!session) {
 		netdev_info(priv->ndev, "%s: no connection found\n", __func__);
 		return;
@@ -1332,7 +1331,7 @@ static void j1939_tp_cmd_recv(struct j1939_priv *priv, struct sk_buff *skb,
 			return;
 		}
 
-		session = j1939_session_get_by_skb(priv, skb, extd, false);
+		session = j1939_session_get_by_skcb(priv, skcb, extd, false);
 		/* TODO: abort RTS when a similar
 		 * TP is pending in the other direction
 		 */
@@ -1361,7 +1360,7 @@ static void j1939_tp_cmd_recv(struct j1939_priv *priv, struct sk_buff *skb,
 		if (extd != extd_pgn)
 			goto rx_bad_message;
 
-		session = j1939_session_get_by_skb(priv, skb, extd, true);
+		session = j1939_session_get_by_skcb(priv, skcb, extd, true);
 		if (!session)
 			break;
 		j1939_xtp_rx_cts(session, skb, extd_pgn);
@@ -1372,7 +1371,7 @@ static void j1939_tp_cmd_recv(struct j1939_priv *priv, struct sk_buff *skb,
 		if (!extd_pgn)
 			goto rx_bad_message;
 
-		session = j1939_session_get_by_skb(priv, skb, J1939_EXTENDED, false);
+		session = j1939_session_get_by_skcb(priv, skcb, J1939_EXTENDED, false);
 		if (!session) {
 			netdev_info(priv->ndev, "%s: no connection found\n", __func__);
 			break;
@@ -1387,7 +1386,7 @@ static void j1939_tp_cmd_recv(struct j1939_priv *priv, struct sk_buff *skb,
 		if (extd != extd_pgn)
 			goto rx_bad_message;
 
-		session = j1939_session_get_by_skb(priv, skb, extd, true);
+		session = j1939_session_get_by_skcb(priv, skcb, extd, true);
 		if (!session)
 			break;
 		j1939_xtp_rx_eoma(session, skb, extd_pgn);
