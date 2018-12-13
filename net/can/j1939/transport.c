@@ -492,8 +492,8 @@ static int j1939_tp_txnext(struct j1939_session *session)
 	const u8 *tpdat;
 	int ret, offset, pkt_done, pkt_end;
 	unsigned int pkt, len, pdelay;
-	struct sk_buff *se_skb = j1939_session_skb_find(session);
-	struct j1939_sk_buff_cb *skcb = j1939_skb_to_cb(se_skb);
+	struct sk_buff *se_skb;
+	struct j1939_sk_buff_cb *skcb;
 
 	memset(dat, 0xff, sizeof(dat));
 
@@ -569,11 +569,6 @@ static int j1939_tp_txnext(struct j1939_session *session)
 			/* do dpo */
 			dat[0] = J1939_ETP_CMD_DPO;
 			session->pkt.dpo = session->pkt.done;
-
-			/* Find new skb for updated session->pkt.dpo */
-			se_skb = j1939_session_skb_find(session);
-			skcb = j1939_skb_to_cb(se_skb);
-
 			pkt = session->pkt.dpo;
 			dat[1] = session->pkt.last - session->pkt.done;
 			dat[2] = (pkt >> 0);
@@ -624,6 +619,12 @@ static int j1939_tp_txnext(struct j1939_session *session)
 	case J1939_TP_CMD_BAM: /* fallthrough */
 		if (!j1939_tp_im_transmitter(&session->skcb))
 			break;
+
+		se_skb = j1939_session_skb_find(session);
+		if (!se_skb)
+			break;
+
+		skcb = j1939_skb_to_cb(se_skb);
 		tpdat = se_skb->data;
 		ret = 0;
 		pkt_done = 0;
