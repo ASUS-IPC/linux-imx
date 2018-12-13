@@ -11,13 +11,6 @@
 
 #include "j1939-priv.h"
 
-#define ecu_dbg(_ecu, fmt, ...) \
-{ \
-	struct j1939_ecu *ecu = _ecu; \
-	pr_debug("j1939-%i,%016llx,%02x: " fmt, ecu->priv->ndev->ifindex, \
-		 ecu->name, ecu->addr, ##__VA_ARGS__); \
-}
-
 static void __j1939_ecu_release(struct kref *kref)
 {
 	struct j1939_ecu *ecu = container_of(kref, struct j1939_ecu, kref);
@@ -170,7 +163,6 @@ struct j1939_ecu *j1939_ecu_create_locked(struct j1939_priv *priv, name_t name)
 	ecu->priv = priv;
 	list_add_tail(&ecu->list, &priv->ecus);
 
-	ecu_dbg(ecu, "%s\n", __func__);
 	return ecu;
 }
 
