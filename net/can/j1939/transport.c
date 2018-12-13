@@ -710,8 +710,7 @@ static void j1939_session_cancel(struct j1939_session *session,
 	struct sk_buff *se_skb = j1939_session_skb_find(session);
 
 	/* do not send aborts on incoming broadcasts */
-	if (err && j1939_tp_im_involved_anydir(&session->skcb) &&
-	    !j1939_cb_is_broadcast(&session->skcb))
+	if (err && !j1939_cb_is_broadcast(&session->skcb))
 		j1939_xtp_tx_abort(priv, se_skb, session->extd,
 				   !(session->skcb.src_flags & J1939_ECU_LOCAL),
 				   err, session->skcb.addr.pgn);
