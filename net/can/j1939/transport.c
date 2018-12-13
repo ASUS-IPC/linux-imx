@@ -1314,7 +1314,6 @@ static void j1939_tp_cmd_recv(struct j1939_priv *priv, struct sk_buff *skb,
 	struct j1939_session *session;
 	bool extd = J1939_REGULAR;
 	const u8 *dat = skb->data;
-	struct sk_buff *se_skb;
 
 	switch (*dat) {
 	case J1939_ETP_CMD_RTS:
@@ -1345,7 +1344,6 @@ static void j1939_tp_cmd_recv(struct j1939_priv *priv, struct sk_buff *skb,
 		}
 		session->last_cmd = dat[0];
 
-		se_skb = j1939_session_skb_find(session);
 		j1939_tp_set_rxtimeout(session, 1250);
 
 		if ((dat[0] != J1939_TP_CMD_BAM) &&
