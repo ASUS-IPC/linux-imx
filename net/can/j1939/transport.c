@@ -796,8 +796,8 @@ static void j1939_xtp_rx_abort_one(struct j1939_priv *priv, struct sk_buff *skb,
 static void j1939_xtp_rx_abort(struct j1939_priv *priv, struct sk_buff *skb,
 			       bool extd)
 {
-	netdev_info(priv->ndev, "%s %i, %05x\n", __func__,
-		    can_skb_prv(skb)->ifindex, j1939_xtp_ctl_to_pgn(skb->data));
+	netdev_info(priv->ndev, "%s, %05x\n", __func__,
+		    j1939_xtp_ctl_to_pgn(skb->data));
 
 	j1939_xtp_rx_abort_one(priv, skb, extd, false);
 	j1939_xtp_rx_abort_one(priv, skb, extd, true);
@@ -985,9 +985,8 @@ struct j1939_session *j1939_xtp_rx_rts_new(struct j1939_priv *priv,
 	int len;
 
 	if (j1939_tp_im_transmitter(skcb)) {
-		netdev_alert(priv->ndev, "%s: I should tx (%i %02x %02x)\n",
-			     __func__, can_skb_prv(skb)->ifindex,
-			     skcb->addr.sa, skcb->addr.da);
+		netdev_alert(priv->ndev, "%s: I should tx (%02x %02x)\n",
+			     __func__, skcb->addr.sa, skcb->addr.da);
 
 		return NULL;
 	}
@@ -1069,9 +1068,9 @@ static int j1939_xtp_rx_rts_current(struct j1939_session *session,
 
 	if (session->last_cmd != 0) {
 		/* we received a second rts on the same connection */
-		netdev_alert(priv->ndev, "%s: connection exists (%i %02x %02x). last cmd: %x\n",
-			     __func__, can_skb_prv(skb)->ifindex, skcb->addr.sa,
-			     skcb->addr.da, session->last_cmd);
+		netdev_alert(priv->ndev, "%s: connection exists (%02x %02x). last cmd: %x\n",
+			     __func__, skcb->addr.sa, skcb->addr.da,
+			     session->last_cmd);
 
 		j1939_session_timers_cancel(session);
 		j1939_session_cancel(session, J1939_XTP_ABORT_BUSY);
@@ -1325,9 +1324,8 @@ static void j1939_tp_cmd_recv(struct j1939_priv *priv, struct sk_buff *skb,
 			goto rx_bad_message;
 
 		if (*dat == J1939_TP_CMD_RTS && j1939_cb_is_broadcast(skcb)) {
-			netdev_alert(priv->ndev, "%s: rts without destination (%i %02x)\n",
-				     __func__, can_skb_prv(skb)->ifindex,
-				     skcb->addr.sa);
+			netdev_alert(priv->ndev, "%s: rts without destination (%02x)\n",
+				     __func__, skcb->addr.sa);
 			return;
 		}
 
