@@ -189,6 +189,7 @@ struct j1939_session {
 	struct list_head list;
 	struct kref kref;
 	spinlock_t lock;
+	struct sock *sk;
 
 	/* ifindex, src, dst, pgn define the session block
 	 * the are _never_ modified after insertion in the list

@@ -684,13 +684,12 @@ static enum hrtimer_restart j1939_tp_txtimer(struct hrtimer *hrtimer)
 static void __j1939_session_drop(struct j1939_session *session)
 {
 	struct j1939_priv *priv = session->priv;
-	struct sk_buff *se_skb = j1939_session_skb_find(session);
 
-	if (session->transmission) {
-		if (se_skb && se_skb->sk)
-			j1939_sock_pending_del(se_skb->sk);
-		wake_up_all(&priv->tp_wait);
-	}
+	if (!session->transmission)
+		return;
+
+	j1939_sock_pending_del(session->sk);
+	wake_up_all(&priv->tp_wait);
 }
 
 static void j1939_session_completed(struct j1939_session *session)
@@ -1275,6 +1274,7 @@ struct j1939_session *j1939_tp_send(struct j1939_priv *priv,
 		return ERR_PTR(-ENOMEM);
 
 	/* skb is recounted in j1939_session_new() */
+	session->sk = skb->sk;
 	session->extd = extd;
 	session->transmission = true;
 	session->pkt.total = (size + 6) / 7;
