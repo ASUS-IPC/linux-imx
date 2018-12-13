@@ -88,7 +88,7 @@ static void j1939_can_recv(struct sk_buff *iskb, void *data)
 	if (j1939_tp_recv(priv, skb))
 		/* this means the transport layer processed the message */
 		goto done;
-	j1939_sk_recv(skb);
+	j1939_sk_recv(priv, skb);
  done:
 	kfree_skb(skb);
 }
@@ -170,6 +170,8 @@ int j1939_netdev_start(struct net *net, struct net_device *ndev)
 		return -ENOMEM;
 
 	j1939_tp_init(priv);
+	spin_lock_init(&priv->j1939_socks_lock);
+	INIT_LIST_HEAD(&priv->j1939_socks);
 
 	/* add CAN handler */
 	ret = can_rx_register(net, ndev, J1939_CAN_ID, J1939_CAN_MASK,

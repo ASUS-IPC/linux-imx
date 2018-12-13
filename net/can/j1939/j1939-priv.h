@@ -64,6 +64,9 @@ struct j1939_priv {
 	struct list_head tp_extsessionq;
 	wait_queue_head_t tp_wait;
 	unsigned int tp_max_packet_size;
+
+	struct list_head j1939_socks;
+	spinlock_t j1939_socks_lock;
 };
 
 void j1939_ecu_put(struct j1939_ecu *ecu);
@@ -150,7 +153,7 @@ static inline struct j1939_sk_buff_cb *j1939_skb_to_cb(struct sk_buff *skb)
 }
 
 int j1939_send_one(struct j1939_priv *priv, struct sk_buff *skb);
-void j1939_sk_recv(struct sk_buff *skb);
+void j1939_sk_recv(struct j1939_priv *priv, struct sk_buff *skb);
 
 /* stack entries */
 struct j1939_session *j1939_tp_send(struct j1939_priv *priv,

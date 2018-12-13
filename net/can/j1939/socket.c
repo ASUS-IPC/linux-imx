@@ -15,10 +15,6 @@
 
 #define J1939_MIN_NAMELEN REQUIRED_SIZE(struct sockaddr_can, can_addr.j1939)
 
-/* list of sockets */
-static struct list_head j1939_socks = LIST_HEAD_INIT(j1939_socks);
-static DEFINE_SPINLOCK(j1939_socks_lock);
-
 struct j1939_sock {
 	struct sock sk; /* must be first to skip with memset */
 	struct list_head list;
@@ -197,15 +193,15 @@ static void j1939_sk_recv_one(struct j1939_sock *jsk, struct sk_buff *oskb)
 		kfree_skb(skb);
 }
 
-void j1939_sk_recv(struct sk_buff *skb)
+void j1939_sk_recv(struct j1939_priv *priv, struct sk_buff *skb)
 {
 	struct j1939_sock *jsk;
 
-	spin_lock_bh(&j1939_socks_lock);
-	list_for_each_entry(jsk, &j1939_socks, list) {
+	spin_lock_bh(&priv->j1939_socks_lock);
+	list_for_each_entry(jsk, &priv->j1939_socks, list) {
 		j1939_sk_recv_one(jsk, skb);
 	}
-	spin_unlock_bh(&j1939_socks_lock);
+	spin_unlock_bh(&priv->j1939_socks_lock);
 }
 
 static int j1939_sk_init(struct sock *sk)
@@ -297,19 +293,19 @@ static int j1939_sk_bind(struct socket *sock, struct sockaddr *uaddr, int len)
 
 	/* get new references */
 	ret = j1939_local_ecu_get(priv, jsk->addr.src_name, jsk->addr.sa);
-	j1939_priv_put(priv);
 	if (ret) {
 		j1939_netdev_stop(ndev);
 		goto out_dev_put;
 	}
 
 	if (!(jsk->state & J1939_SOCK_BOUND)) {
-		spin_lock_bh(&j1939_socks_lock);
-		list_add_tail(&jsk->list, &j1939_socks);
-		spin_unlock_bh(&j1939_socks_lock);
+		spin_lock_bh(&priv->j1939_socks_lock);
+		list_add_tail(&jsk->list, &priv->j1939_socks);
+		spin_unlock_bh(&priv->j1939_socks_lock);
 
 		jsk->state |= J1939_SOCK_BOUND;
 	}
+	j1939_priv_put(priv);
 
  out_dev_put:	/* fallthrough */
 	dev_put(ndev);
@@ -401,7 +397,6 @@ static int j1939_sk_release(struct socket *sock)
 {
 	struct sock *sk = sock->sk;
 	struct j1939_sock *jsk;
-	struct j1939_priv *priv;
 
 	if (!sk)
 		return 0;
@@ -410,25 +405,25 @@ static int j1939_sk_release(struct socket *sock)
 	lock_sock(sk);
 
 	if (jsk->state & J1939_SOCK_BOUND) {
+		struct j1939_priv *priv;
 		struct net_device *ndev;
 
 		wait_event_interruptible(jsk->waitq,
 					 j1939_sock_pending_get(&jsk->sk) == 0);
 
-		spin_lock_bh(&j1939_socks_lock);
-		list_del_init(&jsk->list);
-		spin_unlock_bh(&j1939_socks_lock);
-
 		ndev = dev_get_by_index(sock_net(sk), jsk->ifindex);
-		if (ndev) {
-			priv = j1939_priv_get_by_ndev(ndev);
-			j1939_local_ecu_put(priv, jsk->addr.src_name,
-					    jsk->addr.sa);
-			j1939_priv_put(priv);
+		priv = j1939_priv_get_by_ndev(ndev);
 
-			j1939_netdev_stop(ndev);
-			dev_put(ndev);
-		}
+		spin_lock_bh(&priv->j1939_socks_lock);
+		list_del_init(&jsk->list);
+		spin_unlock_bh(&priv->j1939_socks_lock);
+
+		j1939_local_ecu_put(priv, jsk->addr.src_name,
+					    jsk->addr.sa);
+		j1939_priv_put(priv);
+
+		j1939_netdev_stop(ndev);
+		dev_put(ndev);
 	}
 
 	sock_orphan(sk);
@@ -485,11 +480,11 @@ static int j1939_sk_setsockopt(struct socket *sock, int level, int optname,
 				return PTR_ERR(filters);
 		}
 
-		spin_lock_bh(&j1939_socks_lock);
+		lock_sock(&jsk->sk);
 		ofilters = jsk->filters;
 		jsk->filters = filters;
 		jsk->nfilters = count;
-		spin_unlock_bh(&j1939_socks_lock);
+		release_sock(&jsk->sk);
 		kfree(ofilters);
 		return 0;
 	case SO_J1939_PROMISC:
@@ -818,30 +813,26 @@ static int j1939_sk_sendmsg(struct socket *sock, struct msghdr *msg,
 
 void j1939_sk_netdev_event(struct net_device *ndev, int error_code)
 {
+	struct j1939_priv *priv = j1939_priv_get_by_ndev(ndev);
 	struct j1939_sock *jsk;
 
-	spin_lock_bh(&j1939_socks_lock);
-	list_for_each_entry(jsk, &j1939_socks, list) {
-		if (jsk->ifindex != ndev->ifindex)
-			continue;
+	spin_lock_bh(&priv->j1939_socks_lock);
+	list_for_each_entry(jsk, &priv->j1939_socks, list) {
 
 		jsk->sk.sk_err = error_code;
 		if (!sock_flag(&jsk->sk, SOCK_DEAD))
 			jsk->sk.sk_error_report(&jsk->sk);
 
 		if (error_code == ENODEV) {
-			struct j1939_priv *priv;
-
-			priv = j1939_priv_get_by_ndev(ndev);
 			j1939_local_ecu_put(priv, jsk->addr.src_name,
 					    jsk->addr.sa);
-			j1939_priv_put(priv);
 
 			j1939_netdev_stop(ndev);
 		}
 		/* do not remove filters here */
 	}
-	spin_unlock_bh(&j1939_socks_lock);
+	spin_unlock_bh(&priv->j1939_socks_lock);
+	j1939_priv_put(priv);
 }
 
 static const struct proto_ops j1939_ops = {

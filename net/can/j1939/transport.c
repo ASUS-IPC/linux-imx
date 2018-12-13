@@ -697,8 +697,9 @@ static void __j1939_session_drop(struct j1939_session *session)
 static void j1939_session_completed(struct j1939_session *session)
 {
 	struct sk_buff *se_skb = j1939_session_skb_find(session);
+
 	/* distribute among j1939 receivers */
-	j1939_sk_recv(se_skb);
+	j1939_sk_recv(session->priv, se_skb);
 	__j1939_session_drop(session);
 }
 
