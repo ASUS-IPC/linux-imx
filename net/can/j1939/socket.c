@@ -800,7 +800,7 @@ static int j1939_sk_sendmsg(struct socket *sock, struct msghdr *msg,
 		ret = j1939_sk_send_one(priv, sk, msg, size);
 
 	j1939_priv_put(priv);
-	if (ret < 0)
+	if (ret < 0 || size <= 8)
 		j1939_sock_pending_del(&jsk->sk);
 
 	dev_put(ndev);
