@@ -73,23 +73,6 @@ static inline bool j1939_pgn_is_clean_pdu(pgn_t pgn)
 		return true;
 }
 
-/* j1939_sock_pending_add_first
- * Succeeds when the first pending SKB is scheduled
- * Fails when SKB are already pending
- */
-static inline int j1939_sock_pending_add_first(struct sock *sk)
-{
-	struct j1939_sock *jsk = j1939_sk(sk);
-
-	/* atomic_cmpxchg returns the old value
-	 * When it was 0, it is exchanged with 1 and this function
-	 * succeeded. (return 1)
-	 * When it was != 0, it is not exchanged, and this function
-	 * fails (returns 0).
-	 */
-	return !atomic_cmpxchg(&jsk->skb_pending, 0, 1);
-}
-
 static inline void j1939_sock_pending_add(struct sock *sk)
 {
 	struct j1939_sock *jsk = j1939_sk(sk);
@@ -774,25 +757,11 @@ static int j1939_sk_sendmsg(struct socket *sock, struct msghdr *msg,
 	if (!ndev)
 		return -ENXIO;
 
-	if (msg->msg_flags & MSG_SYN) {
-		if (msg->msg_flags & MSG_DONTWAIT) {
-			ret = j1939_sock_pending_add_first(&jsk->sk);
-			if (ret > 0)
-				ret = -EAGAIN;
-		} else {
-			ret = wait_event_interruptible(jsk->waitq,
-						       j1939_sock_pending_add_first(&jsk->sk));
-		}
-		if (ret < 0)
-			goto put_dev;
-	} else {
-		j1939_sock_pending_add(&jsk->sk);
-	}
-
 	priv = j1939_priv_get_by_ndev(ndev);
 	if (!priv)
 		return -EINVAL;
 
+	j1939_sock_pending_add(&jsk->sk);
 	if (size > 8)
 		/* re-route via transport protocol */
 		ret = j1939_sk_send_multi(priv, sk, msg, size);
