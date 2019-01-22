@@ -135,20 +135,12 @@ static void j1939_sk_recv_one(struct j1939_sock *jsk, struct sk_buff *oskb)
 		return;
 	if (!(jsk->state & J1939_SOCK_PROMISC)) {
 		if (jsk->addr.src_name) {
-			/* reject message for other destinations */
 			if (oskcb->addr.dst_name &&
 			    oskcb->addr.dst_name != jsk->addr.src_name)
-				/* the msg is not destined for the name
-				 * that the socket is bound to
-				 */
 				return;
 		} else {
-			/* reject messages for other destination addresses */
 			if (j1939_address_is_unicast(oskcb->addr.da) &&
 			    oskcb->addr.da != jsk->addr.sa)
-				/* the msg is not destined for the name
-				 * that the socket is bound to
-				 */
 				return;
 		}
 	}
