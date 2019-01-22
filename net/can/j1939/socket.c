@@ -134,9 +134,8 @@ static void j1939_sk_recv_one(struct j1939_sock *jsk, struct sk_buff *oskb)
 		/* this socket does not take packets from this iface */
 		return;
 	if (!(jsk->state & J1939_SOCK_PROMISC)) {
-		if (jsk->addr.src_name) {
-			if (oskcb->addr.dst_name &&
-			    oskcb->addr.dst_name != jsk->addr.src_name)
+		if (jsk->addr.src_name && oskcb->addr.dst_name) {
+			if (oskcb->addr.dst_name != jsk->addr.src_name)
 				return;
 		} else {
 			if (j1939_address_is_unicast(oskcb->addr.da) &&
