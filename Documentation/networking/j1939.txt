@@ -255,15 +255,7 @@ This file contains
   send(2), sendto(2) and sendmsg(2) take a 'flags' argument. J1939 interpretes
   these flags during outgoing traffic:
 
-  * MSG_DONTWAIT determines nonblocking operation. When a packet must wait for
-    any reason, -EAGAIN is returned.
-
-  * MSG_SYN
-    Packets flagged with MSG_SYN will wait for all pending packets on a socket
-    to be sent before trying to send. This means that if a socket just started
-    a Transport Protocol session, a packet with MSG_SYN will wait for that
-    session to complete before proceeding.
-    Traffic without MSG_SYN (on that very same socket) will still continue.
+  * MSG_DONTWAIT, i.e. non-blocking operation.
 
 4.1.2 SCM_J1939_DEST_ADDR & SCM_J1939_DEST_NAME
 
