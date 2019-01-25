@@ -714,7 +714,6 @@ static int j1939_sk_sendmsg(struct socket *sock, struct msghdr *msg,
 {
 	struct sock *sk = sock->sk;
 	struct j1939_sock *jsk = j1939_sk(sk);
-	struct sockaddr_can *addr = msg->msg_name;
 	struct j1939_priv *priv;
 	struct net_device *ndev;
 	int ifindex;
@@ -732,6 +731,8 @@ static int j1939_sk_sendmsg(struct socket *sock, struct msghdr *msg,
 
 	/* deal with provided address info */
 	if (msg->msg_name) {
+		struct sockaddr_can *addr = msg->msg_name;
+
 		if (msg->msg_namelen < J1939_MIN_NAMELEN)
 			return -EINVAL;
 		if (addr->can_family != AF_CAN)
@@ -739,8 +740,7 @@ static int j1939_sk_sendmsg(struct socket *sock, struct msghdr *msg,
 		if (j1939_pgn_is_valid(addr->can_addr.j1939.pgn) &&
 		    !j1939_pgn_is_clean_pdu(addr->can_addr.j1939.pgn))
 			return -EINVAL;
-		/* TODO: always check if ifindex is correct? */
-		if (addr->can_ifindex && ifindex != addr->can_ifindex)
+		if (addr->can_ifindex && addr->can_ifindex != ifindex)
 			return -EBADFD;
 	}
 
