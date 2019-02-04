@@ -683,6 +683,8 @@ static int j1939_sk_send_multi(struct j1939_priv *priv,  struct sock *sk,
 			 */
 			session = j1939_tp_send(priv, skb, complete_size);
 			if (IS_ERR(session))
+				/* FIXME: free skb? Who discards the skb in error case?
+				 */
 				return PTR_ERR(session);
 		} else {
 			j1939_session_skb_queue(session, skb);
