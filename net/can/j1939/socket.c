@@ -29,6 +29,7 @@ struct j1939_sock {
 	struct j1939_addr addr;
 	struct j1939_filter *filters;
 	int nfilters;
+	pgn_t pgn_rx_filter;
 
 	/* j1939 may emit equal PGN (!= equal CAN-id's) out of order
 	 * when transport protocol comes in.
@@ -189,6 +190,7 @@ static int j1939_sk_init(struct sock *sk)
 	jsk->addr.sa = J1939_NO_ADDR;
 	jsk->addr.da = J1939_NO_ADDR;
 	jsk->addr.dst_pgn = J1939_NO_PGN;
+	jsk->pgn_rx_filter = J1939_NO_PGN;
 	atomic_set(&jsk->skb_pending, 0);
 	return 0;
 }
@@ -261,7 +263,7 @@ static int j1939_sk_bind(struct socket *sock, struct sockaddr *uaddr, int len)
 
 	/* set default transmit pgn */
 	if (j1939_pgn_is_valid(addr->can_addr.j1939.pgn))
-		jsk->addr.dst_pgn = addr->can_addr.j1939.pgn;
+		jsk->pgn_rx_filter = addr->can_addr.j1939.pgn;
 	jsk->addr.src_name = addr->can_addr.j1939.name;
 	jsk->addr.sa = addr->can_addr.j1939.addr;
 
