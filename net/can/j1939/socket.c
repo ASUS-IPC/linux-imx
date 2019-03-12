@@ -109,7 +109,7 @@ static inline bool j1939_packet_match(const struct j1939_sk_buff_cb *skcb,
 	 * Sockets using dynamic addressing in their filters should not set it.
 	 */
 	for (; nfilter; ++f, --nfilter) {
-		if ((skcb->addr.pgn & f->pgn_mask) != (f->pgn & f->pgn_mask))
+		if ((skcb->addr.dst_pgn & f->pgn_mask) != (f->pgn & f->pgn_mask))
 			continue;
 		if ((skcb->addr.sa & f->addr_mask) != (f->addr & f->addr_mask))
 			continue;
@@ -188,7 +188,7 @@ static int j1939_sk_init(struct sock *sk)
 	jsk->sk.sk_reuse = 1; /* per default */
 	jsk->addr.sa = J1939_NO_ADDR;
 	jsk->addr.da = J1939_NO_ADDR;
-	jsk->addr.pgn = J1939_NO_PGN;
+	jsk->addr.dst_pgn = J1939_NO_PGN;
 	atomic_set(&jsk->skb_pending, 0);
 	return 0;
 }
@@ -261,7 +261,7 @@ static int j1939_sk_bind(struct socket *sock, struct sockaddr *uaddr, int len)
 
 	/* set default transmit pgn */
 	if (j1939_pgn_is_valid(addr->can_addr.j1939.pgn))
-		jsk->addr.pgn = addr->can_addr.j1939.pgn;
+		jsk->addr.dst_pgn = addr->can_addr.j1939.pgn;
 	jsk->addr.src_name = addr->can_addr.j1939.name;
 	jsk->addr.sa = addr->can_addr.j1939.addr;
 
@@ -318,7 +318,7 @@ static int j1939_sk_connect(struct socket *sock, struct sockaddr *uaddr,
 	jsk->addr.da = addr->can_addr.j1939.addr;
 
 	if (j1939_pgn_is_valid(addr->can_addr.j1939.pgn))
-		jsk->addr.pgn = addr->can_addr.j1939.pgn;
+		jsk->addr.dst_pgn = addr->can_addr.j1939.pgn;
 
 	jsk->state |= J1939_SOCK_CONNECTED;
 
@@ -332,7 +332,7 @@ static void j1939_sk_sock2sockaddr_can(struct sockaddr_can *addr,
 {
 	addr->can_family = AF_CAN;
 	addr->can_ifindex = jsk->ifindex;
-	addr->can_addr.j1939.pgn = jsk->addr.pgn;
+	addr->can_addr.j1939.pgn = jsk->addr.dst_pgn;
 	if (peer) {
 		addr->can_addr.j1939.name = jsk->addr.dst_name;
 		addr->can_addr.j1939.addr = jsk->addr.da;
@@ -580,7 +580,7 @@ static int j1939_sk_recvmsg(struct socket *sock, struct msghdr *msg,
 		paddr->can_ifindex = skb->skb_iif;
 		paddr->can_addr.j1939.name = skcb->addr.src_name;
 		paddr->can_addr.j1939.addr = skcb->addr.sa;
-		paddr->can_addr.j1939.pgn = skcb->addr.pgn;
+		paddr->can_addr.j1939.pgn = skcb->addr.dst_pgn;
 	}
 
 	sock_recv_ts_and_drops(msg, sk, skb);
@@ -634,7 +634,7 @@ static struct sk_buff *j1939_sk_alloc_skb(struct net_device *ndev, struct sock *
 			skcb->addr.da = addr->can_addr.j1939.addr;
 		}
 		if (j1939_pgn_is_valid(addr->can_addr.j1939.pgn))
-			skcb->addr.pgn = addr->can_addr.j1939.pgn;
+			skcb->addr.dst_pgn = addr->can_addr.j1939.pgn;
 	}
 
 	*errcode = ret;

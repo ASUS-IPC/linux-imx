@@ -61,12 +61,12 @@ static void j1939_can_recv(struct sk_buff *iskb, void *data)
 	skcb->insock = iskb->sk;
 	skcb->priority = (cf->can_id >> 26) & 0x7;
 	skcb->addr.sa = cf->can_id;
-	skcb->addr.pgn = (cf->can_id >> 8) & J1939_PGN_MAX;
-	if (j1939_pgn_is_pdu1(skcb->addr.pgn)) {
+	skcb->addr.dst_pgn = (cf->can_id >> 8) & J1939_PGN_MAX;
+	if (j1939_pgn_is_pdu1(skcb->addr.dst_pgn)) {
 		/* Type 1: with destination address */
-		skcb->addr.da = skcb->addr.pgn;
+		skcb->addr.da = skcb->addr.dst_pgn;
 		/* normalize pgn: strip dst address */
-		skcb->addr.pgn &= 0x3ff00;
+		skcb->addr.dst_pgn &= 0x3ff00;
 	} else {
 		/* set broadcast address */
 		skcb->addr.da = J1939_NO_ADDR;
@@ -242,10 +242,10 @@ int j1939_send_one(struct j1939_priv *priv, struct sk_buff *skb)
 	struct can_frame *cf;
 
 	/* apply sanity checks */
-	if (j1939_pgn_is_pdu1(skcb->addr.pgn))
-		skcb->addr.pgn &= 0x3ff00;
+	if (j1939_pgn_is_pdu1(skcb->addr.dst_pgn))
+		skcb->addr.dst_pgn &= 0x3ff00;
 	else
-		skcb->addr.pgn &= J1939_PGN_MAX;
+		skcb->addr.dst_pgn &= J1939_PGN_MAX;
 
 	if (skcb->priority > 7)
 		skcb->priority = 6;
@@ -263,9 +263,9 @@ int j1939_send_one(struct j1939_priv *priv, struct sk_buff *skb)
 
 	canid = CAN_EFF_FLAG |
 		(skcb->priority << 26) |
-		(skcb->addr.pgn << 8) |
+		(skcb->addr.dst_pgn << 8) |
 		skcb->addr.sa;
-	if (j1939_pgn_is_pdu1(skcb->addr.pgn))
+	if (j1939_pgn_is_pdu1(skcb->addr.dst_pgn))
 		canid |= skcb->addr.da << 8;
 
 	cf->can_id = canid;
