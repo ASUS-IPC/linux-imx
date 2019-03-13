@@ -767,10 +767,6 @@ static int j1939_sk_sendmsg(struct socket *sock, struct msghdr *msg,
 
 	dev_put(ndev);
 	return (ret < 0) ? ret : size;
-
- put_dev:
-	dev_put(ndev);
-	return ret;
 }
 
 void j1939_sk_netdev_event(struct net_device *ndev, int error_code)
