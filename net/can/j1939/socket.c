@@ -143,6 +143,10 @@ static void j1939_sk_recv_one(struct j1939_sock *jsk, struct sk_buff *oskb)
 			    oskcb->addr.da != jsk->addr.sa)
 				return;
 		}
+
+		if (j1939_pgn_is_valid(jsk->pgn_rx_filter) &&
+		    jsk->pgn_rx_filter != oskcb->addr.dst_pgn)
+			return;
 	}
 
 	if (oskcb->insock == &jsk->sk && !(jsk->state & J1939_SOCK_RECV_OWN))
