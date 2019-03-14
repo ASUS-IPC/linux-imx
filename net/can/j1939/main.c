@@ -243,7 +243,7 @@ int j1939_send_one(struct j1939_priv *priv, struct sk_buff *skb)
 
 	/* apply sanity checks */
 	if (j1939_pgn_is_pdu1(skcb->addr.dst_pgn))
-		skcb->addr.dst_pgn &= 0x3ff00;
+		skcb->addr.dst_pgn &= J1939_PGN_PDU1_MAX;
 	else
 		skcb->addr.dst_pgn &= J1939_PGN_MAX;
 
