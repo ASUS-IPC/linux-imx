@@ -97,9 +97,31 @@ void j1939_sock_pending_del(struct sock *sk)
 		wake_up(&jsk->waitq);	/* no pending SKB's */
 }
 
+static bool j1939_sk_match_dst(struct j1939_sock *jsk,
+			       const struct j1939_sk_buff_cb *skcb)
+{
+	if ((jsk->state & J1939_SOCK_PROMISC))
+		return true;
+
+	if (jsk->addr.src_name && skcb->addr.dst_name) {
+		if (skcb->addr.dst_name != jsk->addr.src_name)
+			return false;
+	} else {
+		if (j1939_address_is_unicast(skcb->addr.da) &&
+		    skcb->addr.da != jsk->addr.sa)
+			return false;
+	}
+
+	if (j1939_pgn_is_valid(jsk->pgn_rx_filter) &&
+	    jsk->pgn_rx_filter != skcb->addr.dst_pgn)
+		return false;
+
+	return true;
+}
+
 /* matches skb control buffer (addr) with a j1939 filter */
 static bool j1939_sk_match_filter(struct j1939_sock *jsk,
-					     const struct j1939_sk_buff_cb *skcb)
+				  const struct j1939_sk_buff_cb *skcb)
 {
 	const struct j1939_filter *f = jsk->filters;
 	int nfilter = jsk->nfilters;
@@ -134,26 +156,16 @@ static void j1939_sk_recv_one(struct j1939_sock *jsk, struct sk_buff *oskb)
 
 	if (!(jsk->state & (J1939_SOCK_BOUND | J1939_SOCK_CONNECTED)))
 		return;
+
 	if (jsk->ifindex != oskb_prv->ifindex)
 		/* this socket does not take packets from this iface */
 		return;
-	if (!(jsk->state & J1939_SOCK_PROMISC)) {
-		if (jsk->addr.src_name && oskcb->addr.dst_name) {
-			if (oskcb->addr.dst_name != jsk->addr.src_name)
-				return;
-		} else {
-			if (j1939_address_is_unicast(oskcb->addr.da) &&
-			    oskcb->addr.da != jsk->addr.sa)
-				return;
-		}
-
-		if (j1939_pgn_is_valid(jsk->pgn_rx_filter) &&
-		    jsk->pgn_rx_filter != oskcb->addr.dst_pgn)
-			return;
-	}
 
 	if (oskcb->insock == &jsk->sk && !(jsk->state & J1939_SOCK_RECV_OWN))
 		/* own message */
+		return;
+
+	if (!j1939_sk_match_dst(jsk, oskcb))
 		return;
 
 	if (!j1939_sk_match_filter(jsk, oskcb))
