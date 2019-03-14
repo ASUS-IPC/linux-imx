@@ -98,9 +98,12 @@ void j1939_sock_pending_del(struct sock *sk)
 }
 
 /* matches skb control buffer (addr) with a j1939 filter */
-static inline bool j1939_packet_match(const struct j1939_sk_buff_cb *skcb,
-				      const struct j1939_filter *f, int nfilter)
+static bool j1939_sk_match_filter(struct j1939_sock *jsk,
+					     const struct j1939_sk_buff_cb *skcb)
 {
+	const struct j1939_filter *f = jsk->filters;
+	int nfilter = jsk->nfilters;
+
 	if (!nfilter)
 		/* receive all when no filters are assigned */
 		return true;
@@ -153,7 +156,7 @@ static void j1939_sk_recv_one(struct j1939_sock *jsk, struct sk_buff *oskb)
 		/* own message */
 		return;
 
-	if (!j1939_packet_match(oskcb, jsk->filters, jsk->nfilters))
+	if (!j1939_sk_match_filter(jsk, oskcb))
 		return;
 
 	skb = skb_clone(oskb, GFP_ATOMIC);
