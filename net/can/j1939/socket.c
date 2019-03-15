@@ -329,12 +329,6 @@ static int j1939_sk_connect(struct socket *sock, struct sockaddr *uaddr,
 		goto out_release_sock;
 	}
 
-	/* A re-connect() is not supported */
-	if (jsk->state & J1939_SOCK_CONNECTED) {
-		ret = -EBUSY;
-		goto out_release_sock;
-	}
-
 	jsk->addr.dst_name = addr->can_addr.j1939.name;
 	jsk->addr.da = addr->can_addr.j1939.addr;
 
