@@ -103,15 +103,40 @@ static bool j1939_sk_match_dst(struct j1939_sock *jsk,
 	if ((jsk->state & J1939_SOCK_PROMISC))
 		return true;
 
+	/* Destination address filter */
 	if (jsk->addr.src_name && skcb->addr.dst_name) {
-		if (skcb->addr.dst_name != jsk->addr.src_name)
+		if (jsk->addr.src_name != skcb->addr.dst_name)
 			return false;
 	} else {
-		if (j1939_address_is_unicast(skcb->addr.da) &&
-		    skcb->addr.da != jsk->addr.sa)
+		/* receive (all sockets) if
+		 * - all packages that match our bind() address
+		 * - all broadcast on a socket if SO_BROADCAST
+		 *   is set
+		 */
+		if (j1939_address_is_unicast(skcb->addr.da)) {
+			if (jsk->addr.sa != skcb->addr.da)
+				return false;
+		} else if (!sock_flag(&jsk->sk, SOCK_BROADCAST)) {
+			/* receiving broadcast without SO_BROADCAST flag is not allowed */
 			return false;
+		}
 	}
 
+	/* Source address filter */
+	if (jsk->state & J1939_SOCK_CONNECTED) {
+		/* receive (all sockets) if
+		 * - all packages that match our connect() name or address
+		 */
+		if (jsk->addr.dst_name && skcb->addr.src_name) {
+			if (jsk->addr.dst_name != skcb->addr.src_name)
+				return false;
+		} else {
+			if (jsk->addr.da != skcb->addr.sa)
+				return false;
+		}
+	}
+
+	/* PGN filter */
 	if (j1939_pgn_is_valid(jsk->pgn_rx_filter) &&
 	    jsk->pgn_rx_filter != skcb->addr.dst_pgn)
 		return false;
