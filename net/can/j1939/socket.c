@@ -748,28 +748,37 @@ static int j1939_sk_sendmsg(struct socket *sock, struct msghdr *msg,
 
 	ifindex = jsk->ifindex;
 
-	if (jsk->addr.sa == J1939_NO_ADDR && !jsk->addr.src_name)
-		/* no address assigned yet */
+	if (!jsk->addr.src_name && jsk->addr.sa == J1939_NO_ADDR)
+		/* no source address assigned yet */
 		return -EBADFD;
 
-	if (jsk->addr.da == J1939_NO_ADDR && !jsk->addr.dst_name &&
-	    !sock_flag(sk, SOCK_BROADCAST))
-		/* broadcast, but SO_BROADCAST not set */
-		return -EACCES;
-
-	/* deal with provided address info */
+	/* deal with provided destination address info */
 	if (msg->msg_name) {
 		struct sockaddr_can *addr = msg->msg_name;
 
 		if (msg->msg_namelen < J1939_MIN_NAMELEN)
 			return -EINVAL;
+
 		if (addr->can_family != AF_CAN)
 			return -EINVAL;
+
+		if (addr->can_ifindex && addr->can_ifindex != ifindex)
+			return -EBADFD;
+
 		if (j1939_pgn_is_valid(addr->can_addr.j1939.pgn) &&
 		    !j1939_pgn_is_clean_pdu(addr->can_addr.j1939.pgn))
 			return -EINVAL;
-		if (addr->can_ifindex && addr->can_ifindex != ifindex)
-			return -EBADFD;
+
+		if (!addr->can_addr.j1939.name &&
+		    addr->can_addr.j1939.addr == J1939_NO_ADDR &&
+		    !sock_flag(sk, SOCK_BROADCAST))
+			/* broadcast, but SO_BROADCAST not set */
+			return -EACCES;
+	} else {
+		if (!jsk->addr.dst_name && jsk->addr.da == J1939_NO_ADDR &&
+		    !sock_flag(sk, SOCK_BROADCAST))
+			/* broadcast, but SO_BROADCAST not set */
+			return -EACCES;
 	}
 
 	ndev = dev_get_by_index(sock_net(sk), ifindex);
