@@ -752,6 +752,11 @@ static int j1939_sk_sendmsg(struct socket *sock, struct msghdr *msg,
 		/* no address assigned yet */
 		return -EBADFD;
 
+	if (jsk->addr.da == J1939_NO_ADDR && !jsk->addr.dst_name &&
+	    !sock_flag(sk, SOCK_BROADCAST))
+		/* broadcast, but SO_BROADCAST not set */
+		return -EACCES;
+
 	/* deal with provided address info */
 	if (msg->msg_name) {
 		struct sockaddr_can *addr = msg->msg_name;
