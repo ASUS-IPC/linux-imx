@@ -360,6 +360,14 @@ static int j1939_sk_connect(struct socket *sock, struct sockaddr *uaddr,
 		goto out_release_sock;
 	}
 
+	if (!addr->can_addr.j1939.name &&
+	    addr->can_addr.j1939.addr == J1939_NO_ADDR &&
+	    !sock_flag(&jsk->sk, SOCK_BROADCAST)) {
+		/* broadcast, but SO_BROADCAST not set */
+		ret = -EACCES;
+		goto out_release_sock;
+	}
+
 	jsk->addr.dst_name = addr->can_addr.j1939.name;
 	jsk->addr.da = addr->can_addr.j1939.addr;
 
