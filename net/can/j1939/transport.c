@@ -81,12 +81,25 @@ void j1939_session_get(struct j1939_session *session)
 	kref_get(&session->kref);
 }
 
+/* session completion functions */
+static void __j1939_session_drop(struct j1939_session *session)
+{
+	struct j1939_priv *priv = session->priv;
+
+	if (!session->transmission)
+		return;
+
+	j1939_sock_pending_del(session->sk);
+	wake_up_all(&priv->tp_wait);
+}
+
 static void j1939_session_destroy(struct j1939_session *session)
 {
 	j1939_session_list_lock(session->priv);
 	j1939_session_list_del(session);
 	j1939_session_list_unlock(session->priv);
 	skb_queue_purge(&session->skb_queue);
+	__j1939_session_drop(session);
 	j1939_priv_put(session->priv);
 	kfree(session);
 }
@@ -677,25 +690,12 @@ static enum hrtimer_restart j1939_tp_txtimer(struct hrtimer *hrtimer)
 	return HRTIMER_NORESTART;
 }
 
-/* session completion functions */
-static void __j1939_session_drop(struct j1939_session *session)
-{
-	struct j1939_priv *priv = session->priv;
-
-	if (!session->transmission)
-		return;
-
-	j1939_sock_pending_del(session->sk);
-	wake_up_all(&priv->tp_wait);
-}
-
 static void j1939_session_completed(struct j1939_session *session)
 {
 	struct sk_buff *se_skb = j1939_session_skb_find(session);
 
 	/* distribute among j1939 receivers */
 	j1939_sk_recv(session->priv, se_skb);
-	__j1939_session_drop(session);
 }
 
 static void j1939_session_cancel(struct j1939_session *session,
@@ -711,7 +711,6 @@ static void j1939_session_cancel(struct j1939_session *session,
 
 	if (session->sk)
 		j1939_sk_send_multi_abort(priv, session->sk, -EIO);
-	__j1939_session_drop(session);
 }
 
 static enum hrtimer_restart j1939_tp_rxtimer(struct hrtimer *hrtimer)
