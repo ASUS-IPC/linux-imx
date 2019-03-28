@@ -1311,9 +1311,9 @@ static void j1939_tp_cmd_recv(struct j1939_priv *priv, struct sk_buff *skb,
 	struct j1939_sk_buff_cb *skcb = j1939_skb_to_cb(skb);
 	struct j1939_session *session;
 	bool extd = J1939_REGULAR;
-	const u8 *dat = skb->data;
+	u8 cmd = skb->data[0];
 
-	switch (*dat) {
+	switch (cmd) {
 	case J1939_ETP_CMD_RTS:
 		extd = J1939_EXTENDED;
 	case J1939_TP_CMD_BAM: /* falltrough */
@@ -1321,7 +1321,7 @@ static void j1939_tp_cmd_recv(struct j1939_priv *priv, struct sk_buff *skb,
 		if (extd != extd_pgn)
 			goto rx_bad_message;
 
-		if (*dat == J1939_TP_CMD_RTS && j1939_cb_is_broadcast(skcb)) {
+		if (cmd == J1939_TP_CMD_RTS && j1939_cb_is_broadcast(skcb)) {
 			netdev_alert(priv->ndev, "%s: rts without destination (%02x)\n",
 				     __func__, skcb->addr.sa);
 			return;
@@ -1339,11 +1339,11 @@ static void j1939_tp_cmd_recv(struct j1939_priv *priv, struct sk_buff *skb,
 			if (!session)
 				break;
 		}
-		session->last_cmd = dat[0];
+		session->last_cmd = cmd;
 
 		j1939_tp_set_rxtimeout(session, 1250);
 
-		if ((dat[0] != J1939_TP_CMD_BAM) &&
+		if ((cmd != J1939_TP_CMD_BAM) &&
 		    j1939_tp_im_receiver(&session->skcb))
 			j1939_tp_schedule_txtimer(session, 0);
 
