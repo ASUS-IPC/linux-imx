@@ -1297,7 +1297,6 @@ struct j1939_session *j1939_tp_send(struct j1939_priv *priv,
 
  failed:
 	j1939_session_timers_cancel(session);
-	j1939_session_cancel(session, J1939_XTP_ABORT_NO_ERROR);
 	j1939_session_put(session);
 	return ERR_PTR(ret);
 }
