@@ -937,14 +937,19 @@ static void j1939_xtp_rx_abort_one(struct j1939_priv *priv, struct sk_buff *skb,
 	session = j1939_session_get_by_skcb(priv, skcb, extd, reverse);
 	if (!session)
 		return;
+
 	if (session->transmission && !session->last_txcmd) {
 		/* empty block:
 		 * do not drop session when a transmit session did not
 		 * start yet
 		 */
 	} else if (session->skcb.addr.dst_pgn == pgn) {
+		u8 abort = skb->data[1];
+
 		j1939_session_timers_cancel(session);
-		j1939_session_cancel(session, J1939_XTP_NO_ABORT);
+		if (session->sk)
+			j1939_sk_send_multi_abort(priv, session->sk,
+						  j1939_xtp_abort_to_errno(priv, abort));
 	}
 
 	/* TODO: maybe cancel current connection
