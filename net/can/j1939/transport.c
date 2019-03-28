@@ -470,10 +470,7 @@ static int j1939_xtp_tx_abort(struct j1939_priv *priv,
 
 	memset(dat, 0xff, sizeof(dat));
 	dat[0] = J1939_TP_CMD_ABORT;
-	if (extd)
-		dat[1] = J1939_XTP_ABORT_GENERIC;
-	else
-		dat[1] = err;
+	dat[1] = err;
 	return j1939_xtp_do_tx_ctl(priv, re_skcb, extd, swap_src_dst, pgn, dat);
 }
 
