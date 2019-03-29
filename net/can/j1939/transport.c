@@ -8,9 +8,6 @@
 
 #include "j1939-priv.h"
 
-#define J1939_REGULAR 0
-#define J1939_EXTENDED 1
-
 #define J1939_ETP_PGN_CTL 0xc800
 #define J1939_ETP_PGN_DAT 0xc700
 #define J1939_TP_PGN_CTL 0xec00
@@ -335,9 +332,9 @@ j1939_session *j1939_session_get_by_skcb_locked(struct j1939_priv *priv,
 	return NULL;
 }
 
-static struct j1939_session *j1939_session_get_by_skcb(struct j1939_priv *priv,
-						      struct j1939_sk_buff_cb *skcb,
-						      bool extd, bool reverse)
+struct j1939_session *j1939_session_get_by_skcb(struct j1939_priv *priv,
+						struct j1939_sk_buff_cb *skcb,
+						bool extd, bool reverse)
 {
 	struct list_head *root = j1939_sessionq(priv, extd);
 	struct j1939_session *session;
