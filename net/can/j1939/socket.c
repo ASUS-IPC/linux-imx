@@ -31,6 +31,9 @@ struct j1939_sock {
 	int nfilters;
 	pgn_t pgn_rx_filter;
 
+	size_t etp_tx_complete_size;
+	size_t etp_tx_done_size;
+
 	/* j1939 may emit equal PGN (!= equal CAN-id's) out of order
 	 * when transport protocol comes in.
 	 * To allow emitting in order, keep a 'pending' nr. of packets
@@ -236,6 +239,9 @@ static int j1939_sk_init(struct sock *sk)
 	jsk->addr.dst_pgn = J1939_NO_PGN;
 	jsk->pgn_rx_filter = J1939_NO_PGN;
 	atomic_set(&jsk->skb_pending, 0);
+	jsk->etp_tx_complete_size = 0;
+	jsk->etp_tx_done_size = 0;
+
 	return 0;
 }
 
@@ -710,15 +716,22 @@ void j1939_sk_send_multi_abort(struct j1939_priv *priv, struct sock *sk,
 }
 
 static int j1939_sk_send_multi(struct j1939_priv *priv,  struct sock *sk,
-			       struct msghdr *msg, size_t complete_size)
+			       struct msghdr *msg, size_t size)
 
 {
+	struct j1939_sock *jsk = j1939_sk(sk);
 	struct j1939_session *session = NULL;
 	struct sk_buff *skb;
-	size_t segment_size, todo_size, done_size = 0;
+	size_t segment_size, todo_size;
 	int ret = 0;
 
-	segment_size = todo_size = complete_size;
+	if (!jsk->etp_tx_done_size) {
+		j1939_sock_pending_add(&jsk->sk);
+		jsk->etp_tx_complete_size = size;
+	} else if (jsk->etp_tx_complete_size != jsk->etp_tx_done_size + size)
+		return -EIO;
+
+	todo_size = size;
 
 	while (todo_size) {
 		struct j1939_sk_buff_cb *skcb;
@@ -729,34 +742,75 @@ static int j1939_sk_send_multi(struct j1939_priv *priv,  struct sock *sk,
 			segment_size = todo_size;
 
 		/* Allocate skb for one segment */
-		skb = j1939_sk_alloc_skb(priv->ndev, sk, msg, segment_size, &ret);
+		skb = j1939_sk_alloc_skb(priv->ndev, sk, msg, segment_size,
+					 &ret);
 		if (ret)
 			break;
 
 		skcb = j1939_skb_to_cb(skb);
-		skcb->offset  = done_size;
-
-		todo_size -= segment_size;
-		done_size += segment_size;
+		skcb->offset = jsk->etp_tx_done_size;
 
 		if (!session) {
-			/* create new session with complete_size and attach
-			 * skb segment
-			 */
-			session = j1939_tp_send(priv, skb, complete_size);
-			if (IS_ERR(session))
-				/* FIXME: free skb? Who discards the skb in error case?
+			if (jsk->etp_tx_done_size) {
+				bool extd = J1939_REGULAR;
+
+				if (jsk->etp_tx_complete_size > J1939_MAX_TP_PACKET_SIZE)
+					extd = J1939_EXTENDED;
+
+				session = j1939_session_get_by_skcb(priv, skcb,
+								    extd, false);
+				if (IS_ERR_OR_NULL(session)) {
+					/* FIXME: free skb? Who discards the skb in error case?
+					 */
+					jsk->etp_tx_done_size = 0;
+					return PTR_ERR(session);
+				}
+
+				j1939_session_skb_queue(session, skb);
+			} else {
+				/* create new session with etp_tx_complete_size and attach
+				 * skb segment
 				 */
-				return PTR_ERR(session);
+				session = j1939_tp_send(priv, skb,
+							jsk->etp_tx_complete_size);
+				if (IS_ERR(session)) {
+					/* FIXME: free skb? Who discards the skb in error case?
+					 */
+					jsk->etp_tx_done_size = 0;
+					return PTR_ERR(session);
+				}
+			}
 		} else {
 			j1939_session_skb_queue(session, skb);
 		}
 
+		todo_size -= segment_size;
+		jsk->etp_tx_done_size += segment_size;
 	}
 
-	j1939_session_put(session);
+	switch (ret) {
+	case 0: /* OK */
+		if (todo_size)
+			netdev_warn(priv->ndev, "no error found and not completely queued?! %i\n", todo_size);
+		ret = size;
+		jsk->etp_tx_done_size = 0;
+		break;
+	case -ERESTARTSYS:
+		ret = -EINTR;
+		/* fall trough */
+	case -EAGAIN: /* OK */
+		if (todo_size != size)
+			ret = size - todo_size;
+		break;
+	default: /* ERROR */
+		/* skb session queue will be purged if we are the last user */
+		jsk->etp_tx_done_size = 0;
+	}
 
-	return 0;
+	if (session)
+		j1939_session_put(session);
+
+	return ret;
 }
 
 static int j1939_sk_send_one(struct j1939_priv *priv,  struct sock *sk,
@@ -770,7 +824,9 @@ static int j1939_sk_send_one(struct j1939_priv *priv,  struct sock *sk,
 	if (ret)
 		return ret;
 
-	return j1939_send_one(priv, skb);
+	ret = j1939_send_one(priv, skb);
+
+	return ret ? ret : size;
 }
 
 static int j1939_sk_sendmsg(struct socket *sock, struct msghdr *msg,
@@ -830,7 +886,6 @@ static int j1939_sk_sendmsg(struct socket *sock, struct msghdr *msg,
 	if (!priv)
 		return -EINVAL;
 
-	j1939_sock_pending_add(&jsk->sk);
 	if (size > 8)
 		/* re-route via transport protocol */
 		ret = j1939_sk_send_multi(priv, sk, msg, size);
@@ -838,11 +893,9 @@ static int j1939_sk_sendmsg(struct socket *sock, struct msghdr *msg,
 		ret = j1939_sk_send_one(priv, sk, msg, size);
 
 	j1939_priv_put(priv);
-	if (ret < 0 || size <= 8)
-		j1939_sock_pending_del(&jsk->sk);
 
 	dev_put(ndev);
-	return (ret < 0) ? ret : size;
+	return ret;
 }
 
 void j1939_sk_netdev_event(struct net_device *ndev, int error_code)
