@@ -26,12 +26,90 @@
 #define J1939_ETP_CMD_ABORT 0xff
 
 enum j1939_xtp_abort {
-	J1939_XTP_ABORT_NO_ERROR = 0,
+	J1939_XTP_NO_ABORT = 0,
 	J1939_XTP_ABORT_BUSY = 1,
+	/*		Already in one or more connection managed sessions and
+	 *		cannot support another.
+	 *
+	 * EALREADY:	Operation already in progress
+	 */
 	J1939_XTP_ABORT_RESOURCE = 2,
+	/*		System resources were needed for another task so this
+	 *		connection managed session was terminated.
+	 *
+	 * EMSGSIZE:	The socket type requires that message be sent
+	 *		atomically, and the size of the message to be sent made
+	 *		this impossible.
+	 */
+
 	J1939_XTP_ABORT_TIMEOUT = 3,
+	/*		A timeout occurred and this is the connection abort to close
+	 *		the session.
+	 *
+	 * EHOSTUNREACH: The destination host cannot be reached (probably
+	 *		because the host is down or a remote router cannot reach it).
+	 */
+
 	J1939_XTP_ABORT_GENERIC = 4,
+	/*		CTS messages received when data transfer is in progress
+	 *
+	 * EBADMSG:	Not a data message
+	 */
+
 	J1939_XTP_ABORT_FAULT = 5,
+	/*		Maximal retransmit request limit reached
+	 *
+	 * ENOTRECOVERABLE: State not recoverable
+	 */
+
+	J1939_XTP_ABORT_UNEXPECTED_DATA = 6,
+	/*		Unexpected data transfer packet
+	 *
+	 * ENOTCONN:	Transport endpoint is not connected
+	 */
+
+	J1939_XTP_ABORT_BAD_SEQ = 7,
+	/*		Bad sequence number (and software is not able to recover)
+	 *
+	 * EILSEQ:	Illegal byte sequence
+	 */
+
+	J1939_XTP_ABORT_DUP_SEQ = 8,
+	 /*		Duplicate sequence number (and software is not able to recover)
+	  */
+
+	J1939_XTP_ABORT_EDPO_UNEXPECTED = 9,
+	 /*		Unexpected EDPO packet (ETP) or Message size > 1785 bytes (TP)
+	  */
+
+	J1939_XTP_ABORT_BAD_EDPO_PGN = 10,
+	 /*		Unexpected EDPO PGN (PGN in EDPO is bad)
+	  */
+
+	J1939_XTP_ABORT_EDPO_OUTOF_CTS = 11,
+	 /*		EDPO number of packets is greater than CTS
+	  */
+
+	J1939_XTP_ABORT_BAD_EDPO_OFFSET = 12,
+	 /*		Bad EDPO offset
+	  */
+
+	J1939_XTP_ABORT_OTHER_DEPRECATED = 13,
+	 /*		Deprecated. Use 250 instead (Any other reason)
+	  */
+
+	J1939_XTP_ABORT_ECTS_UNXPECTED_PGN = 14,
+	 /*		Unexpected ECTS PGN (PGN in ECTS is bad)
+	  */
+
+	J1939_XTP_ABORT_ECTS_TOO_BIG = 15,
+	 /*		ECTS requested packets exceeds message size
+	  */
+
+	J1939_XTP_ABORT_OTHER = 250,
+	 /*		Any other reason (if a Connection Abort reason is
+	  *		identified that is not listed in the table use code 250)
+	  */
 };
 
 static unsigned int j1939_tp_block = 255;
@@ -40,6 +118,51 @@ static unsigned int j1939_tp_packet_delay;
 static unsigned int j1939_tp_padding = 1;
 
 /* helpers */
+static int j1939_xtp_abort_to_errno(struct j1939_priv *priv,
+				    enum j1939_xtp_abort abort)
+{
+	switch (abort) {
+	case J1939_XTP_NO_ABORT:
+		WARN_ON_ONCE(abort == J1939_XTP_NO_ABORT);
+		return 0;
+	case J1939_XTP_ABORT_BUSY:
+		return EALREADY;
+	case J1939_XTP_ABORT_RESOURCE:
+		return EMSGSIZE;
+	case J1939_XTP_ABORT_TIMEOUT:
+		return EHOSTUNREACH;
+	case J1939_XTP_ABORT_GENERIC:
+		return EBADMSG;
+	case J1939_XTP_ABORT_FAULT:
+		return ENOTRECOVERABLE;
+	case J1939_XTP_ABORT_UNEXPECTED_DATA:
+		return ENOTCONN;
+	case J1939_XTP_ABORT_BAD_SEQ:
+		return EILSEQ;
+	case J1939_XTP_ABORT_DUP_SEQ:
+		return EPROTO;
+	case J1939_XTP_ABORT_EDPO_UNEXPECTED:
+		return EPROTO;
+	case J1939_XTP_ABORT_BAD_EDPO_PGN:
+		return EPROTO;
+	case J1939_XTP_ABORT_EDPO_OUTOF_CTS:
+		return EPROTO;
+	case J1939_XTP_ABORT_BAD_EDPO_OFFSET:
+		return EPROTO;
+	case J1939_XTP_ABORT_OTHER_DEPRECATED:
+		return EPROTO;
+	case J1939_XTP_ABORT_ECTS_UNXPECTED_PGN:
+		return EPROTO;
+	case J1939_XTP_ABORT_ECTS_TOO_BIG:
+		return EPROTO;
+	case J1939_XTP_ABORT_OTHER:
+		return EPROTO;
+	}
+
+	netdev_warn(priv->ndev, "Unknown abort code %i", abort);
+	return EPROTO;
+}
+
 static inline void j1939_fix_cb(struct j1939_sk_buff_cb *skcb)
 {
 	skcb->msg_flags &= ~MSG_SYN;
@@ -700,14 +823,17 @@ static void j1939_session_cancel(struct j1939_session *session,
 {
 	struct j1939_priv *priv = session->priv;
 
+	WARN_ON_ONCE(!err);
+
 	/* do not send aborts on incoming broadcasts */
-	if (err && !j1939_cb_is_broadcast(&session->skcb))
+	if (!j1939_cb_is_broadcast(&session->skcb))
 		j1939_xtp_tx_abort(priv, &session->skcb, session->extd,
 				   !(session->skcb.src_flags & J1939_ECU_LOCAL),
 				   err, session->skcb.addr.dst_pgn);
 
 	if (session->sk)
-		j1939_sk_send_multi_abort(priv, session->sk, -EIO);
+		j1939_sk_send_multi_abort(priv, session->sk,
+					  j1939_xtp_abort_to_errno(priv, err));
 }
 
 static enum hrtimer_restart j1939_tp_rxtimer(struct hrtimer *hrtimer)
@@ -778,7 +904,7 @@ static void j1939_xtp_rx_abort_one(struct j1939_priv *priv, struct sk_buff *skb,
 		 */
 	} else if (session->skcb.addr.dst_pgn == pgn) {
 		j1939_session_timers_cancel(session);
-		j1939_session_cancel(session, J1939_XTP_ABORT_NO_ERROR);
+		j1939_session_cancel(session, J1939_XTP_NO_ABORT);
 	}
 
 	/* TODO: maybe cancel current connection
@@ -972,7 +1098,7 @@ static int j1939_session_insert(struct j1939_session *session)
 struct j1939_session *j1939_xtp_rx_rts_new(struct j1939_priv *priv,
 					   struct sk_buff *skb, bool extd)
 {
-	enum j1939_xtp_abort abort = J1939_XTP_ABORT_NO_ERROR;
+	enum j1939_xtp_abort abort = J1939_XTP_NO_ABORT;
 	struct j1939_sk_buff_cb *skcb = j1939_skb_to_cb(skb);
 	struct j1939_session *session;
 	const u8 *dat;
@@ -1004,7 +1130,8 @@ struct j1939_session *j1939_xtp_rx_rts_new(struct j1939_priv *priv,
 		else if (len > priv->tp_max_packet_size)
 			abort = J1939_XTP_ABORT_RESOURCE;
 	}
-	if (abort) {
+
+	if (abort != J1939_XTP_NO_ABORT) {
 		j1939_xtp_tx_abort(priv, skcb, extd, true, abort, pgn);
 		return NULL;
 	}
