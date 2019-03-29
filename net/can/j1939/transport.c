@@ -709,6 +709,8 @@ static void j1939_session_cancel(struct j1939_session *session,
 				   !(session->skcb.src_flags & J1939_ECU_LOCAL),
 				   err, session->skcb.addr.dst_pgn);
 
+	if (session->sk)
+		j1939_sk_send_multi_abort(priv, session->sk, -EIO);
 	__j1939_session_drop(session);
 }
 

@@ -701,6 +701,14 @@ failure:
 	return NULL;
 }
 
+void j1939_sk_send_multi_abort(struct j1939_priv *priv, struct sock *sk,
+			       int err)
+{
+	sk->sk_err = err;
+
+	sk->sk_error_report(sk);
+}
+
 static int j1939_sk_send_multi(struct j1939_priv *priv,  struct sock *sk,
 			       struct msghdr *msg, size_t complete_size)
 
