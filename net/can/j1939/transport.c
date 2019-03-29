@@ -118,6 +118,46 @@ static unsigned int j1939_tp_packet_delay;
 static unsigned int j1939_tp_padding = 1;
 
 /* helpers */
+static const char *j1939_xtp_abort_to_str(enum j1939_xtp_abort abort)
+{
+	switch (abort) {
+	case J1939_XTP_ABORT_BUSY:
+		return "Already in one or more connection managed sessions and cannot support another.";
+	case J1939_XTP_ABORT_RESOURCE:
+		return "System resources were needed for another task so this connection managed session was terminated.";
+	case J1939_XTP_ABORT_TIMEOUT:
+		return "A timeout occurred and this is the connection abort to close the session.";
+	case J1939_XTP_ABORT_GENERIC:
+		return "CTS messages received when data transfer is in progress";
+	case J1939_XTP_ABORT_FAULT:
+		return "Maximal retransmit request limit reached";
+	case J1939_XTP_ABORT_UNEXPECTED_DATA:
+		return "Unexpected data transfer packet";
+	case J1939_XTP_ABORT_BAD_SEQ:
+		return "Bad sequence number (and software is not able to recover)";
+	case J1939_XTP_ABORT_DUP_SEQ:
+		return "Duplicate sequence number (and software is not able to recover)";
+	case J1939_XTP_ABORT_EDPO_UNEXPECTED:
+		return "Unexpected EDPO packet (ETP) or Message size > 1785 bytes (TP)";
+	case J1939_XTP_ABORT_BAD_EDPO_PGN:
+		return "Unexpected EDPO PGN (PGN in EDPO is bad)";
+	case J1939_XTP_ABORT_EDPO_OUTOF_CTS:
+		return "EDPO number of packets is greater than CTS";
+	case J1939_XTP_ABORT_BAD_EDPO_OFFSET:
+		return "Bad EDPO offset";
+	case J1939_XTP_ABORT_OTHER_DEPRECATED:
+		return "Deprecated. Use 250 instead (Any other reason)";
+	case J1939_XTP_ABORT_ECTS_UNXPECTED_PGN:
+		return "Unexpected ECTS PGN (PGN in ECTS is bad)";
+	case J1939_XTP_ABORT_ECTS_TOO_BIG:
+		return "ECTS requested packets exceeds message size";
+	case J1939_XTP_ABORT_OTHER:
+		return "Any other reason (if a Connection Abort reason is identified that is not listed in the table use code 250)";
+	default:
+		return "<unknown>";
+	}
+}
+
 static int j1939_xtp_abort_to_errno(struct j1939_priv *priv,
 				    enum j1939_xtp_abort abort)
 {
@@ -917,9 +957,11 @@ static void j1939_xtp_rx_abort_one(struct j1939_priv *priv, struct sk_buff *skb,
 static void j1939_xtp_rx_abort(struct j1939_priv *priv, struct sk_buff *skb,
 			       bool extd)
 {
-	netdev_info(priv->ndev, "%s, %05x\n", __func__,
-		    j1939_xtp_ctl_to_pgn(skb->data));
+	u8 abort = skb->data[1];
 
+	netdev_info(priv->ndev, "%s, 0x%05x: (%u) %s\n", __func__,
+		    j1939_xtp_ctl_to_pgn(skb->data), abort,
+		    j1939_xtp_abort_to_str(abort));
 	j1939_xtp_rx_abort_one(priv, skb, extd, false);
 	j1939_xtp_rx_abort_one(priv, skb, extd, true);
 }
