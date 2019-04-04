@@ -314,7 +314,7 @@ static inline void j1939_session_unlock(struct j1939_session *session)
 	spin_unlock_bh(&session->lock);
 }
 
-void j1939_session_skb_drop_old(struct j1939_session *session)
+static void j1939_session_skb_drop_old(struct j1939_session *session)
 {
 	struct sk_buff *do_skb;
 	struct j1939_sk_buff_cb *do_skcb;
