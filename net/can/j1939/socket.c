@@ -791,7 +791,7 @@ static int j1939_sk_send_multi(struct j1939_priv *priv,  struct sock *sk,
 	switch (ret) {
 	case 0: /* OK */
 		if (todo_size)
-			netdev_warn(priv->ndev, "no error found and not completely queued?! %i\n", todo_size);
+			netdev_warn(priv->ndev, "no error found and not completely queued?! %zu\n", todo_size);
 		ret = size;
 		jsk->etp_tx_done_size = 0;
 		break;
