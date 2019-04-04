@@ -1141,9 +1141,8 @@ static int j1939_session_insert(struct j1939_session *session)
 	return ret;
 }
 
-
-struct j1939_session *j1939_xtp_rx_rts_new(struct j1939_priv *priv,
-					   struct sk_buff *skb, bool extd)
+static struct j1939_session *j1939_xtp_rx_rts_new(struct j1939_priv *priv,
+						  struct sk_buff *skb, bool extd)
 {
 	enum j1939_xtp_abort abort = J1939_XTP_NO_ABORT;
 	struct j1939_sk_buff_cb *skcb = j1939_skb_to_cb(skb);
