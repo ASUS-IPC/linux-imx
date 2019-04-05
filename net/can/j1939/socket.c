@@ -759,11 +759,12 @@ static int j1939_sk_send_multi(struct j1939_priv *priv,  struct sock *sk,
 
 				session = j1939_session_get_by_skcb(priv, skcb,
 								    extd, false);
-				if (IS_ERR_OR_NULL(session)) {
-					/* FIXME: free skb? Who discards the skb in error case?
-					 */
-					jsk->etp_tx_done_size = 0;
-					return PTR_ERR(session);
+				if (IS_ERR(session)) {
+					ret = PTR_ERR(session);
+					goto kfree_skb;
+				} else if (!session) {
+					ret = -ENOENT;
+					goto kfree_skb;
 				}
 
 				j1939_session_skb_queue(session, skb);
@@ -774,10 +775,8 @@ static int j1939_sk_send_multi(struct j1939_priv *priv,  struct sock *sk,
 				session = j1939_tp_send(priv, skb,
 							jsk->etp_tx_complete_size);
 				if (IS_ERR(session)) {
-					/* FIXME: free skb? Who discards the skb in error case?
-					 */
-					jsk->etp_tx_done_size = 0;
-					return PTR_ERR(session);
+					ret = PTR_ERR(session);
+					goto kfree_skb;
 				}
 			}
 		} else {
@@ -810,6 +809,11 @@ static int j1939_sk_send_multi(struct j1939_priv *priv,  struct sock *sk,
 	if (session)
 		j1939_session_put(session);
 
+	return ret;
+
+ kfree_skb:
+	kfree_skb(skb);
+	jsk->etp_tx_done_size = 0;
 	return ret;
 }
 
