@@ -109,7 +109,7 @@ struct j1939_ecu *j1939_ecu_get_by_name_locked(struct j1939_priv *priv,
 struct j1939_addr {
 	name_t src_name;
 	name_t dst_name;
-	pgn_t dst_pgn;
+	pgn_t pgn;
 
 	u8 sa;
 	u8 da;

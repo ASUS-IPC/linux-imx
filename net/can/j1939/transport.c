@@ -556,14 +556,14 @@ static struct sk_buff *j1939_tp_tx_dat_new(struct j1939_priv *priv,
 
 	if (ctl) {
 		if (extd)
-			skcb->addr.dst_pgn = J1939_ETP_PGN_CTL;
+			skcb->addr.pgn = J1939_ETP_PGN_CTL;
 		else
-			skcb->addr.dst_pgn = J1939_TP_PGN_CTL;
+			skcb->addr.pgn = J1939_TP_PGN_CTL;
 	} else {
 		if (extd)
-			skcb->addr.dst_pgn = J1939_ETP_PGN_DAT;
+			skcb->addr.pgn = J1939_ETP_PGN_DAT;
 		else
-			skcb->addr.dst_pgn = J1939_TP_PGN_DAT;
+			skcb->addr.pgn = J1939_TP_PGN_DAT;
 	}
 
 	return skb;
@@ -617,7 +617,7 @@ static inline int j1939_tp_tx_ctl(struct j1939_session *session,
 
 	return j1939_xtp_do_tx_ctl(priv, &session->skcb, session->extd,
 				   swap_src_dst,
-				   session->skcb.addr.dst_pgn, dat);
+				   session->skcb.addr.pgn, dat);
 }
 
 static int j1939_xtp_tx_abort(struct j1939_priv *priv,
@@ -869,7 +869,7 @@ static void j1939_session_cancel(struct j1939_session *session,
 	if (!j1939_cb_is_broadcast(&session->skcb))
 		j1939_xtp_tx_abort(priv, &session->skcb, session->extd,
 				   !(session->skcb.src_flags & J1939_ECU_LOCAL),
-				   err, session->skcb.addr.dst_pgn);
+				   err, session->skcb.addr.pgn);
 
 	if (session->sk)
 		j1939_sk_send_multi_abort(priv, session->sk,
@@ -908,7 +908,7 @@ static void j1939_xtp_rx_bad_message_one(struct j1939_priv *priv,
 	}
 
 	/* FIXME: extend session match to search for PGN? In case of BOM TP.
-	 * (session->skcb.addr.dst_pgn == pgn)
+	 * (session->skcb.addr.pgn == pgn)
 	 */
 	/* do not allow TP control messages on 2 pgn's */
 	j1939_session_cancel(session, J1939_XTP_ABORT_FAULT);
@@ -943,7 +943,7 @@ static void j1939_xtp_rx_abort_one(struct j1939_priv *priv, struct sk_buff *skb,
 		 * do not drop session when a transmit session did not
 		 * start yet
 		 */
-	} else if (session->skcb.addr.dst_pgn == pgn) {
+	} else if (session->skcb.addr.pgn == pgn) {
 		u8 abort = skb->data[1];
 
 		j1939_session_timers_cancel(session);
@@ -981,7 +981,7 @@ static void j1939_xtp_rx_eoma(struct j1939_session *session, struct sk_buff *skb
 	pgn = j1939_xtp_ctl_to_pgn(skb->data);
 
 	j1939_session_timers_cancel(session);
-	if (session->skcb.addr.dst_pgn != pgn) {
+	if (session->skcb.addr.pgn != pgn) {
 		struct j1939_sk_buff_cb *skcb = j1939_skb_to_cb(skb);
 
 		j1939_xtp_tx_abort(priv, skcb, extd, true, J1939_XTP_ABORT_BUSY,
@@ -1004,7 +1004,7 @@ static void j1939_xtp_rx_cts(struct j1939_session *session, struct sk_buff *skb,
 	dat = skb->data;
 	pgn = j1939_xtp_ctl_to_pgn(skb->data);
 
-	if (session->skcb.addr.dst_pgn != pgn) {
+	if (session->skcb.addr.pgn != pgn) {
 		struct j1939_sk_buff_cb *skcb = j1939_skb_to_cb(skb);
 		/* what to do? */
 		j1939_xtp_tx_abort(priv, skcb, extd, true, J1939_XTP_ABORT_BUSY,
@@ -1107,7 +1107,7 @@ static struct j1939_session *j1939_session_fresh_new(struct j1939_priv *priv,
 	skcb = j1939_skb_to_cb(skb);
 	memcpy(skcb, rel_skcb, sizeof(*skcb));
 	j1939_fix_cb(skcb);
-	skcb->addr.dst_pgn = pgn;
+	skcb->addr.pgn = pgn;
 
 	session = j1939_session_new(priv, skb, skb->len);
 	if (!session) {
@@ -1226,7 +1226,7 @@ static int j1939_xtp_rx_rts_current(struct j1939_session *session,
 		j1939_session_timers_cancel(session);
 		j1939_session_cancel(session, J1939_XTP_ABORT_BUSY);
 
-		if (pgn != session->skcb.addr.dst_pgn &&
+		if (pgn != session->skcb.addr.pgn &&
 		    dat[0] != J1939_TP_CMD_BAM)
 			j1939_xtp_tx_abort(priv, skcb, extd, true,
 					   J1939_XTP_ABORT_BUSY, pgn);
@@ -1271,7 +1271,7 @@ static void j1939_xtp_rx_dpo(struct j1939_session *session, struct sk_buff *skb)
 
 	pgn = j1939_xtp_ctl_to_pgn(dat);
 
-	if (session->skcb.addr.dst_pgn != pgn) {
+	if (session->skcb.addr.pgn != pgn) {
 		netdev_info(priv->ndev, "%s: different pgn\n", __func__);
 		j1939_xtp_tx_abort(priv, skcb, true, true, J1939_XTP_ABORT_BUSY,
 				   pgn);
@@ -1406,10 +1406,10 @@ struct j1939_session *j1939_tp_send(struct j1939_priv *priv,
 	bool extd = J1939_REGULAR;
 	int ret;
 
-	if (skcb->addr.dst_pgn == J1939_TP_PGN_DAT ||
-	    skcb->addr.dst_pgn == J1939_TP_PGN_CTL ||
-	    skcb->addr.dst_pgn == J1939_ETP_PGN_DAT ||
-	    skcb->addr.dst_pgn == J1939_ETP_PGN_CTL)
+	if (skcb->addr.pgn == J1939_TP_PGN_DAT ||
+	    skcb->addr.pgn == J1939_TP_PGN_CTL ||
+	    skcb->addr.pgn == J1939_ETP_PGN_DAT ||
+	    skcb->addr.pgn == J1939_ETP_PGN_CTL)
 		/* avoid conflict */
 		return ERR_PTR(-EDOM);
 
@@ -1579,7 +1579,7 @@ int j1939_tp_recv(struct j1939_priv *priv, struct sk_buff *skb)
 	if (!j1939_tp_im_involved_anydir(skcb))
 		return 0;
 
-	switch (skcb->addr.dst_pgn) {
+	switch (skcb->addr.pgn) {
 	case J1939_ETP_PGN_DAT:
 		extd = J1939_EXTENDED;
 	case J1939_TP_PGN_DAT: /* falltrough */
