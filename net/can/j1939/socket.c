@@ -158,10 +158,6 @@ static bool j1939_sk_match_filter(struct j1939_sock *jsk,
 		/* receive all when no filters are assigned */
 		return true;
 
-	/* Filters relying on the addr for static addressing _should_ get
-	 * packets from dynamic addressed ECU's too if they match their SA.
-	 * Sockets using dynamic addressing in their filters should not set it.
-	 */
 	for (; nfilter; ++f, --nfilter) {
 		if ((skcb->addr.pgn & f->pgn_mask) != f->pgn)
 			continue;
