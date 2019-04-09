@@ -76,10 +76,10 @@ enum {
 struct j1939_filter {
 	name_t name;
 	name_t name_mask;
-	__u8 addr;
-	__u8 addr_mask;
 	pgn_t pgn;
 	pgn_t pgn_mask;
+	__u8 addr;
+	__u8 addr_mask;
 };
 
 #define J1939_FILTER_MAX 512 /* maximum number of j1939_filter set via setsockopt() */

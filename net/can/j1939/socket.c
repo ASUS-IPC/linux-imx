@@ -163,12 +163,11 @@ static bool j1939_sk_match_filter(struct j1939_sock *jsk,
 	 * Sockets using dynamic addressing in their filters should not set it.
 	 */
 	for (; nfilter; ++f, --nfilter) {
-		if ((skcb->addr.pgn & f->pgn_mask) != (f->pgn & f->pgn_mask))
+		if ((skcb->addr.pgn & f->pgn_mask) != f->pgn)
 			continue;
-		if ((skcb->addr.sa & f->addr_mask) != (f->addr & f->addr_mask))
+		if ((skcb->addr.sa & f->addr_mask) != f->addr)
 			continue;
-		if ((skcb->addr.src_name & f->name_mask) !=
-		    (f->name & f->name_mask))
+		if ((skcb->addr.src_name & f->name_mask) != f->name)
 			continue;
 		return true;
 	}
@@ -501,6 +500,9 @@ static int j1939_sk_setsockopt(struct socket *sock, int level, int optname,
 	switch (optname) {
 	case SO_J1939_FILTER:
 		if (optval) {
+			struct j1939_filter *f;
+			int c;
+
 			if (optlen % sizeof(*filters) != 0)
 				return -EINVAL;
 
@@ -512,6 +514,12 @@ static int j1939_sk_setsockopt(struct socket *sock, int level, int optname,
 			filters = memdup_user(optval, optlen);
 			if (IS_ERR(filters))
 				return PTR_ERR(filters);
+
+			for (f = filters, c = count; c; f++, c--) {
+				f->name &= f->name_mask;
+				f->pgn &= f->pgn_mask;
+				f->addr &= f->addr_mask;
+			}
 		}
 
 		lock_sock(&jsk->sk);
