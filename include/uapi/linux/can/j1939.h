@@ -20,8 +20,9 @@
 #define J1939_IDLE_ADDR 0xfe
 #define J1939_NO_ADDR 0xff		/* == broadcast or no addr */
 #define J1939_NO_NAME 0
-#define J1939_PGN_REQUEST 0x0ea00
-#define J1939_PGN_ADDRESS_CLAIMED 0x0ee00
+#define J1939_PGN_REQUEST 0x0ea00		/* Request PG */
+#define J1939_PGN_ADDRESS_CLAIMED 0x0ee00	/* Address Claimed */
+#define J1939_PGN_ADDRESS_COMMANDED 0x0fed8	/* Commanded Address */
 #define J1939_PGN_PDU1_MAX 0x3ff00
 #define J1939_PGN_MAX 0x3ffff
 #define J1939_NO_PGN 0x40000
