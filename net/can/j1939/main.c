@@ -274,7 +274,7 @@ int j1939_send_one(struct j1939_priv *priv, struct sk_buff *skb)
 	return can_send(skb, 1);
 
  failed:
-	consume_skb(skb);
+	kfree_skb(skb);
 	return ret;
 }
 
