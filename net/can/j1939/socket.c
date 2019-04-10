@@ -120,7 +120,8 @@ static bool j1939_sk_match_dst(struct j1939_sock *jsk,
 			if (jsk->addr.sa != skcb->addr.da)
 				return false;
 		} else if (!sock_flag(&jsk->sk, SOCK_BROADCAST)) {
-			/* receiving broadcast without SO_BROADCAST flag is not allowed */
+			/* receiving broadcast without SO_BROADCAST
+			 * flag is not allowed */
 			return false;
 		}
 	}
@@ -448,7 +449,7 @@ static int j1939_sk_release(struct socket *sock)
 		spin_unlock_bh(&priv->j1939_socks_lock);
 
 		j1939_local_ecu_put(priv, jsk->addr.src_name,
-					    jsk->addr.sa);
+				    jsk->addr.sa);
 		j1939_priv_put(priv);
 
 		j1939_netdev_stop(ndev);
@@ -654,8 +655,10 @@ static int j1939_sk_recvmsg(struct socket *sock, struct msghdr *msg,
 	return size;
 }
 
-static struct sk_buff *j1939_sk_alloc_skb(struct net_device *ndev, struct sock *sk,
-			      struct msghdr *msg, size_t size, int *errcode)
+static struct sk_buff *j1939_sk_alloc_skb(struct net_device *ndev,
+					  struct sock *sk,
+					  struct msghdr *msg, size_t size,
+					  int *errcode)
 {
 	struct j1939_sock *jsk = j1939_sk(sk);
 	struct j1939_sk_buff_cb *skcb;
@@ -732,8 +735,9 @@ static int j1939_sk_send_multi(struct j1939_priv *priv,  struct sock *sk,
 	if (!jsk->etp_tx_done_size) {
 		j1939_sock_pending_add(&jsk->sk);
 		jsk->etp_tx_complete_size = size;
-	} else if (jsk->etp_tx_complete_size != jsk->etp_tx_done_size + size)
+	} else if (jsk->etp_tx_complete_size != jsk->etp_tx_done_size + size) {
 		return -EIO;
+	}
 
 	todo_size = size;
 
@@ -758,11 +762,13 @@ static int j1939_sk_send_multi(struct j1939_priv *priv,  struct sock *sk,
 			if (jsk->etp_tx_done_size) {
 				bool extd = J1939_REGULAR;
 
-				if (jsk->etp_tx_complete_size > J1939_MAX_TP_PACKET_SIZE)
+				if (jsk->etp_tx_complete_size >
+				    J1939_MAX_TP_PACKET_SIZE)
 					extd = J1939_EXTENDED;
 
 				session = j1939_session_get_by_skcb(priv, skcb,
-								    extd, false);
+								    extd,
+								    false);
 				if (IS_ERR(session)) {
 					ret = PTR_ERR(session);
 					goto kfree_skb;
@@ -773,8 +779,9 @@ static int j1939_sk_send_multi(struct j1939_priv *priv,  struct sock *sk,
 
 				j1939_session_skb_queue(session, skb);
 			} else {
-				/* create new session with etp_tx_complete_size and attach
-				 * skb segment
+				/* create new session with
+				 * etp_tx_complete_size and attach skb
+				 * segment
 				 */
 				session = j1939_tp_send(priv, skb,
 							jsk->etp_tx_complete_size);
@@ -794,7 +801,9 @@ static int j1939_sk_send_multi(struct j1939_priv *priv,  struct sock *sk,
 	switch (ret) {
 	case 0: /* OK */
 		if (todo_size)
-			netdev_warn(priv->ndev, "no error found and not completely queued?! %zu\n", todo_size);
+			netdev_warn(priv->ndev,
+				    "no error found and not completely queued?! %zu\n",
+				    todo_size);
 		ret = size;
 		jsk->etp_tx_done_size = 0;
 		break;
@@ -822,7 +831,7 @@ static int j1939_sk_send_multi(struct j1939_priv *priv,  struct sock *sk,
 }
 
 static int j1939_sk_send_one(struct j1939_priv *priv,  struct sock *sk,
-			       struct msghdr *msg, size_t size)
+			     struct msghdr *msg, size_t size)
 
 {
 	struct sk_buff *skb;
@@ -913,7 +922,6 @@ void j1939_sk_netdev_event(struct net_device *ndev, int error_code)
 
 	spin_lock_bh(&priv->j1939_socks_lock);
 	list_for_each_entry(jsk, &priv->j1939_socks, list) {
-
 		jsk->sk.sk_err = error_code;
 		if (!sock_flag(&jsk->sk, SOCK_DEAD))
 			jsk->sk.sk_error_report(&jsk->sk);

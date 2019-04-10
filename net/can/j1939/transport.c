@@ -28,88 +28,91 @@
 enum j1939_xtp_abort {
 	J1939_XTP_NO_ABORT = 0,
 	J1939_XTP_ABORT_BUSY = 1,
-	/*		Already in one or more connection managed sessions and
-	 *		cannot support another.
+	/* Already in one or more connection managed sessions and
+	 * cannot support another.
 	 *
-	 * EALREADY:	Operation already in progress
+	 * EALREADY:
+	 * Operation already in progress
 	 */
 	J1939_XTP_ABORT_RESOURCE = 2,
-	/*		System resources were needed for another task so this
-	 *		connection managed session was terminated.
+	/* System resources were needed for another task so this
+	 * connection managed session was terminated.
 	 *
-	 * EMSGSIZE:	The socket type requires that message be sent
-	 *		atomically, and the size of the message to be sent made
-	 *		this impossible.
+	 * EMSGSIZE:
+	 * The socket type requires that message be sent atomically,
+	 * and the size of the message to be sent made this
+	 * impossible.
 	 */
 
 	J1939_XTP_ABORT_TIMEOUT = 3,
-	/*		A timeout occurred and this is the connection abort to close
-	 *		the session.
+	/* A timeout occurred and this is the connection abort to
+	 * close the session.
 	 *
-	 * EHOSTUNREACH: The destination host cannot be reached (probably
-	 *		because the host is down or a remote router cannot reach it).
+	 * EHOSTUNREACH:
+	 * The destination host cannot be reached (probably because
+	 * the host is down or a remote router cannot reach it).
 	 */
 
 	J1939_XTP_ABORT_GENERIC = 4,
-	/*		CTS messages received when data transfer is in progress
+	/* CTS messages received when data transfer is in progress
 	 *
-	 * EBADMSG:	Not a data message
+	 * EBADMSG:
+	 * Not a data message
 	 */
 
 	J1939_XTP_ABORT_FAULT = 5,
-	/*		Maximal retransmit request limit reached
+	/* Maximal retransmit request limit reached
 	 *
-	 * ENOTRECOVERABLE: State not recoverable
+	 * ENOTRECOVERABLE:
+	 * State not recoverable
 	 */
 
 	J1939_XTP_ABORT_UNEXPECTED_DATA = 6,
-	/*		Unexpected data transfer packet
+	/* Unexpected data transfer packet
 	 *
-	 * ENOTCONN:	Transport endpoint is not connected
+	 * ENOTCONN:
+	 * Transport endpoint is not connected
 	 */
 
 	J1939_XTP_ABORT_BAD_SEQ = 7,
-	/*		Bad sequence number (and software is not able to recover)
+	/* Bad sequence number (and software is not able to recover)
 	 *
-	 * EILSEQ:	Illegal byte sequence
+	 * EILSEQ:
+	 * Illegal byte sequence
 	 */
 
 	J1939_XTP_ABORT_DUP_SEQ = 8,
-	 /*		Duplicate sequence number (and software is not able to recover)
-	  */
+	/* Duplicate sequence number (and software is not able to
+	 * recover)
+	 */
 
 	J1939_XTP_ABORT_EDPO_UNEXPECTED = 9,
-	 /*		Unexpected EDPO packet (ETP) or Message size > 1785 bytes (TP)
-	  */
+	/* Unexpected EDPO packet (ETP) or Message size > 1785 bytes
+	 * (TP)
+	 */
 
 	J1939_XTP_ABORT_BAD_EDPO_PGN = 10,
-	 /*		Unexpected EDPO PGN (PGN in EDPO is bad)
-	  */
+	/* Unexpected EDPO PGN (PGN in EDPO is bad) */
 
 	J1939_XTP_ABORT_EDPO_OUTOF_CTS = 11,
-	 /*		EDPO number of packets is greater than CTS
-	  */
+	/* EDPO number of packets is greater than CTS */
 
 	J1939_XTP_ABORT_BAD_EDPO_OFFSET = 12,
-	 /*		Bad EDPO offset
-	  */
+	/* Bad EDPO offset */
 
 	J1939_XTP_ABORT_OTHER_DEPRECATED = 13,
-	 /*		Deprecated. Use 250 instead (Any other reason)
-	  */
+	/* Deprecated. Use 250 instead (Any other reason)  */
 
 	J1939_XTP_ABORT_ECTS_UNXPECTED_PGN = 14,
-	 /*		Unexpected ECTS PGN (PGN in ECTS is bad)
-	  */
+	/* Unexpected ECTS PGN (PGN in ECTS is bad) */
 
 	J1939_XTP_ABORT_ECTS_TOO_BIG = 15,
-	 /*		ECTS requested packets exceeds message size
-	  */
+	/* ECTS requested packets exceeds message size */
 
 	J1939_XTP_ABORT_OTHER = 250,
-	 /*		Any other reason (if a Connection Abort reason is
-	  *		identified that is not listed in the table use code 250)
-	  */
+	/* Any other reason (if a Connection Abort reason is
+	 * identified that is not listed in the table use code 250)
+	 */
 };
 
 static unsigned int j1939_tp_block = 255;
@@ -337,7 +340,6 @@ static void j1939_session_skb_drop_old(struct j1939_session *session)
 	spin_unlock_irqrestore(&session->skb_queue.lock, flags);
 }
 
-
 void j1939_session_skb_queue(struct j1939_session *session,
 			     struct sk_buff *skb)
 {
@@ -368,11 +370,10 @@ static struct sk_buff *j1939_session_skb_find(struct j1939_session *session)
 
 	spin_lock_irqsave(&session->skb_queue.lock, flags);
 	skb_queue_walk(&session->skb_queue, do_skb) {
-
 		do_skcb = j1939_skb_to_cb(do_skb);
 
-		if (offset_start >= do_skcb->offset
-		    && offset_start < (do_skcb->offset + do_skb->len)) {
+		if (offset_start >= do_skcb->offset &&
+		    offset_start < (do_skcb->offset + do_skb->len)) {
 			skb = do_skb;
 			skcb = do_skcb;
 		}
@@ -490,9 +491,9 @@ static bool j1939_session_match(struct j1939_session *session,
 
 static struct
 j1939_session *j1939_session_get_by_skcb_locked(struct j1939_priv *priv,
-					       struct list_head *root,
-					       struct j1939_sk_buff_cb *skcb,
-					       bool reverse)
+						struct list_head *root,
+						struct j1939_sk_buff_cb *skcb,
+						bool reverse)
 {
 	struct j1939_session *session;
 
@@ -576,7 +577,8 @@ static int j1939_tp_tx_dat(struct j1939_session *session,
 	struct j1939_priv *priv = session->priv;
 	struct sk_buff *skb;
 
-	skb = j1939_tp_tx_dat_new(priv, &session->skcb, session->extd, false, false);
+	skb = j1939_tp_tx_dat_new(priv, &session->skcb, session->extd,
+				  false, false);
 	if (IS_ERR(skb))
 		return PTR_ERR(skb);
 
@@ -903,7 +905,8 @@ static void j1939_xtp_rx_bad_message_one(struct j1939_priv *priv,
 	pgn = j1939_xtp_ctl_to_pgn(skb->data);
 	session = j1939_session_get_by_skcb(priv, skcb, extd, reverse);
 	if (!session) {
-		j1939_xtp_tx_abort(priv, skcb, extd, false, J1939_XTP_ABORT_FAULT, pgn);
+		j1939_xtp_tx_abort(priv, skcb, extd, false,
+				   J1939_XTP_ABORT_FAULT, pgn);
 		return;
 	}
 
@@ -959,8 +962,8 @@ static void j1939_xtp_rx_abort_one(struct j1939_priv *priv, struct sk_buff *skb,
 }
 
 /* abort packets may come in 2 directions */
-static void j1939_xtp_rx_abort(struct j1939_priv *priv, struct sk_buff *skb,
-			       bool extd)
+static void
+j1939_xtp_rx_abort(struct j1939_priv *priv, struct sk_buff *skb, bool extd)
 {
 	u8 abort = skb->data[1];
 
@@ -971,8 +974,8 @@ static void j1939_xtp_rx_abort(struct j1939_priv *priv, struct sk_buff *skb,
 	j1939_xtp_rx_abort_one(priv, skb, extd, true);
 }
 
-static void j1939_xtp_rx_eoma(struct j1939_session *session, struct sk_buff *skb,
-			      bool extd)
+static void
+j1939_xtp_rx_eoma(struct j1939_session *session, struct sk_buff *skb, bool extd)
 {
 	struct j1939_priv *priv = session->priv;
 	pgn_t pgn;
@@ -993,8 +996,8 @@ static void j1939_xtp_rx_eoma(struct j1939_session *session, struct sk_buff *skb
 	}
 }
 
-static void j1939_xtp_rx_cts(struct j1939_session *session, struct sk_buff *skb,
-			     bool extd)
+static void
+j1939_xtp_rx_cts(struct j1939_session *session, struct sk_buff *skb, bool extd)
 {
 	struct j1939_priv *priv = session->priv;
 	pgn_t pgn;
@@ -1088,10 +1091,11 @@ static struct j1939_session *j1939_session_new(struct j1939_priv *priv,
 	return session;
 }
 
-static struct j1939_session *j1939_session_fresh_new(struct j1939_priv *priv,
-						     int size,
-						     const struct j1939_sk_buff_cb *rel_skcb,
-						     pgn_t pgn)
+static struct
+j1939_session *j1939_session_fresh_new(struct j1939_priv *priv,
+				       int size,
+				       const struct j1939_sk_buff_cb *rel_skcb,
+				       pgn_t pgn)
 {
 	struct sk_buff *skb;
 	struct j1939_sk_buff_cb *skcb;
@@ -1128,7 +1132,7 @@ static int j1939_session_insert(struct j1939_session *session)
 	int ret = 0;
 
 	pending = j1939_session_get_by_skcb(priv, &session->skcb, session->extd,
-					   false);
+					    false);
 	if (pending) {
 		j1939_session_put(pending);
 		ret = -EAGAIN;
@@ -1141,8 +1145,9 @@ static int j1939_session_insert(struct j1939_session *session)
 	return ret;
 }
 
-static struct j1939_session *j1939_xtp_rx_rts_new(struct j1939_priv *priv,
-						  struct sk_buff *skb, bool extd)
+static struct
+j1939_session *j1939_xtp_rx_rts_new(struct j1939_priv *priv,
+				    struct sk_buff *skb, bool extd)
 {
 	enum j1939_xtp_abort abort = J1939_XTP_NO_ABORT;
 	struct j1939_sk_buff_cb *skcb = j1939_skb_to_cb(skb);
@@ -1211,7 +1216,7 @@ static struct j1939_session *j1939_xtp_rx_rts_new(struct j1939_priv *priv,
 }
 
 static int j1939_xtp_rx_rts_current(struct j1939_session *session,
-				struct sk_buff *skb, bool extd)
+				    struct sk_buff *skb, bool extd)
 {
 	struct j1939_sk_buff_cb *skcb = j1939_skb_to_cb(skb);
 	struct j1939_priv *priv = session->priv;
@@ -1457,7 +1462,8 @@ struct j1939_session *j1939_tp_send(struct j1939_priv *priv,
 		ret = j1939_session_insert(session);
 	else
 		ret = wait_event_interruptible(priv->tp_wait,
-					       j1939_session_insert(session) == 0);
+					       j1939_session_insert(session) ==
+					       0);
 	if (ret < 0)
 		goto failed;
 
@@ -1512,7 +1518,7 @@ static void j1939_tp_cmd_recv(struct j1939_priv *priv, struct sk_buff *skb,
 
 		j1939_tp_set_rxtimeout(session, 1250);
 
-		if ((cmd != J1939_TP_CMD_BAM) &&
+		if (cmd != J1939_TP_CMD_BAM &&
 		    j1939_tp_im_receiver(&session->skcb))
 			j1939_tp_schedule_txtimer(session, 0);
 
@@ -1536,9 +1542,11 @@ static void j1939_tp_cmd_recv(struct j1939_priv *priv, struct sk_buff *skb,
 		if (!extd_pgn)
 			goto rx_bad_message;
 
-		session = j1939_session_get_by_skcb(priv, skcb, J1939_EXTENDED, false);
+		session = j1939_session_get_by_skcb(priv, skcb,
+						    J1939_EXTENDED, false);
 		if (!session) {
-			netdev_info(priv->ndev, "%s: no connection found\n", __func__);
+			netdev_info(priv->ndev,
+				    "%s: no connection found\n", __func__);
 			break;
 		}
 		j1939_xtp_rx_dpo(session, skb);
