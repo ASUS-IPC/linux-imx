@@ -1000,6 +1000,7 @@ static void
 j1939_xtp_rx_cts(struct j1939_session *session, struct sk_buff *skb, bool extd)
 {
 	struct j1939_priv *priv = session->priv;
+	enum j1939_xtp_abort err = J1939_XTP_ABORT_FAULT;
 	pgn_t pgn;
 	unsigned int pkt;
 	const u8 *dat;
@@ -1018,6 +1019,11 @@ j1939_xtp_rx_cts(struct j1939_session *session, struct sk_buff *skb, bool extd)
 	}
 
 	j1939_session_lock(session);
+	if (session->last_cmd == dat[0]) {
+		err = J1939_XTP_ABORT_DUP_SEQ;
+		goto out_session_unlock;
+	}
+
 	if (extd)
 		pkt = j1939_etp_ctl_to_packet(dat);
 	else
@@ -1053,7 +1059,7 @@ j1939_xtp_rx_cts(struct j1939_session *session, struct sk_buff *skb, bool extd)
  out_session_unlock:
 	j1939_session_unlock(session);
 	j1939_session_timers_cancel(session);
-	j1939_session_cancel(session, J1939_XTP_ABORT_FAULT);
+	j1939_session_cancel(session, err);
  out_session_put:
 	j1939_session_put(session);
 }
