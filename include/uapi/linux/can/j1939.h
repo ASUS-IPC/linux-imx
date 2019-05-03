@@ -66,12 +66,24 @@ enum {
 	SO_J1939_PROMISC = 2,	/* set/clr promiscuous mode */
 	SO_J1939_RECV_OWN = 3,
 	SO_J1939_SEND_PRIO = 4,
+	SO_J1939_ERRQUEUE = 5,
 };
 
 enum {
 	SCM_J1939_DEST_ADDR = 1,
 	SCM_J1939_DEST_NAME = 2,
 	SCM_J1939_PRIO = 3,
+	SCM_J1939_ERRQUEUE = 4,
+};
+
+enum {
+	J1939_NLA_PAD,
+	J1939_NLA_BYTES_ACKED,
+};
+
+enum {
+	J1939_EE_INFO_NONE,
+	J1939_EE_INFO_TX_ABORT,
 };
 
 struct j1939_filter {

@@ -10,6 +10,14 @@
 
 /* TODO: return ENETRESET on busoff. */
 
+struct j1939_session;
+
+enum j1939_sk_errqueue_type {
+	J1939_ERRQUEUE_ACK,
+	J1939_ERRQUEUE_SCHED,
+	J1939_ERRQUEUE_ABORT,
+};
+
 /* j1939 devices */
 struct j1939_ecu {
 	struct list_head list;
@@ -152,6 +160,8 @@ int j1939_send_one(struct j1939_priv *priv, struct sk_buff *skb);
 void j1939_sk_recv(struct j1939_priv *priv, struct sk_buff *skb);
 void j1939_sk_send_multi_abort(struct j1939_priv *priv, struct sock *sk,
 			       int err);
+void j1939_sk_errqueue(struct j1939_session *session,
+		       enum j1939_sk_errqueue_type type);
 
 /* stack entries */
 struct j1939_session *j1939_tp_send(struct j1939_priv *priv,
@@ -208,6 +218,7 @@ struct j1939_session {
 	bool extd;
 	unsigned int total_message_size; /* Total message size, number of bytes */
 	int err;
+	u32 tskey;
 
 	/* Packets counters for a (extended) transfer session. The packet is
 	 * maximal of 7 bytes. */

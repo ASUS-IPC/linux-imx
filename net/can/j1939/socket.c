@@ -9,6 +9,7 @@
 
 #include <linux/can/core.h>
 #include <linux/can/skb.h>
+#include <linux/errqueue.h>
 #include <linux/if_arp.h>
 
 #include "j1939-priv.h"
@@ -23,6 +24,7 @@ struct j1939_sock {
 #define J1939_SOCK_CONNECTED BIT(1)
 #define J1939_SOCK_PROMISC BIT(2)
 #define J1939_SOCK_RECV_OWN BIT(3)
+#define J1939_SOCK_ERRQUEUE BIT(4)
 	int state;
 
 	int ifindex;
@@ -488,7 +490,7 @@ static int j1939_sk_setsockopt(struct socket *sock, int level, int optname,
 {
 	struct sock *sk = sock->sk;
 	struct j1939_sock *jsk = j1939_sk(sk);
-	int tmp, count = 0;
+	int tmp, count = 0, ret = 0;
 	struct j1939_filter *filters = NULL, *ofilters;
 
 	if (level != SOL_CAN_J1939)
@@ -532,6 +534,15 @@ static int j1939_sk_setsockopt(struct socket *sock, int level, int optname,
 	case SO_J1939_RECV_OWN:
 		return j1939_sk_setsockopt_flag(jsk, optval, optlen,
 						J1939_SOCK_RECV_OWN);
+	case SO_J1939_ERRQUEUE:
+		ret = j1939_sk_setsockopt_flag(jsk, optval, optlen,
+					       J1939_SOCK_ERRQUEUE);
+		if (ret < 0)
+			return ret;
+
+		if (!(jsk->state & J1939_SOCK_ERRQUEUE))
+			skb_queue_purge(&sk->sk_error_queue);
+		return ret;
 	case SO_J1939_SEND_PRIO:
 		if (optlen != sizeof(tmp))
 			return -EINVAL;
@@ -576,6 +587,9 @@ static int j1939_sk_getsockopt(struct socket *sock, int level, int optname,
 	case SO_J1939_RECV_OWN:
 		tmp = (jsk->state & J1939_SOCK_RECV_OWN) ? 1 : 0;
 		break;
+	case SO_J1939_ERRQUEUE:
+		tmp = (jsk->state & J1939_SOCK_ERRQUEUE) ? 1 : 0;
+		break;
 	case SO_J1939_SEND_PRIO:
 		tmp = j1939_prio(jsk->sk.sk_priority);
 		break;
@@ -608,6 +622,10 @@ static int j1939_sk_recvmsg(struct socket *sock, struct msghdr *msg,
 	struct sk_buff *skb;
 	struct j1939_sk_buff_cb *skcb;
 	int ret = 0;
+
+	if (flags & MSG_ERRQUEUE)
+		return sock_recv_errqueue(sock->sk, msg, size, SOL_CAN_J1939,
+					  SCM_J1939_ERRQUEUE);
 
 	skb = skb_recv_datagram(sk, flags, 0, &ret);
 	if (!skb)
@@ -713,6 +731,86 @@ failure:
 	*errcode = ret;
 	return NULL;
 }
+
+static size_t j1939_sk_opt_stats_get_size(void)
+{
+	return
+		nla_total_size(sizeof(u32)) + /* J1939_NLA_BYTES_ACKED */
+		0;
+}
+
+struct sk_buff *j1939_sk_get_timestamping_opt_stats(struct j1939_session *session)
+{
+	struct sk_buff *stats;
+
+	stats = alloc_skb(j1939_sk_opt_stats_get_size(), GFP_ATOMIC);
+	if (!stats)
+		return NULL;
+
+	nla_put_u32(stats, J1939_NLA_BYTES_ACKED,
+		    min(session->pkt.done * 7, session->total_message_size));
+
+	return stats;
+}
+
+void j1939_sk_errqueue(struct j1939_session *session,
+		       enum j1939_sk_errqueue_type type)
+{
+	struct j1939_priv *priv = session->priv;
+	struct sock *sk = session->sk;
+	struct j1939_sock *jsk;
+	struct sock_exterr_skb *serr;
+	struct sk_buff *skb;
+	int err;
+
+	/* currently we have no sk for the RX session */
+	if (!sk)
+		return;
+
+	jsk = j1939_sk(sk);
+
+	if (!(jsk->state & J1939_SOCK_ERRQUEUE))
+		return;
+
+	skb = j1939_sk_get_timestamping_opt_stats(session);
+	if (!skb)
+		return;
+
+	skb->tstamp = ktime_get_real();
+
+	BUILD_BUG_ON(sizeof(struct sock_exterr_skb) > sizeof(skb->cb));
+
+	serr = SKB_EXT_ERR(skb);
+	memset(serr, 0, sizeof(*serr));
+	switch (type) {
+	case J1939_ERRQUEUE_ACK:
+		serr->ee.ee_errno = ENOMSG;
+		serr->ee.ee_origin = SO_EE_ORIGIN_TIMESTAMPING;
+		serr->ee.ee_info = SCM_TSTAMP_ACK;
+		break;
+	case J1939_ERRQUEUE_SCHED:
+		serr->ee.ee_errno = ENOMSG;
+		serr->ee.ee_origin = SO_EE_ORIGIN_TIMESTAMPING;
+		serr->ee.ee_info = SCM_TSTAMP_SCHED;
+		break;
+	case J1939_ERRQUEUE_ABORT:
+		serr->ee.ee_errno = session->err;
+		serr->ee.ee_origin = SO_EE_ORIGIN_LOCAL;
+		serr->ee.ee_info = J1939_EE_INFO_TX_ABORT;
+		break;
+	default:
+		netdev_err(priv->ndev, "Unknown errqueue type %i\n", type);
+	}
+
+	serr->opt_stats = true;
+	if (sk->sk_tsflags & SOF_TIMESTAMPING_OPT_ID)
+		serr->ee.ee_data = session->tskey;
+
+	err = sock_queue_err_skb(sk, skb);
+
+	if (err)
+		kfree_skb(skb);
+};
 
 void j1939_sk_send_multi_abort(struct j1939_priv *priv, struct sock *sk,
 			       int err)

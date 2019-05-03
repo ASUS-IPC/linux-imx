@@ -261,6 +261,11 @@ static void __j1939_session_drop(struct j1939_session *session)
 
 static void j1939_session_destroy(struct j1939_session *session)
 {
+
+	if (session->err)
+		j1939_sk_errqueue(session, J1939_ERRQUEUE_ABORT);
+	else
+		j1939_sk_errqueue(session, J1939_ERRQUEUE_ACK);
 	j1939_session_list_lock(session->priv);
 	j1939_session_list_del(session);
 	j1939_session_list_unlock(session->priv);
@@ -835,6 +840,7 @@ static int j1939_tp_txnext(struct j1939_session *session)
 			j1939_tp_set_rxtimeout(session, 250);
 		if (ret)
 			goto failed;
+		j1939_sk_errqueue(session, J1939_ERRQUEUE_SCHED);
 		break;
 	}
 
@@ -1483,6 +1489,7 @@ struct j1939_session *j1939_tp_send(struct j1939_priv *priv,
 		goto failed;
 
 	/* transmission started */
+	session->tskey = session->sk->sk_tskey++;
 	return session;
 
  failed:
