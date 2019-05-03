@@ -874,6 +874,7 @@ static void j1939_session_cancel(struct j1939_session *session,
 
 	WARN_ON_ONCE(!err);
 
+	session->err = j1939_xtp_abort_to_errno(priv, err);
 	/* do not send aborts on incoming broadcasts */
 	if (!j1939_cb_is_broadcast(&session->skcb))
 		j1939_xtp_tx_abort(priv, &session->skcb, session->extd,
@@ -881,8 +882,7 @@ static void j1939_session_cancel(struct j1939_session *session,
 				   err, session->skcb.addr.pgn);
 
 	if (session->sk)
-		j1939_sk_send_multi_abort(priv, session->sk,
-					  j1939_xtp_abort_to_errno(priv, err));
+		j1939_sk_send_multi_abort(priv, session->sk, session->err);
 }
 
 static enum hrtimer_restart j1939_tp_rxtimer(struct hrtimer *hrtimer)
@@ -957,9 +957,10 @@ static void j1939_xtp_rx_abort_one(struct j1939_priv *priv, struct sk_buff *skb,
 		u8 abort = skb->data[1];
 
 		j1939_session_timers_cancel(session);
+		session->err = j1939_xtp_abort_to_errno(priv, abort);
 		if (session->sk)
 			j1939_sk_send_multi_abort(priv, session->sk,
-						  j1939_xtp_abort_to_errno(priv, abort));
+						  session->err);
 	}
 
 	/* TODO: maybe cancel current connection

@@ -207,6 +207,7 @@ struct j1939_session {
 	bool transmission;
 	bool extd;
 	unsigned int total_message_size; /* Total message size, number of bytes */
+	int err;
 
 	/* Packets counters for a (extended) transfer session. The packet is
 	 * maximal of 7 bytes. */
