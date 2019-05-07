@@ -805,6 +805,7 @@ static int j1939_tp_txnext(struct j1939_session *session)
 			pkt_end = session->pkt.last;
 
 		while (session->pkt.tx < pkt_end) {
+			struct j1939_priv *priv = session->priv;
 			dat[0] = session->pkt.tx - session->pkt.dpo + 1;
 			offset = (session->pkt.tx * 7) - skcb->offset;
 			len =  se_skb->len - offset;
@@ -812,8 +813,14 @@ static int j1939_tp_txnext(struct j1939_session *session)
 				len = 7;
 			memcpy(&dat[1], &tpdat[offset], len);
 			ret = j1939_tp_tx_dat(session, dat, len + 1);
-			if (ret < 0)
+			if (ret < 0) {
+				/* ENOBUS == CAN interface TX queue is full */
+				if (ret != -ENOBUFS)
+					netdev_alert(priv->ndev,
+						     "%s: queue data error: %i\n",
+						     __func__, ret);
 				break;
+			}
 			session->last_txcmd = 0xff;
 			++pkt_done;
 			++session->pkt.tx;
