@@ -742,7 +742,7 @@ static size_t j1939_sk_opt_stats_get_size(void)
 		0;
 }
 
-struct sk_buff *j1939_sk_get_timestamping_opt_stats(struct j1939_session *session)
+static struct sk_buff *j1939_sk_get_timestamping_opt_stats(struct j1939_session *session)
 {
 	struct sk_buff *stats;
 
