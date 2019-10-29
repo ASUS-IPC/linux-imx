@@ -208,7 +208,7 @@ static int bd71837_i2c_probe(struct i2c_client *i2c,
 	int ret = 0;
 
 	pmic_plat_data = dev_get_platdata(&i2c->dev);
-
+	printk("bd71837_i2c_probe\n");
 	if (!pmic_plat_data && i2c->dev.of_node) {
 		pmic_plat_data = bd71837_parse_dt(i2c, &chip_id);
 		of_pmic_plat_data = pmic_plat_data;
