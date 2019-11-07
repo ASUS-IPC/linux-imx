@@ -13,7 +13,7 @@
  */
 
 #include "fsl-imx8mq-evk.dts"
-
+/*
 &ov5640_mipi {
 	status = "disabled";
 };
@@ -36,3 +36,4 @@
 &mipi_csi_2 {
 	status = "okay";
 };
+*/

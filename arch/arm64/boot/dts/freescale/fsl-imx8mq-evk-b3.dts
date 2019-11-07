@@ -13,13 +13,15 @@
  */
 
 #include "fsl-imx8mq-evk.dts"
-
+/*
 /delete-node/ &ov5640_mipi;
 /delete-node/ &ov5640_mipi2;
+*/
 /delete-node/ &synaptics_dsx_ts;
 /delete-node/ &adv_bridge;
 
 &i2c1 {
+/*
 	ov5640_mipi: ov5640_mipi@1c {
 		compatible = "ovti,ov5640_mipi";
 		reg = <0x1c>;
@@ -63,7 +65,7 @@
 			};
 		};
 	};
-
+*/
 	synaptics_dsx_ts: synaptics_dsx_ts@20 {
 		compatible = "synaptics_dsx";
 		reg = <0x20>;
@@ -93,7 +95,8 @@
 		};
 	};
 };
-
+/*
 &i2c2 {
 	status = "disabled";
 };
+*/
