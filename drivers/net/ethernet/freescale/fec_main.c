@@ -1783,6 +1783,31 @@ static void fec_get_mac(struct net_device *ndev)
 }
 
 /* ------------------------------------------------------------------------- */
+/*
+ * Set PHY LED configuration
+ */
+void set_led_configuration(struct phy_device *phy_dev) {
+
+        // To switch Page0xd04
+        phy_write(phy_dev, 31, 0x0d04);
+
+        //Disable EEELCR mode
+        phy_write(phy_dev, 17, 0x0000);
+
+        printk("%s: #### before setting led, Reg16 = 0x%x\n", __func__, phy_read(phy_dev, 16));
+
+        phy_write(phy_dev, 16, 0x091b);
+
+        printk("%s: #### after setting led, Reg16 = 0x%x\n", __func__, phy_read(phy_dev, 16));
+
+        //LED freq
+        phy_write(phy_dev, 18, 0x03e2);
+
+        printk("%s: #### after setting led(12.5,60ms), Reg18 = 0x%x\n", __func__, phy_read(phy_dev, 18));
+
+        //switch to Page0
+        phy_write(phy_dev, 31, 0x0000);
+}
 
 /*
  * Phy section
@@ -2018,6 +2043,7 @@ static int fec_enet_mii_probe(struct net_device *ndev)
 			netdev_err(ndev, "Unable to connect to phy\n");
 			return -ENODEV;
 		}
+		set_led_configuration(ndev->phydev);
 	} else {
 		/* check for attached phy */
 		for (phy_id = 0; (phy_id < PHY_MAX_ADDR); phy_id++) {
