@@ -983,7 +983,7 @@
 		1000000 900000
 		800000  900000
 	>;
-	dc-supply = <&reg_gpio_dvfs>;
+	dc-supply = <&buck2_reg>;
 };
 
 &dcss {
