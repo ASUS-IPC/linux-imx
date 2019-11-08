@@ -135,6 +135,16 @@
 		audio-codec = <&ak4497>;
 		status = "disabled";
 	};
+
+	gpio-leds {
+		compatible = "gpio-leds";
+
+		pwr-led {
+			gpios = <&gpio1 13 GPIO_ACTIVE_LOW>;
+			linux,default-trigger = "default-on";
+			retain-state-suspended = <1>;
+		};
+	};
 };
 
 &clk {
