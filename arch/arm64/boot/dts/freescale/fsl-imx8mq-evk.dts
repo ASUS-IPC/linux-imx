@@ -26,6 +26,16 @@
 		stdout-path = &uart1;
 	};
 
+	clocks {
+		clk_8m: clock@11 {
+			compatible = "fixed-clock";
+			reg = <11>;
+			#clock-cells = <0>;
+			clock-frequency = <8000000>;
+			clock-output-names = "8m";
+		};
+	};
+
 	regulators {
 		compatible = "simple-bus";
 		#address-cells = <1>;
@@ -488,12 +498,34 @@
 				MX8MQ_IOMUXC_ECSPI1_SCLK_ECSPI1_SCLK		0x82
 				MX8MQ_IOMUXC_ECSPI1_MOSI_ECSPI1_MOSI		0x82
 				MX8MQ_IOMUXC_ECSPI1_MISO_ECSPI1_MISO		0x82
-				MX8MQ_IOMUXC_GPIO1_IO05_GPIO1_IO5		0x82
+				MX8MQ_IOMUXC_GPIO1_IO05_GPIO1_IO5		0x19
 			>;
 		};
+
 		pinctrl_ecspi1_cs: ecspi1_cs_grp {
 			fsl,pins = <
-				MX8MQ_IOMUXC_ECSPI1_SS0_ECSPI1_SS0		0x40000
+				MX8MQ_IOMUXC_ECSPI1_SS0_GPIO5_IO9		0x19
+			>;
+		};
+
+		pinctrl_ecspi2: ecspi2grp {
+			fsl,pins = <
+				MX8MQ_IOMUXC_ECSPI2_SCLK_ECSPI2_SCLK		0x82
+				MX8MQ_IOMUXC_ECSPI2_MOSI_ECSPI2_MOSI		0x82
+				MX8MQ_IOMUXC_ECSPI2_MISO_ECSPI2_MISO		0x82
+				MX8MQ_IOMUXC_GPIO1_IO03_GPIO1_IO3		0x19
+			>;
+		};
+
+		pinctrl_ecspi2_cs: ecspi2_cs_grp {
+			fsl,pins = <
+				MX8MQ_IOMUXC_ECSPI2_SS0_GPIO5_IO13		0x19
+			>;
+		};
+
+		pinctrl_can_standby: can_standby {
+			fsl,pins = <
+				MX8MQ_IOMUXC_SAI1_MCLK_GPIO4_IO20		0x19
 			>;
 		};
 	};
@@ -1080,3 +1112,23 @@
 		status = "okay";
 	};
 };
+
+&ecspi2 {
+	fsl,spi-num-chipselects = <1>;
+	pinctrl-names = "default";
+	cs-gpios = <&gpio5 13 GPIO_ACTIVE_HIGH>;
+	pinctrl-0 = <&pinctrl_ecspi2>,<&pinctrl_ecspi2_cs>,<&pinctrl_can_standby>;
+	status = "okay";
+
+	can0: mcp2515@0 {
+		compatible = "microchip,mcp2515";
+		standby-gpios = <&gpio4 20 GPIO_ACTIVE_LOW>;
+		reg = <0>;
+		spi-max-frequency = <500000>;
+		clocks = <&clk_8m>;
+		interrupt-parent = <&gpio1>;
+		interrupts = <3 0x2>;
+		status = "okay";
+	};
+};
+
