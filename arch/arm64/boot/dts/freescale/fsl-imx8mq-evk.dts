@@ -174,19 +174,14 @@
 
 		pinctrl_csi1_pwn: csi1_pwn_grp {
 			fsl,pins = <
-				MX8MQ_IOMUXC_GPIO1_IO03_GPIO1_IO3		0x19
+				MX8MQ_IOMUXC_SAI1_RXC_GPIO4_IO1         0x19 /* PWDN */
+				MX8MQ_IOMUXC_GPIO1_IO14_GPIO1_IO14      0x19 /* RESETB */
 			>;
 		};
 		pinctrl_csi2_pwn: csi2_pwn_grp {
 			fsl,pins = <
-				MX8MQ_IOMUXC_GPIO1_IO05_GPIO1_IO5		0x19
-			>;
-		};
-
-		pinctrl_csi_rst: csi_rst_grp {
-			fsl,pins = <
-				MX8MQ_IOMUXC_GPIO1_IO06_GPIO1_IO6		0x19
-				MX8MQ_IOMUXC_GPIO1_IO15_CCMSRCGPCMIX_CLKO2	0x59
+				MX8MQ_IOMUXC_SAI1_RXFS_GPIO4_IO0        0x19 /* PWDN */
+				MX8MQ_IOMUXC_GPIO1_IO15_GPIO1_IO15      0x19 /* RESETB */
 			>;
 		};
 
@@ -679,7 +674,7 @@
 		clocks = <&clk IMX8MQ_CLK_CLKO2>;
 		clock-names = "csi_mclk";
 		csi_id = <0>;
-		pwn-gpios = <&gpio1 3 1>;
+		pwn-gpios = <&gpio4 1 1>;
 		rst-gpios = <&gpio1 14 0>;
 		mclk = <20000000>;
 		mclk_source = <0>;
@@ -716,7 +711,7 @@
 		clocks = <&clk IMX8MQ_CLK_CLKO2>;
 		clock-names = "csi_mclk";
 		csi_id = <1>;
-		pwn-gpios = <&gpio1 5 1>;
+		pwn-gpios = <&gpio4 0 1>;
 		rst-gpios = <&gpio1 15 0>;
 		mclk = <20000000>;
 		mclk_source = <0>;
