@@ -114,6 +114,16 @@
 			retain-state-suspended = <1>;
 		};
 	};
+
+	hwid: gpio-hwid {
+		compatible = "gpio-hwid";
+		id0-gpios = <&gpio3 19 GPIO_ACTIVE_HIGH>;
+		id1-gpios = <&gpio3 20 GPIO_ACTIVE_HIGH>;
+		id2-gpios = <&gpio3 25 GPIO_ACTIVE_HIGH>;
+		sku0-gpios = <&gpio4 29 GPIO_ACTIVE_HIGH>;
+		sku1-gpios = <&gpio4 30 GPIO_ACTIVE_HIGH>;
+		sku2-gpios = <&gpio4 31 GPIO_ACTIVE_HIGH>;
+	};
 };
 
 &clk {
