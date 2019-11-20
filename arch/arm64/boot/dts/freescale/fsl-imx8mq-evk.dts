@@ -462,6 +462,20 @@
 				MX8MQ_IOMUXC_ECSPI1_MOSI_GPIO5_IO7              0x19
 			>;
 		};
+
+		pinctrl_ecspi1: ecspi1grp {
+			fsl,pins = <
+				MX8MQ_IOMUXC_ECSPI1_SCLK_ECSPI1_SCLK		0x82
+				MX8MQ_IOMUXC_ECSPI1_MOSI_ECSPI1_MOSI		0x82
+				MX8MQ_IOMUXC_ECSPI1_MISO_ECSPI1_MISO		0x82
+				MX8MQ_IOMUXC_GPIO1_IO05_GPIO1_IO5		0x82
+			>;
+		};
+		pinctrl_ecspi1_cs: ecspi1_cs_grp {
+			fsl,pins = <
+				MX8MQ_IOMUXC_ECSPI1_SS0_ECSPI1_SS0		0x40000
+			>;
+		};
 	};
 };
 
@@ -1024,5 +1038,22 @@
 		mipi_dsi_bridge_adv: endpoint {
 			remote-endpoint = <&adv7535_in>;
 		};
+	};
+};
+
+&ecspi1 {
+	fsl,spi-num-chipselects = <1>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_ecspi1 &pinctrl_ecspi1_cs>;
+	cs-gpios = <&gpio5 9 GPIO_ACTIVE_HIGH>;
+	status = "okay";
+
+	tpi@0 {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		compatible = "tcg,tpm_tis-spi";
+		spi-max-frequency = <20000000>;
+		reg = <0>;
+		status = "okay";
 	};
 };
