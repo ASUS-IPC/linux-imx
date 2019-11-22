@@ -194,6 +194,13 @@
 			>;
 		};
 
+		pinctrl_i2c4: i2c4grp {
+			fsl,pins = <
+				MX8MQ_IOMUXC_I2C4_SCL_I2C4_SCL                  0x40000067
+				MX8MQ_IOMUXC_I2C4_SDA_I2C4_SDA                  0x40000067
+			>;
+		};
+
 		pinctrl_pcie0: pcie0grp {
 			fsl,pins = <
 				MX8MQ_IOMUXC_I2C4_SCL_PCIE1_CLKREQ_B	0x76 /* open drain, pull up */
@@ -759,6 +766,13 @@
 			};
 		};
 	};
+};
+
+&i2c4 {
+	clock-frequency = <100000>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_i2c4>;
+	status = "okay";
 };
 
 &pcie0{
