@@ -42,6 +42,16 @@
 		};
 	};
 
+	gpio-keys {
+		compatible = "gpio-keys";
+		wakeup {
+			label = "wakeup gpio";
+			gpio = <&gpio1 12 GPIO_ACTIVE_HIGH>;
+			linux,code = <116>;
+			gpio-key,wakeup;
+		};
+	};
+
 	ir_recv: ir-receiver {
 		compatible = "gpio-ir-receiver";
 		gpios = <&gpio1 12 GPIO_ACTIVE_LOW>;
