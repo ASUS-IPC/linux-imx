@@ -505,6 +505,7 @@
 	phy-mode = "rgmii-id";
 	phy-handle = <&ethphy0>;
 	fsl,magic-packet;
+	wakeup-enable = "1";
 	status = "okay";
 
 	mdio {
