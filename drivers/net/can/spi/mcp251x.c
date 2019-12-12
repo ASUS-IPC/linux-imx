@@ -415,7 +415,6 @@ static int spi_cmd_changed_handler(const char *kmessage, struct kernel_param *kp
 	int ret, i=0;
 	int spi_cmd[5];
 	char spi_char[10];
-	int qq=0;
 
 	struct mcp251x_priv *priv = spi_get_drvdata(glbal_spi);
 	u8 val = 0;
@@ -691,6 +690,7 @@ static int mcp251x_hw_reset(struct spi_device *spi)
 	struct mcp251x_priv *priv = spi_get_drvdata(spi);
 	u8 reg;
 	int ret;
+	unsigned long timeout;
 
 	/* Wait for oscillator startup timer after power up */
 	mdelay(MCP251X_OST_DELAY_MS);
@@ -702,11 +702,23 @@ static int mcp251x_hw_reset(struct spi_device *spi)
 
 	/* Wait for oscillator startup timer after reset */
 	mdelay(MCP251X_OST_DELAY_MS);
-	
-	reg = mcp251x_read_reg(spi, CANSTAT);
-	if ((reg & CANCTRL_REQOP_MASK) != CANCTRL_REQOP_CONF)
-		return -ENODEV;
 
+	/* Wait for reset to finish */
+	timeout = jiffies + HZ;
+	reg = mcp251x_read_reg(spi, CANSTAT);
+	dev_info(&spi->dev, "CANSTAT = 0x%02x\n", reg);
+	while ((reg & CANCTRL_REQOP_MASK) != CANCTRL_REQOP_CONF) {
+		usleep_range(MCP251X_OST_DELAY_MS * 1000,
+			     MCP251X_OST_DELAY_MS * 1000 * 2);
+		dev_info(&spi->dev, "CANSTAT = 0x%02x\n", reg);
+		if (time_after(jiffies, timeout)) {
+			dev_err(&spi->dev,
+				"MCP251x didn't enter in conf mode after reset\n");
+			return -EBUSY;
+		}
+		reg = mcp251x_read_reg(spi, CANSTAT);
+	}
+	dev_info(&spi->dev, "mcp251x hw reset successful\n");
 	return 0;
 }
 
@@ -722,7 +734,7 @@ static int mcp251x_hw_probe(struct spi_device *spi)
 
 	ctrl = mcp251x_read_reg(spi, CANCTRL);
 
-	dev_info&spi->dev, "CANCTRL 0x%02x\n", ctrl);
+	dev_info(&spi->dev, "CANCTRL 0x%02x\n", ctrl);
 
 	glbal_spi = spi;
 
