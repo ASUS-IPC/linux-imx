@@ -84,6 +84,7 @@ struct imx_mipi_dsi {
 	bool				no_clk_reset;
 	bool				enabled;
 	bool				suspended;
+	bool				best_match;
 };
 
 struct clk_config {
@@ -774,6 +775,7 @@ static int imx_nwl_dsi_parse_of(struct device *dev, bool as_bridge)
 
 	of_property_read_u32(np, "sync-pol", &dsi->sync_pol);
 	of_property_read_u32(np, "pwr-delay", &dsi->power_on_delay);
+	dsi->best_match = of_property_read_bool,(np, "best-match");
 
 	/* Look for optional regmaps */
 	dsi->csr = syscon_regmap_lookup_by_phandle(np, "csr");
@@ -893,6 +895,8 @@ static const struct component_ops imx_nwl_dsi_component_ops = {
 	.unbind	= imx_nwl_dsi_unbind,
 };
 
+extern int tinker_mcu_is_connected(void);
+extern int tinker_mcu_ili9881c_is_connected(void);
 static int imx_nwl_dsi_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -901,6 +905,11 @@ static int imx_nwl_dsi_probe(struct platform_device *pdev)
 	int remote_ports = 0;
 	struct imx_mipi_dsi *dsi;
 	int ret = 0;
+
+	if(!tinker_mcu_is_connected() && !tinker_mcu_ili9881c_is_connected())  {
+		printk("tc358762 panel and ili9881c is not connected, dsi probe stop\n");
+		return -ENODEV;
+	}
 
 	if (!np)
 		return -ENODEV;

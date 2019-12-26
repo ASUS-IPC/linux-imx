@@ -1183,13 +1183,16 @@ void drm_mode_prune_invalid(struct drm_device *dev,
 			    struct list_head *mode_list, bool verbose)
 {
 	struct drm_display_mode *mode, *t;
-
+        verbose=true;
 	list_for_each_entry_safe(mode, t, mode_list, head) {
 		if (mode->status != MODE_OK) {
 			list_del(&mode->head);
 			if (verbose) {
 				drm_mode_debug_printmodeline(mode);
 				DRM_DEBUG_KMS("Not using %s mode: %s\n",
+					      mode->name,
+					      drm_get_mode_status_name(mode->status));
+                                  printk("Not using %s mode: %s\n",
 					      mode->name,
 					      drm_get_mode_status_name(mode->status));
 			}

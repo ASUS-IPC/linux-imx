@@ -471,6 +471,7 @@ void lcdif_set_mode(struct lcdif_soc *lcdif, struct videomode *vmode)
 
 	/* set pixel clock rate */
 	clk_disable_unprepare(lcdif->clk_pix);
+	printk("singhome lcdif_set_mode vmode->pixelclock=%lu\n", vmode->pixelclock);
 	clk_set_rate(lcdif->clk_pix, vmode->pixelclock);
 	clk_prepare_enable(lcdif->clk_pix);
 
