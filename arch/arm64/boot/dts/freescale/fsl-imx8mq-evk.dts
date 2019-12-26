@@ -697,6 +697,17 @@
 	pinctrl-0 = <&pinctrl_i2c2>;
 	status = "okay";
 
+	tinker_mcu: tinker_mcu@45 {
+		compatible = "tinker_mcu";
+		reg = <0x45>;
+	};
+	
+	tinker_mcu2: tinker_mcu2@36 {
+				status = "okay";
+				compatible = "tinker_mcu_ili9881c";
+				reg = <0x36>;
+	};
+
 	ov5645_mipi: ov5645_mipi@3c {
 		compatible = "ovti,ov5645_mipi";
 		reg = <0x3c>;
