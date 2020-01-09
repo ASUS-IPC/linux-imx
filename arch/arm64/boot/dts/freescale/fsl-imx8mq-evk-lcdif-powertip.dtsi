@@ -54,6 +54,7 @@
 	as_bridge;
 	sync-pol = <1>;
 	pwr-delay = <10>;
+	no_clk_reset;
 
 
 	port@1 {
@@ -66,6 +67,7 @@
 &mipi_dsi_bridge {
 	status = "okay";
 	clock-drop-level = <0>;
+	no_clk_reset;
 
 	panel@0 {
 		compatible = "asus,ili9881c";

@@ -57,6 +57,7 @@
 
 &mipi_dsi {
 	status = "okay";
+	no_clk_reset;
 
 	port@1 {
 		mipi_dsi_in: endpoint  {
@@ -69,6 +70,7 @@
 &mipi_dsi_bridge {
 	status = "okay";
 	clock-drop-level = <0>;
+	no_clk_reset;
 
 	panel@0 {
 		compatible = "asus,ili9881c";
