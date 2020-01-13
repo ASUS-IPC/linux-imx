@@ -514,6 +514,8 @@ static void imx_nwl_dsi_enable(struct imx_mipi_dsi *dsi)
 	dsi->enabled = true;
 }
 
+extern int tinker_mcu_is_connected(void);
+extern int tinker_mcu_ili9881c_is_connected(void);
 static void imx_nwl_dsi_disable(struct imx_mipi_dsi *dsi)
 {
 	struct device *dev = dsi->dev;
@@ -526,7 +528,7 @@ static void imx_nwl_dsi_disable(struct imx_mipi_dsi *dsi)
 
 	DRM_DEV_DEBUG_DRIVER(dev, "id = %s\n", (dsi->instance)?"DSI1":"DSI0");
 
-	if (!dsi->no_clk_reset)
+	if (tinker_mcu_is_connected() || !dsi->no_clk_reset)
 		devtype->poweroff(dsi);
 
 	imx_nwl_dsi_set_clocks(dsi, false);
@@ -775,7 +777,11 @@ static int imx_nwl_dsi_parse_of(struct device *dev, bool as_bridge)
 
 	of_property_read_u32(np, "sync-pol", &dsi->sync_pol);
 	of_property_read_u32(np, "pwr-delay", &dsi->power_on_delay);
-	dsi->best_match = of_property_read_bool,(np, "best-match");
+
+	if (tinker_mcu_is_connected())
+		dsi->best_match = true;
+	else
+		dsi->best_match = of_property_read_bool(np, "best-match");
 
 	/* Look for optional regmaps */
 	dsi->csr = syscon_regmap_lookup_by_phandle(np, "csr");
@@ -895,8 +901,6 @@ static const struct component_ops imx_nwl_dsi_component_ops = {
 	.unbind	= imx_nwl_dsi_unbind,
 };
 
-extern int tinker_mcu_is_connected(void);
-extern int tinker_mcu_ili9881c_is_connected(void);
 static int imx_nwl_dsi_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;

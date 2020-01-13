@@ -208,7 +208,7 @@ static const struct display_timing tc358762_default_timing = {
 		DISPLAY_FLAGS_PIXDATA_NEGEDGE,
 };
 
-static int tc358762_dsi_probe(struct mipi_dsi_device *dsi)
+int tc358762_dsi_probe(struct mipi_dsi_device *dsi)
 {
 	struct device *dev = &dsi->dev;
 	struct device_node *np = dev->of_node;
@@ -227,18 +227,14 @@ static int tc358762_dsi_probe(struct mipi_dsi_device *dsi)
 	dsi->format = MIPI_DSI_FMT_RGB888;
 	dsi->mode_flags = MIPI_DSI_MODE_VIDEO|  MIPI_DSI_MODE_VIDEO_SYNC_PULSE  | MIPI_DSI_MODE_LPM;
 
-	ret = of_property_read_u32(np, "dsi-lanes", &dsi->lanes);
-	if (ret < 0) {
-		dev_err(dev, "Failed to get dsi-lanes property (%d)\n", ret);
-		return ret;
-	}
+	dsi->lanes = 1;
 
 	ret = of_get_videomode(np, &panel->vm, 0);
 	if (ret < 0)
 		videomode_from_timing(&tc358762_default_timing, &panel->vm);
 
-	of_property_read_u32(np, "panel-width-mm", &panel->width_mm);
-	of_property_read_u32(np, "panel-height-mm", &panel->height_mm);
+	panel->width_mm = 68;
+	panel->height_mm = 121;
 
 	drm_panel_init(&panel->base);
 	panel->base.funcs = &tc358762_funcs;
@@ -256,7 +252,7 @@ static int tc358762_dsi_probe(struct mipi_dsi_device *dsi)
 	return ret;
 }
 
-static int tc358762_dsi_remove(struct mipi_dsi_device *dsi)
+int tc358762_dsi_remove(struct mipi_dsi_device *dsi)
 {
 	struct tc358762_panel *tc = mipi_dsi_get_drvdata(dsi);
 	struct device *dev = &dsi->dev;
@@ -279,7 +275,7 @@ static int tc358762_dsi_remove(struct mipi_dsi_device *dsi)
 	return 0;
 }
 
-static void tc358762_dsi_shutdown(struct mipi_dsi_device *dsi)
+void tc358762_dsi_shutdown(struct mipi_dsi_device *dsi)
 {
 	struct tc358762_panel *tc = mipi_dsi_get_drvdata(dsi);
 

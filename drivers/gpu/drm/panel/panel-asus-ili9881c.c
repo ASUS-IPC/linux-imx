@@ -472,7 +472,7 @@ static const struct drm_panel_funcs ili9881c_funcs = {
 	.get_modes	= ili9881c_get_modes,
 };
 
-static int ili9881c_dsi_probe(struct mipi_dsi_device *dsi)
+int ili9881c_dsi_probe(struct mipi_dsi_device *dsi)
 {
 	struct device *dev = &dsi->dev;
 	struct device_node *np = dev->of_node;
@@ -523,11 +523,12 @@ static int ili9881c_dsi_probe(struct mipi_dsi_device *dsi)
 	dsi->mode_flags = MIPI_DSI_MODE_VIDEO_BURST| MIPI_DSI_MODE_VIDEO_SYNC_PULSE;
 	dsi->format = MIPI_DSI_FMT_RGB888;
 	dsi->lanes = 2;
+
 	printk("ili9881c_dsi_probe-\n");
 	return mipi_dsi_attach(dsi);
 }
 
-static int ili9881c_dsi_remove(struct mipi_dsi_device *dsi)
+int ili9881c_dsi_remove(struct mipi_dsi_device *dsi)
 {
 	struct ili9881c *ctx = mipi_dsi_get_drvdata(dsi);
 

@@ -1368,6 +1368,8 @@ phy_err:
 	devm_free_irq(dev, dsi->irq, dsi);
 }
 
+extern int tinker_mcu_is_connected(void);
+extern int tinker_mcu_ili9881c_is_connected(void);
 static void nwl_dsi_bridge_disable(struct drm_bridge *bridge)
 {
 	struct nwl_mipi_dsi *dsi = bridge->driver_private;
@@ -1387,7 +1389,7 @@ static void nwl_dsi_bridge_disable(struct drm_bridge *bridge)
 	phy_power_off(dsi->phy);
 	phy_exit(dsi->phy);
 
-	if (!dsi->no_clk_reset)
+	if (tinker_mcu_is_connected() || !dsi->no_clk_reset)
 		nwl_dsi_disable_clocks(dsi, CLK_PHY_REF | CLK_TX_ESC);
 
 	devm_free_irq(dev, dsi->irq, dsi);
@@ -1407,8 +1409,6 @@ static const struct drm_bridge_funcs nwl_dsi_bridge_funcs = {
 	.detach = nwl_dsi_bridge_detach,
 };
 
-extern int tinker_mcu_is_connected(void);
-extern int tinker_mcu_ili9881c_is_connected(void);
 static int nwl_dsi_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -1492,7 +1492,10 @@ static int nwl_dsi_probe(struct platform_device *pdev)
 	dsi->no_clk_reset = of_property_read_bool(dev->of_node, "no_clk_reset");
 	of_property_read_u32(dev->of_node, "clock-drop-level",
 		&dsi->clk_drop_lvl);
-	dsi->best_match = of_property_read_bool(dev->of_node, "best-match");
+	if (tinker_mcu_is_connected())
+		dsi->best_match = true;
+	else
+		dsi->best_match = of_property_read_bool(dev->of_node, "best-match");
 
 	dsi->dev = dev;
 	platform_set_drvdata(pdev, dsi);

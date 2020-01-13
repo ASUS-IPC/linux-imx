@@ -70,11 +70,8 @@
 	no_clk_reset;
 
 	panel@0 {
-		compatible = "asus,ili9881c";
+		compatible = "asus-dsi-panel";
 		reg = <0>;
-		dsi-lanes = <2>;
-		panel-width-mm = <88>;
-		panel-height-mm = <153>;
 		port {
 			panel1_in: endpoint {
 				remote-endpoint = <&mipi_dsi_bridge_out>;
