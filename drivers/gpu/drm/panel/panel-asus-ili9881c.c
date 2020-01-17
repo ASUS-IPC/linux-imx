@@ -533,6 +533,8 @@ static int ili9881c_prepare(struct drm_panel *panel)
 
 int enable = 0;
 int powering_on = 0;
+extern void tinker_ft5406_start_polling(void);
+
 static int ili9881c_enable(struct drm_panel *panel)
 {
 	struct ili9881c *ctx = panel_to_ili9881c(panel);
@@ -619,6 +621,8 @@ static int ili9881c_enable(struct drm_panel *panel)
 		tinker_mcu_ili9881c_set_bright(0x1F);
 	}
 
+
+	tinker_ft5406_start_polling();
 
 	enable = 1;
 	printk("ili9881c_enable-\n");
