@@ -20,12 +20,17 @@
 #include <linux/slab.h>
 #include <linux/delay.h>
 #include <linux/i2c.h>
+#include <linux/backlight.h>
 #include "tinker_mcu.h"
+#include <linux/fb.h>
 
 #define BL_DEBUG 0
 static struct tinker_mcu_data *g_mcu_data;
 static int connected = 0;
 static int lcd_bright_level = 0;
+static struct backlight_device *bl = NULL;
+
+#define MAX_BRIGHENESS 		(255)
 
 static int is_hex(char num)
 {
@@ -161,7 +166,6 @@ int tinker_mcu_set_bright(int bright)
 	cmd[1] = bright;
 
 	ret = i2c_master_send(g_mcu_data->client, cmd, 2);
-
 	if (ret <= 0) {
 		LOG_ERR("send command failed, ret = %d\n", ret);
 		return ret != 0 ? ret : -ECOMM;
@@ -179,6 +183,46 @@ int tinker_mcu_get_brightness(void)
 }
 EXPORT_SYMBOL_GPL(tinker_mcu_get_brightness);
 
+static int tinker_mcu_bl_get_brightness(struct backlight_device *bd)
+{
+	return lcd_bright_level;
+}
+
+ int tinker_mcu_bl_update_status(struct backlight_device * bd)
+ {
+	int brightness = bd->props.brightness;
+
+	if (brightness > MAX_BRIGHENESS)
+		brightness = MAX_BRIGHENESS;
+
+	if (brightness <= 0)
+		brightness = 1;
+
+	if (bd->props.power != FB_BLANK_UNBLANK)
+		brightness = 0;
+
+	if (bd->props.state & BL_CORE_SUSPENDED)
+		brightness = 0;
+
+	LOG_INFO("tinker_mcu_bl_update_status  brightness=%d power=%d fb_blank=%d state =%d  bd->props.brightness=%d\n", brightness, bd->props.power, bd->props.fb_blank, bd->props.state , bd->props.brightness);
+	return tinker_mcu_set_bright(brightness);
+}
+
+static const struct backlight_ops tinker_mcu_bl_ops = {
+	.get_brightness	= tinker_mcu_bl_get_brightness,//actual_brightness_show
+	.update_status	= tinker_mcu_bl_update_status,
+	.options 			= BL_CORE_SUSPENDRESUME,
+};
+
+struct backlight_device * tinker_mcu_get_backlightdev(void)
+{
+	if (!connected) {
+		printk("tinker_mcu_get_backlightdev is not ready\n");
+		return NULL;
+	}
+	return bl;
+}
+
 static ssize_t tinker_mcu_bl_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	if(BL_DEBUG) LOG_INFO("tinker_mcu_bl_show, bright = 0x%x\n", lcd_bright_level);
@@ -192,7 +236,7 @@ static ssize_t tinker_mcu_bl_store(struct device *dev, struct device_attribute *
 
 	value = simple_strtoul(buf, NULL, 0);
 
-	if((value < 0) || (value > 255)) {
+	if((value < 0) || (value > MAX_BRIGHENESS)) {
 		LOG_ERR("Invalid value for backlight setting, value = %d\n", value);
 	} else
 		tinker_mcu_set_bright(value);
@@ -212,6 +256,7 @@ static int tinker_mcu_probe(struct i2c_client *client,
 {
 	struct tinker_mcu_data *mcu_data;
 	int ret;
+	struct backlight_properties props;
 
 	LOG_INFO("address = 0x%x\n", client->addr);
 
@@ -228,7 +273,6 @@ static int tinker_mcu_probe(struct i2c_client *client,
 
 	mcu_data->client = client;
 	i2c_set_clientdata(client, mcu_data);
-
 	g_mcu_data = mcu_data;
 
 	ret = init_cmd_check(mcu_data);
@@ -236,10 +280,18 @@ static int tinker_mcu_probe(struct i2c_client *client,
 		LOG_ERR("init_cmd_check failed, %d\n", ret);
 		goto error;
 	}
-
-	printk("find panel mcu\n");
-
 	connected = 1;
+
+	memset(&props, 0, sizeof(props));
+	props.type = BACKLIGHT_RAW;
+	props.max_brightness = MAX_BRIGHENESS;
+
+	bl = backlight_device_register("panel_backlight", NULL, NULL,
+					   &tinker_mcu_bl_ops, &props);
+	if (IS_ERR(bl)) {
+		pr_err("unable to register backlight device\n");
+	}
+	printk("find panel mcu\n");
 
 	ret = device_create_file(&client->dev, &dev_attr_tinker_mcu_bl);
 	if (ret != 0) {
@@ -258,7 +310,6 @@ static int tinker_mcu_remove(struct i2c_client *client)
 {
 	struct tinker_mcu_data *mcu_data = i2c_get_clientdata(client);
 	connected = 0;
-
 	kfree(mcu_data);
 	return 0;
 }

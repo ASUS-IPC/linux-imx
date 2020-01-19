@@ -7,9 +7,11 @@
 #include <video/mipi_display.h>
 #include <video/of_videomode.h>
 #include <video/videomode.h>
+#include <linux/backlight.h>
 #include <linux/bug.h>
 
 struct tc358762_panel {
+	struct backlight_device *backlight;
 	struct drm_panel base;
 	struct mipi_dsi_device *dsi;
 
@@ -88,13 +90,12 @@ static int tc358762_panel_unprepare(struct drm_panel *panel)
 	if (!tc->prepared)
 		return 0;
 
-	
-
 	tc->prepared = false;
 
 	return 0;
 }
 
+extern struct backlight_device * tinker_mcu_get_backlightdev(void);
 extern int tinker_mcu_set_bright(int bright);
 static int tc358762_enable(struct drm_panel *panel)
 {
@@ -123,7 +124,14 @@ static int tc358762_enable(struct drm_panel *panel)
 
 	printk("tc358762_enable, send dsi commend done\n");
 
-	tinker_mcu_set_bright(0xFF);
+	if (tc->backlight) {
+		tc->backlight->props.power = FB_BLANK_UNBLANK;
+		backlight_update_status(tc->backlight);
+	} else {
+		printk("panel enable: no backlight device\n");
+		tinker_mcu_set_bright(0xFF);
+	}
+
 	tc->enabled = true;
 
 	return 0;
@@ -137,9 +145,14 @@ static int tc358762_disable(struct drm_panel *panel)
 	if (!tc->enabled)
 		return 0;
 
-	//printk("tc358762_disable\n");
+	if (tc->backlight) {
+		tc->backlight->props.power = FB_BLANK_POWERDOWN;
+		backlight_update_status(tc->backlight);
+	} else {
+		printk("panel disable: no backlight device\n");
+		tinker_mcu_set_bright(0x00);
+	}
 
-	tinker_mcu_set_bright(0x00);
 
 	tc->enabled = false;
 
@@ -226,12 +239,20 @@ int tc358762_dsi_probe(struct mipi_dsi_device *dsi)
 
 	dsi->format = MIPI_DSI_FMT_RGB888;
 	dsi->mode_flags = MIPI_DSI_MODE_VIDEO|  MIPI_DSI_MODE_VIDEO_SYNC_PULSE  | MIPI_DSI_MODE_LPM;
-
 	dsi->lanes = 1;
 
 	ret = of_get_videomode(np, &panel->vm, 0);
 	if (ret < 0)
 		videomode_from_timing(&tc358762_default_timing, &panel->vm);
+
+	panel->backlight =  tinker_mcu_get_backlightdev();
+	if (!panel->backlight) {
+		printk("tc358762_mipi_probe get backlight fail\n");
+		//return -ENODEV;
+	} else {
+		panel->backlight->props.brightness = 255;
+		printk("tc358762_mipi_probe get backligh device successful\n");
+	}
 
 	panel->width_mm = 68;
 	panel->height_mm = 121;

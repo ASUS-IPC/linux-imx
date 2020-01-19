@@ -1150,7 +1150,7 @@
 
 &lcdif {
 	status = "okay";
-	max-res = <800>, <1280>;
+	max-res = <1280>, <1280>;
 
 	port@0 {
 		lcdif_mipi_dsi: endpoint {
