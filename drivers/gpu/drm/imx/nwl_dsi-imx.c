@@ -528,7 +528,7 @@ static void imx_nwl_dsi_disable(struct imx_mipi_dsi *dsi)
 
 	DRM_DEV_DEBUG_DRIVER(dev, "id = %s\n", (dsi->instance)?"DSI1":"DSI0");
 
-	if (tinker_mcu_is_connected() || !dsi->no_clk_reset)
+	if (!dsi->no_clk_reset)
 		devtype->poweroff(dsi);
 
 	imx_nwl_dsi_set_clocks(dsi, false);

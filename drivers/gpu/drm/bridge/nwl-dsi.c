@@ -1389,7 +1389,7 @@ static void nwl_dsi_bridge_disable(struct drm_bridge *bridge)
 	phy_power_off(dsi->phy);
 	phy_exit(dsi->phy);
 
-	if (tinker_mcu_is_connected() || !dsi->no_clk_reset)
+	if (!dsi->no_clk_reset)
 		nwl_dsi_disable_clocks(dsi, CLK_PHY_REF | CLK_TX_ESC);
 
 	devm_free_irq(dev, dsi->irq, dsi);
