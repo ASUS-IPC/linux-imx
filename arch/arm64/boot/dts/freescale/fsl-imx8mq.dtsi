@@ -720,6 +720,11 @@
 			linux,keycode = <KEY_POWER>;
 			wakeup-source;
 		};
+
+		snvs_poweroff: snvs-poweroff {
+			compatible = "fsl,sec-v4.0-poweroff";
+			regmap = <&snvs>;
+		};
 	};
 
 	clk: ccm@30380000 {
