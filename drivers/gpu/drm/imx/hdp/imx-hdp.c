@@ -794,7 +794,17 @@ static void imx_hdp_bridge_mode_set(struct drm_bridge *bridge,
 				    struct drm_display_mode *mode)
 {
 	struct imx_hdp *hdp = bridge->driver_private;
+	bool acer_t230h_monitor = false;
+	bool PHSYNC = !!(mode->flags & DRM_MODE_FLAG_PHSYNC);
+	bool NHSYNC = !!(mode->flags & DRM_MODE_FLAG_NHSYNC);
 
+	acer_t230h_monitor = detect_acer_t230h_monitor();
+	if(acer_t230h_monitor) {
+		if( (mode->crtc_hdisplay == 1920) && (mode->crtc_vdisplay == 1080)) {
+			DRM_INFO("Detect acer t230h 1920x1080 timing set NHSYNC to PHSYNC\n");
+			if(NHSYNC) mode->flags |= DRM_MODE_FLAG_PHSYNC;
+		}
+	}
 	mutex_lock(&hdp->mutex);
 
 	hdp->dual_mode = imx_hdp_is_dual_mode(mode);
