@@ -741,7 +741,7 @@ static void imx_hdp_mode_setup(struct imx_hdp *hdp,
 			       struct drm_display_mode *mode)
 {
 	int ret;
-
+	bool interlaced = !!(mode->flags & DRM_MODE_FLAG_INTERLACE);
 	/* set pixel clock before video mode setup */
 	imx_hdp_call(hdp, pixel_clock_disable, &hdp->clks);
 
@@ -760,6 +760,7 @@ static void imx_hdp_mode_setup(struct imx_hdp *hdp,
 	}
 
 	/* mode set */
+	DRM_INFO("Update mode to %dx%d%s%d\n",mode->crtc_hdisplay, mode->crtc_vdisplay, interlaced ? "i" : "p",mode->vrefresh);
 	ret = imx_hdp_call(hdp, phy_init, &hdp->state, mode, hdp->format,
 			   hdp->bpc);
 	if (ret < 0) {

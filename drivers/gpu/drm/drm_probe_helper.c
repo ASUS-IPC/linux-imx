@@ -553,8 +553,10 @@ prune:
 	DRM_DEBUG_KMS("[CONNECTOR:%d:%s] probed modes :\n", connector->base.id,
 			connector->name);
 	if (!strcmp(connector->name, "HDMI-A-1")) {
-		edid_manufacturer = (struct edid *) connector->edid_blob_ptr->data;
-		drm_acer_t230h_monitor = drm_dect_acer_t230h_edid(edid_manufacturer);
+	    edid_manufacturer = (struct edid *) connector->edid_blob_ptr->data;
+	    if (!IS_ERR_OR_NULL(edid_manufacturer)) {
+			drm_acer_t230h_monitor = drm_dect_acer_t230h_edid(edid_manufacturer);
+	    }
 	}
 	list_for_each_entry(mode, &connector->modes, head) {
 		drm_mode_set_crtcinfo(mode, CRTC_INTERLACE_HALVE_V);
