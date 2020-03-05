@@ -1048,6 +1048,25 @@ static int imx_hdp_connector_atomic_check(struct drm_connector *conn,
 	return 0;
 }
 
+static bool imx_hdp_connector_check_edid(struct drm_connector *connector)
+{
+	struct imx_hdp *hdp = container_of(connector, struct imx_hdp,
+					   connector);
+	struct edid *edid;
+	if (!hdp->no_edid) {
+		edid = drm_do_get_edid(connector, hdp->ops->get_edid_block,
+				       &hdp->state);
+		if (edid) {
+			kfree(edid);
+			return true;
+		} else {
+			return false;
+		}
+	} else {
+		return false;
+	}
+}
+
 static const struct drm_connector_funcs imx_hdp_connector_funcs = {
 	.fill_modes = drm_helper_probe_single_connector_modes,
 	.detect = imx_hdp_connector_detect,
@@ -1064,7 +1083,7 @@ imx_hdp_connector_helper_funcs = {
 	.get_modes = imx_hdp_connector_get_modes,
 	.mode_valid = imx_hdp_connector_mode_valid,
 	.atomic_check = imx_hdp_connector_atomic_check,
-
+	.check_edid = imx_hdp_connector_check_edid,
 };
 
 static const struct drm_bridge_funcs imx_hdp_bridge_funcs = {
