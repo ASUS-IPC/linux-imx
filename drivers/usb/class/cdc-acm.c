@@ -517,6 +517,7 @@ static void acm_read_bulk_callback(struct urb *urb)
 		stopped = true;
 		break;
 	case -EOVERFLOW:
+	case -EPROTO:
 		dev_dbg(&acm->data->dev,
 			"%s - cooling babbling device\n", __func__);
 		usb_mark_last_busy(acm->dev);
