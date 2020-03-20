@@ -69,6 +69,7 @@ static bool customer_bdaddr = false;
 
 struct cfg_list_item {
 	struct list_head list;
+	u8 *cfg_data;
 	u16 offset;
 	u8 len;
 	u8 data[0];
@@ -304,7 +305,7 @@ static patch_info fw_patch_table[] = {
 	{0xc123, 0x8822, "mp_rtl8822cu_fw", "rtl8822cu_fw", "rtl8822cu_config", NULL, 0 }, /* RTL8822CE */
 	{0x4005, 0x8822, "mp_rtl8822cu_fw", "rtl8822cu_fw", "rtl8822cu_config", NULL, 0 }, /* RTL8822CE for WCBN810L-AD */
 	{0x3548, 0x8822, "mp_rtl8822cu_fw", "rtl8822cu_fw", "rtl8822cu_config", NULL, 0 }, /* RTL8822CE for AW-CB375NF */
-
+	{0x3549, 0x8822, "mp_rtl8822cu_fw", "rtl8822cu_fw", "rtl8822cu_config", NULL, 0 }, /* RTL8822CE for Azurewave */
 	{0x8771, 0x8761, "mp_rtl8761bu_fw", "rtl8761bu_fw", "rtl8761bu_config", NULL, 0}, /* RTL8761BU only */
 
 /* NOTE: must append patch entries above the null entry */
@@ -476,6 +477,7 @@ static void line_process(char *buf, int len)
 		return;
 	}
 
+	item->cfg_data = item->data;
 	item->offset = (u16)offset;
 	item->len = l;
 	for (i = 0; i < l; i++)
@@ -874,6 +876,7 @@ dev_data *dev_data_find(struct usb_interface * intf)
 			case 0xc123:
 			case 0x4005:
 			case 0x3548:
+			case 0x3549:
 				patch->chip_type = RTL8822CU;
 				break;
 			case 0x8771:
@@ -974,7 +977,12 @@ static void merge_configs(uint8_t *cfg_buf, u16 *plen, int max)
 			n = list_entry(iter2, struct cfg_list_item, list);
 			if (item->offset == n->offset) {
 				if (item->len == n->len) {
+					RTKBT_INFO("Update cfg: %04x, %u",
+						   n->offset, n->len);
 					memcpy(n->data, item->data, n->len);
+					if (n->cfg_data)
+						memcpy(n->cfg_data, item->data,
+						       n->len);
 					list_del(&item->list);
 					kfree(item);
 					break;
@@ -1078,6 +1086,7 @@ int rtk_parse_config_file(patch_info *pent, int max, u8 *config_buf,
 		/* Add config item to list */
 		item = kzalloc(sizeof(*item) + entry->entry_len, GFP_KERNEL);
 		if (item) {
+			item->cfg_data = entry->entry_data;
 			item->offset = le16_to_cpu(entry->offset);
 			item->len = entry->entry_len;
 			memcpy(item->data, entry->entry_data, item->len);
@@ -1120,6 +1129,7 @@ int rtk_parse_config_file(patch_info *pent, int max, u8 *config_buf,
 		/* Add address item to list */
 		item = kzalloc(sizeof(*item) + 6, GFP_KERNEL);
 		if (item) {
+			item->cfg_data = b + 3;
 			item->offset = ofs;
 			item->len = b[2];
 			memcpy(item->data, b + 3, 6);

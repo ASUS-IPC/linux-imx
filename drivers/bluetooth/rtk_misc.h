@@ -52,6 +52,8 @@
 #define USB_RPM			0
 #endif
 
+#define CONFIG_NEEDS_BINDING
+
 /* If module is still powered when kernel suspended, there is no re-binding. */
 #ifdef RTKBT_SWITCH_PATCH
 #undef CONFIG_NEEDS_BINDING
