@@ -110,8 +110,8 @@ dtb-$(CONFIG_ARCH_FSL_IMX8MQ) += fsl-imx8mq-ddr3l-arm2.dtb \
 				 fsl-imx8mq-evk-lcdif-rpi.dtb \
 				 fsl-imx8mq-evk-dcss-powertip.dtb \
 				 fsl-imx8mq-evk-dcss-rpi.dtb \
-				 fsl-imx8mq-evk-dual-powertip.dtb \
-				 fsl-imx8mq-evk-dual-rpi.dtb \
+				 fsl-imx8mq-evk-dual-display-powertip.dtb \
+				 fsl-imx8mq-evk-dual-display-rpi.dtb \
 				 fsl-imx8mq-ima.dtb \
 				 fsl-imx8mq-imb.dtb \
 				 fsl-imx8mq-pe100a.dtb \
