@@ -204,17 +204,21 @@ static void qoriq_tmu_init_device(struct qoriq_tmu_data *data)
 static int tmu_get_trend(void *p,
 	int trip, enum thermal_trend *trend)
 {
-	int trip_temp;
+	int trip_temp, trip_hyst;
 	struct qoriq_tmu_data *data = p;
 
 	if (!data->tz)
 		return 0;
 
-	trip_temp = (trip == TMU_TRIP_PASSIVE) ? data->temp_passive :
-					     data->temp_critical;
+	if (!data->tz->ops->get_trip_temp ||
+		!data->tz->ops->get_trip_hyst ||
+		data->tz->ops->get_trip_temp(data->tz, trip, &trip_temp) ||
+		data->tz->ops->get_trip_hyst(data->tz, trip, &trip_hyst)) {
+		*trend = THERMAL_TREND_RAISE_FULL;
+		return 0;
+	}
 
-	if (data->tz->temperature >=
-		(trip_temp - TMU_TEMP_PASSIVE_COOL_DELTA))
+	if (data->tz->temperature >= (trip_temp - trip_hyst))
 		*trend = THERMAL_TREND_RAISE_FULL;
 	else
 		*trend = THERMAL_TREND_DROP_FULL;
