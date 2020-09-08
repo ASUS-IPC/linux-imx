@@ -54,10 +54,10 @@ static int tc358762_dsi_init(struct mipi_dsi_device *dsi)
 	tc358762_gen_write_seq(dsi, 0x14, 0x01, 0x15, 0x00, 0x00, 0x00);//LPTXTIMCNT
 	tc358762_gen_write_seq(dsi, 0x50, 0x04, 0x60, 0x00, 0x00, 0x00);//SPICMR/SPICTRL
 	tc358762_gen_write_seq(dsi, 0x20, 0x04, 0x52, 0x01, 0x10, 0x00);//PORT/LCDCTRL
-	tc358762_gen_write_seq(dsi, 0x24, 0x04, 0x2, 0x00, 0x2c, 0x00);//HSR(2)[0:15]/HBPR(44)
+	tc358762_gen_write_seq(dsi, 0x24, 0x04, 0x14, 0x00, 0x1A, 0x00);//HSR(20)[0:15]/HBPR(26)
 	tc358762_gen_write_seq(dsi, 0x28, 0x04, 0x20, 0x03, 0x5F, 0x01);//HDISP(800)[0:15]/HFPR(351)
-	tc358762_gen_write_seq(dsi, 0x2c, 0x04, 0x03, 0x00, 0x14, 0x00);//VSR(3)[0:15]/VBFR(20)
-	tc358762_gen_write_seq(dsi, 0x30, 0x04, 0xe0, 0x01, 0x91, 0x00);//VDISP(480)[0:15]/VFPR(145)
+	tc358762_gen_write_seq(dsi, 0x2c, 0x04, 0x03, 0x00, 0x13, 0x00);//VSR(3)[0:15]/VBFR(19)
+	tc358762_gen_write_seq(dsi, 0x30, 0x04, 0xe0, 0x01, 0x7B, 0x00);//VDISP(480)[0:15]/VFPR(123)
 	tc358762_gen_write_seq(dsi, 0x34, 0x04, 0x01, 0x00, 0x00, 0x00);//VFUEN
 	tc358762_gen_write_seq(dsi, 0x64, 0x04, 0x0f, 0x04, 0x00, 0x00);//SYSCTRL
 	tc358762_gen_write_seq(dsi, 0x04, 0x01, 0x01, 0x00, 0x00, 0x00);//STARTPPI
@@ -68,7 +68,12 @@ static int tc358762_dsi_init(struct mipi_dsi_device *dsi)
 }
 
 int trigger_bridge = 1;
-extern void tinker_mcu_screen_power_up(void);
+extern struct backlight_device * tinker_mcu_get_backlightdev(void);
+extern int tinker_mcu_set_bright(int bright);
+extern int tinker_mcu_screen_power_up(void);
+extern int tinker_mcu_screen_power_off(void);
+extern void tinker_ft5406_start_polling(void);
+
 static int tc358762_prepare(struct drm_panel *panel)
 {
 	struct tc358762_panel *tc = to_tc358762_panel(panel);
@@ -95,9 +100,6 @@ static int tc358762_panel_unprepare(struct drm_panel *panel)
 	return 0;
 }
 
-extern struct backlight_device * tinker_mcu_get_backlightdev(void);
-extern int tinker_mcu_set_bright(int bright);
-extern void tinker_ft5406_start_polling(void);
 static int tc358762_enable(struct drm_panel *panel)
 {
 	struct tc358762_panel *tc = to_tc358762_panel(panel);
@@ -108,14 +110,16 @@ static int tc358762_enable(struct drm_panel *panel)
 	if (tc->enabled)
 		return 0;
 
-	printk("tc358762_prepare\n");
-
 	if(trigger_bridge) {
 		pr_info("tinker_mcu_screen_power_up");
 		tinker_mcu_screen_power_up();
+
+		/*Some particulare rpi panel need powering on/off during sususpned/resume to avoid
+		 the flicker about 7 seconds */
+                //trigger_bridge = 0;
+
 		msleep(100);
 		tinker_ft5406_start_polling();
-		trigger_bridge = 0;
 	}
 
 	msleep(20);
@@ -154,6 +158,7 @@ static int tc358762_disable(struct drm_panel *panel)
 		tinker_mcu_set_bright(0x00);
 	}
 
+	tinker_mcu_screen_power_off();
 
 	tc->enabled = false;
 
@@ -194,7 +199,7 @@ static int tc358762_get_modes(struct drm_panel *panel)
 		}
 
 	drm_mode_probed_add(panel->connector, mode);
- 	printk("tc358762_get_modes return\n");
+
 	return 1;
 }
 
@@ -207,15 +212,15 @@ static const struct drm_panel_funcs tc358762_funcs = {
 };
 
 static const struct display_timing tc358762_default_timing = {
-	.pixelclock = { 46600000, 46600000, 46600000 },
+	.pixelclock = { 45000000, 45000000, 45000000 },
 	.hactive = { 800, 800, 800 },
 	.hfront_porch = { 351, 351, 351 },
-	.hsync_len = { 2, 2, 2 },
-	.hback_porch = { 44, 44, 44 },
+	.hsync_len = { 20, 20, 20 },
+	.hback_porch = { 26, 26, 26 },
 	.vactive = { 480, 480, 480 },
-	.vfront_porch = { 145, 145, 145},
+	.vfront_porch = { 123, 123, 123},
 	.vsync_len = { 3, 3, 3 },
-	.vback_porch = { 20, 20, 20 },
+	.vback_porch = { 19, 19, 19 },
 	.flags = DISPLAY_FLAGS_HSYNC_LOW |
 		 DISPLAY_FLAGS_VSYNC_LOW |
 		 DISPLAY_FLAGS_DE_LOW |
@@ -239,7 +244,7 @@ int tc358762_dsi_probe(struct mipi_dsi_device *dsi)
 	panel->dsi = dsi;
 
 	dsi->format = MIPI_DSI_FMT_RGB888;
-	dsi->mode_flags = MIPI_DSI_MODE_VIDEO|  MIPI_DSI_MODE_VIDEO_SYNC_PULSE  | MIPI_DSI_MODE_LPM;
+	dsi->mode_flags = MIPI_DSI_MODE_VIDEO |MIPI_DSI_MODE_VIDEO_BURST| MIPI_DSI_MODE_LPM;
 	dsi->lanes = 1;
 
 	ret = of_get_videomode(np, &panel->vm, 0);
@@ -270,7 +275,8 @@ int tc358762_dsi_probe(struct mipi_dsi_device *dsi)
 	ret = mipi_dsi_attach(dsi);
 	if (ret < 0)
 		drm_panel_remove(&panel->base);
-	printk("tc358762_dsi_probe ret=%d\n", ret);
+	printk("tc358762_dsi_probe ret=%d dsi->mode_flags =%lx\n", ret, dsi->mode_flags );
+
 	return ret;
 }
 
@@ -283,6 +289,8 @@ int tc358762_dsi_remove(struct mipi_dsi_device *dsi)
 	ret = tc358762_disable(&tc->base);
 	if (ret < 0)
 		DRM_DEV_ERROR(dev, "Failed to disable panel (%d)\n", ret);
+
+	tinker_mcu_screen_power_off();
 
 	ret = mipi_dsi_detach(dsi);
 	if (ret < 0)

@@ -127,18 +127,32 @@ static int init_cmd_check(struct tinker_mcu_data *mcu_data)
 	LOG_INFO("recv_cmds: 0x%X\n", recv_buf[0]);
 	printk("****lcd size value is: 0x%X\n", recv_buf[0]);
 
-	if(recv_buf[0]==0x85)
+	if(recv_buf[0] == 0x86) //7-inch rev_b
 		lcd_size_flag = 0;
-	else if(recv_buf[0]==0x89)
+	else if(recv_buf[0] == 0x89) //5-inch
 		lcd_size_flag = 1;
-	else if(recv_buf[0]==0x8d)
+	else if(recv_buf[0] == 0x8d) //10-inch
 		lcd_size_flag = 2;
+	else if((recv_buf[0] & 0xF0) == 0x80) //assign to 7-inch rev_a
+		lcd_size_flag = 3;
 
 	return 0;
 
 error:
 	return ret;
 }
+
+int tinker_mcu_ili9881c_screen_power_off(void)
+{
+	if (!connected)
+		return -ENODEV;
+
+	send_cmds(g_mcu_ili9881c_data->client, "0500");
+	msleep(20);
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(tinker_mcu_ili9881c_screen_power_off);
 
 int tinker_mcu_ili9881c_screen_power_up(void)
 {
