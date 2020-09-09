@@ -71,6 +71,7 @@
 #include <soc/imx/cpuidle.h>
 
 #include "fec.h"
+#include "eth_mac.h"
 
 static void set_multicast_list(struct net_device *ndev);
 static void fec_enet_itr_coal_init(struct net_device *ndev);
@@ -1720,6 +1721,8 @@ static void fec_get_mac(struct net_device *ndev)
 	 *    fec.macaddr=0x00,0x04,0x9f,0x01,0x30,0xe0
 	 */
 	iap = macaddr;
+
+	eth_mac_eeprom(iap);
 
 	/*
 	 * 2) from device tree data

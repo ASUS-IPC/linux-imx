@@ -55,4 +55,6 @@ struct at24_platform_data {
 	void		*context;
 };
 
+extern void at24_read_eeprom(char *buf, unsigned int off, size_t count);
+
 #endif /* _LINUX_AT24_H */

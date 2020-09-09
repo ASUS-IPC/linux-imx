@@ -103,6 +103,8 @@ static unsigned write_timeout = 25;
 module_param(write_timeout, uint, 0);
 MODULE_PARM_DESC(write_timeout, "Time (in ms) to try writes (default 25)");
 
+static struct kobject *eeprom_kobj;
+
 #define AT24_SIZE_BYTELEN 5
 #define AT24_SIZE_FLAGS 8
 
@@ -534,6 +536,16 @@ static int at24_read(void *priv, unsigned int off, void *val, size_t count)
 	return 0;
 }
 
+void at24_read_eeprom(char *buf, unsigned int off, size_t count)
+{
+	struct at24_data *at24;
+
+	if (eeprom_kobj != NULL) {
+		at24 = dev_get_drvdata(container_of(eeprom_kobj, struct device, kobj));
+		at24_read(at24, off, buf, count);
+	}
+}
+
 static int at24_write(void *priv, unsigned int off, void *val, size_t count)
 {
 	struct at24_data *at24 = priv;
@@ -817,6 +829,8 @@ static int at24_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	/* export data to kernel code */
 	if (chip.setup)
 		chip.setup(at24->nvmem, chip.context);
+
+	eeprom_kobj = &client->dev.kobj;
 
 	return 0;
 
