@@ -1,0 +1,13 @@
+menu "SoC Audio for ASUS PV100A"
+
+config SND_ASUS_PV100A_CARD
+	tristate "ASUS PV100A sound card"
+	depends on OF && I2C
+	select SND_SOC_RT5616
+	select SND_SOC_IMX_PCM_DMA
+	select SND_SOC_FSL_SAI
+	select SND_SOC_FSL_UTILS
+	help
+	  Say Y if you want to add support for ASUS PV100A audio
+
+endmenu
