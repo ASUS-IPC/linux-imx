@@ -275,9 +275,6 @@
 			fsl,pins = <
 				MX8MQ_IOMUXC_UART2_RXD_UART2_DCE_RX		0x49
 				MX8MQ_IOMUXC_UART2_TXD_UART2_DCE_TX		0x49
-				MX8MQ_IOMUXC_UART4_RXD_UART2_DCE_CTS_B		0x49
-				//MX8MQ_IOMUXC_UART4_TXD_UART2_DCE_RTS_B		0x49
-				MX8MQ_IOMUXC_UART4_TXD_GPIO5_IO29               0x19
 			>;
 		};
 
@@ -288,6 +285,13 @@
 				MX8MQ_IOMUXC_ECSPI1_MISO_UART3_DCE_CTS_B	0x49
 				MX8MQ_IOMUXC_ECSPI1_SS0_UART3_DCE_RTS_B		0x49
 				MX8MQ_IOMUXC_NAND_CLE_GPIO3_IO5			0x19
+			>;
+		};
+
+		pinctrl_uart4: uart4grp {
+			fsl,pins = <
+				MX8MQ_IOMUXC_UART4_TXD_UART4_DCE_TX		    0x49
+				MX8MQ_IOMUXC_UART4_RXD_UART4_DCE_RX 		0x49
 			>;
 		};
 
@@ -858,7 +862,7 @@
 	pinctrl-0 = <&pinctrl_uart2>;
 	assigned-clocks = <&clk IMX8MQ_CLK_UART2>;
 	assigned-clock-parents = <&clk IMX8MQ_CLK_25M>;
-	fsl,uart-has-rtscts;
+	//fsl,uart-has-rtscts;
 	status = "okay";
 };
 
@@ -885,6 +889,15 @@
 	fsl,uart-has-rtscts;
 	resets = <&modem_reset>;
 	status = "disabled";
+};
+
+&uart4 { /* ublox */
+    pinctrl-names = "default";
+    pinctrl-0 = <&pinctrl_uart4>;
+    assigned-clocks = <&clk IMX8MQ_CLK_UART4>;
+    assigned-clock-parents = <&clk IMX8MQ_SYS1_PLL_80M>;
+	//fsl,uart-has-rtscts;
+    status = "okay";
 };
 
 &usdhc1 {
