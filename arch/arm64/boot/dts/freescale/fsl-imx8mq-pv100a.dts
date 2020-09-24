@@ -789,8 +789,8 @@
 	pinctrl-0 = <&pinctrl_i2c3>;
 	status = "okay";
 
-	ov5645_mipi2: ov5645b_mipi@3c {
-		compatible = "ovti,ov5645b_mipi";
+	ov5645_mipi2: ov5645_mipi@3c {
+		compatible = "ovti,ov5645_mipi";
 		reg = <0x3c>;
 		status = "okay";
 		pinctrl-names = "default";
