@@ -1093,6 +1093,9 @@ static int rt5616_set_dai_sysclk(struct snd_soc_dai *dai,
 
 	snd_soc_update_bits(codec, RT5616_GLB_CLK,
 			    RT5616_SCLK_SRC_MASK, reg_val);
+
+	snd_soc_write(codec, RT5616_PLL_CTRL1, 0x3705);
+
 	rt5616->sysclk = freq;
 	rt5616->sysclk_src = clk_id;
 

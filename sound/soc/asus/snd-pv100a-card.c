@@ -35,8 +35,6 @@
 #define RT5616_FORMATS (SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S20_3LE | \
 			SNDRV_PCM_FMTBIT_S24_LE | SNDRV_PCM_FMTBIT_S8)
 
-static unsigned long codec_clock = 2457600;
-
 static const struct snd_soc_dapm_widget pv100a_dapm_widgets[] = {
 	SND_SOC_DAPM_HP("Headphones", NULL),
 	SND_SOC_DAPM_SPK("Lineout", NULL),
@@ -66,47 +64,25 @@ static int pv100a_aif1_hw_params(struct snd_pcm_substream *substream,
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
 	struct snd_soc_dai *codec_dai = rtd->codec_dai;
-	int mclk, ret;
-
-	switch (params_rate(params)) {
-	case 8000:
-	case 16000:
-	case 24000:
-	case 32000:
-	case 48000:
-	case 64000:
-	case 96000:
-		mclk = 12288000;
-		break;
-	case 11025:
-	case 22050:
-	case 44100:
-	case 88200:
-		mclk = 11289600;
-		break;
-	default:
-		return -EINVAL;
-	}
+	int ret;
 
 	/* Configure codec DAI PLL, freq_in=24.576MHz */
-	ret = snd_soc_dai_set_pll(codec_dai, 0, RT5616_PLL1_S_MCLK, codec_clock, mclk);
+	ret = snd_soc_dai_set_pll(codec_dai, 0, RT5616_PLL1_S_BCLK1,
+			params_rate(params) * 32,
+			params_rate(params) * 256);
 	if (ret < 0) {
 		dev_err(rtd->dev, "Can't set codec PLL: %d\n", ret);
 		return ret;
 	}
 	/* Configure codec DAI system clock */
-	ret = snd_soc_dai_set_sysclk(codec_dai, RT5616_SCLK_S_PLL1, mclk, SND_SOC_CLOCK_IN);
+	ret = snd_soc_dai_set_sysclk(codec_dai, RT5616_SCLK_S_PLL1,  params_rate(params) * 512, SND_SOC_CLOCK_IN);
 	if (ret < 0) {
 		dev_err(rtd->dev, "Can't set codec_dai sysclk in %d\n", ret);
 		return ret;
 	}
-	ret = snd_soc_dai_set_sysclk(codec_dai, RT5616_SCLK_S_PLL1, mclk, SND_SOC_CLOCK_OUT);
-	if (ret < 0) {
-		dev_err(rtd->dev, "Can't set codec_dai sysclk out %d\n", ret);
-		return ret;
-	}
+
 	/* Configure cpu DAI system clock */
-	ret = snd_soc_dai_set_sysclk(cpu_dai, FSL_SAI_CLK_MAST1, mclk, SND_SOC_CLOCK_OUT);
+	ret = snd_soc_dai_set_sysclk(cpu_dai, FSL_SAI_CLK_MAST1,  params_rate(params) * 512, SND_SOC_CLOCK_OUT);
 	if (ret < 0) {
 		dev_err(rtd->dev, "Can't set cpu_dai sysclk %d\n", ret);
 		return ret;
@@ -192,15 +168,6 @@ static int snd_pv100a_mc_probe(struct platform_device *pdev)
 	if (!codec_dev) {
 		dev_err(dev, "Can't find codec device!\n");
 		return -EINVAL;
-	}
-	/* Lookup and obtain reference to codec clock, and then set codec clock source */
-	codec_clk = clk_get(&codec_dev->dev, NULL);
-	if (IS_ERR(codec_clk)) {
-		dev_warn(dev, "Can't obtain clock!\n");
-	} else {
-		codec_clock = clk_get_rate(codec_clk);
-		clk_put(codec_clk);
-		dev_info(dev, "Set codec clock source to %ld\n", codec_clock);
 	}
 
 	//platform_set_drvdata(pdev, card);
