@@ -365,6 +365,22 @@ static inline void ledtrig_flash_ctrl(bool on) {}
 static inline void ledtrig_torch_ctrl(bool on) {}
 #endif
 
+#if defined(CONFIG_LEDS_TRIGGER_PV100A)
+void ledtrig_wifi_led_r_ctrl(bool on);
+void ledtrig_wifi_led_g_ctrl(bool on);
+void ledtrig_lte_led_r_ctrl(bool on);
+void ledtrig_lte_led_g_ctrl(bool on);
+void ledtrig_gps_led_r_ctrl(bool on);
+void ledtrig_gps_led_g_ctrl(bool on);
+#else
+static inline void ledtrig_wifi_led_r_ctrl(bool on) {}
+static inline void ledtrig_wifi_led_g_ctrl(bool on) {}
+static inline void ledtrig_lte_led_r_ctrl(bool on) {}
+static inline void ledtrig_lte_led_g_ctrl(bool on) {}
+static inline void ledtrig_gps_led_r_ctrl(bool on) {}
+static inline void ledtrig_gps_led_g_ctrl(bool on) {}
+#endif
+
 /*
  * Generic LED platform data for describing LED names and default triggers.
  */

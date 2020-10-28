@@ -143,14 +143,45 @@
 		sku2-gpios = <&gpio4 31 GPIO_ACTIVE_HIGH>;
 	};
 
-        gpio-leds {
-                compatible = "gpio-leds";
+	gpio-leds {
+		compatible = "gpio-leds";
 
-                act-led {
-                        gpios = <&gpio3 6 GPIO_ACTIVE_LOW>;
-                        linux,default-trigger="mmc0";
-                };
-        };
+		act-led {
+			gpios = <&gpio3 6 GPIO_ACTIVE_LOW>;
+			linux,default-trigger="mmc0";
+		};
+
+		wifi-led-r {
+			gpios = <&gpio3 7 GPIO_ACTIVE_LOW>;
+			linux,default-trigger="wifi_led_r";
+		};
+
+		wifi-led-g {
+			gpios = <&gpio3 8 GPIO_ACTIVE_LOW>;
+			linux,default-trigger="wifi_led_g";
+		};
+
+		lte-led-r {
+			gpios = <&gpio3 9 GPIO_ACTIVE_LOW>;
+			linux,default-trigger="lte_led_r";
+		};
+
+		lte-led-g {
+			gpios = <&gpio3 10 GPIO_ACTIVE_LOW>;
+			linux,default-trigger="lte_led_g";
+		};
+
+		gps-led-r {
+			gpios = <&gpio3 11 GPIO_ACTIVE_LOW>;
+			linux,default-trigger="gps_led_r";
+		};
+
+		gps-led-g {
+			gpios = <&gpio3 12 GPIO_ACTIVE_LOW>;
+			linux,default-trigger="gps_led_g";
+		};
+
+	};
 
 };
 

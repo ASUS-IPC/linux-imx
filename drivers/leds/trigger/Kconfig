@@ -126,4 +126,11 @@ config LEDS_TRIGGER_PANIC
 	  a different trigger.
 	  If unsure, say Y.
 
+config LEDS_TRIGGER_PV100A
+        bool "PV100A LED Trigger"
+        depends on LEDS_TRIGGERS
+        help
+          This can controll the wifi, lte and gps LEDs for PV100A.
+          If unsure, say Y.
+
 endif # LEDS_TRIGGERS
