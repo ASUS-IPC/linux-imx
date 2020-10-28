@@ -153,4 +153,11 @@ config LEDS_TRIGGER_TTY
 
 	  When build as a module this driver will be called ledtrig-tty.
 
+config LEDS_TRIGGER_PV100A
+        bool "PV100A LED Trigger"
+        depends on LEDS_TRIGGERS
+        help
+          This can controll the wifi, lte and gps LEDs for PV100A.
+          If unsure, say Y.
+
 endif # LEDS_TRIGGERS

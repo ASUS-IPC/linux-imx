@@ -485,6 +485,21 @@ static inline void ledtrig_flash_ctrl(bool on) {}
 static inline void ledtrig_torch_ctrl(bool on) {}
 #endif
 
+#if defined(CONFIG_LEDS_TRIGGER_PV100A)
+#define LED_FUNC_WIFI 0
+#define LED_FUNC_LTE  1
+#define LED_FUNC_GPS  2
+#define LED_LIGHT_RED   0
+#define LED_LIGHT_GREEN 1
+void ledtrig_led_func_ctrl(int func, bool light, bool on);
+void ledtrig_led_func_blink(int func, bool light, unsigned long delay_on, unsigned long delay_off);
+void ledtrig_led_func_blink_oneshot(int func, bool light, unsigned long delay_on, unsigned long delay_off, int invert);
+#else
+static inline void ledtrig_led_func_ctrl(int func, bool light, bool on) {}
+static inline void ledtrig_led_func_blink(int func, bool light, unsigned long delay_on, unsigned long delay_off) {}
+static inline void ledtrig_led_func_blink_oneshot(int func, bool light, unsigned long delay_on, unsigned long delay_off, int invert) {}
+#endif
+
 /*
  * Generic LED platform data for describing LED names and default triggers.
  */
