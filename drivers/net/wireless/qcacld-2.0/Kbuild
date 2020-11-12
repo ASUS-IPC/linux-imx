@@ -192,13 +192,13 @@ CONFIG_WLAN_FEATURE_SAE := y
 # Feature flags which are not (currently) configurable via Kconfig
 
 #Whether to build debug version
-BUILD_DEBUG_VERSION := 1
+#BUILD_DEBUG_VERSION := 1
 
 #Enable this flag to build driver in diag version
-BUILD_DIAG_VERSION := 1
+#BUILD_DIAG_VERSION := 1
 
 #Do we panic on bug?  default is to warn
-PANIC_ON_BUG := 1
+#PANIC_ON_BUG := 1
 
 #Re-enable wifi on WDI timeout
 RE_ENABLE_WIFI_ON_WDI_TIMEOUT := 0
@@ -1057,7 +1057,6 @@ CDEFINES :=	-DANI_LITTLE_BYTE_ENDIAN \
 		-DWLAN_PERF \
 		-DPTT_SOCK_SVC_ENABLE \
 		-Wall\
-		-Werror\
 		-D__linux__ \
 		-DHAL_SELF_STA_PER_BSS=1 \
 		-DWLAN_FEATURE_VOWIFI_11R \
@@ -1097,7 +1096,9 @@ CDEFINES :=	-DANI_LITTLE_BYTE_ENDIAN \
 		-DHTC_CRP_DEBUG \
 		-DWLAN_VOWIFI_DEBUG \
 		-DATH_SUPPORT_DFS \
-		-DWMI_COEX_BTC_DUTYCYCLE
+		-DWMI_COEX_BTC_DUTYCYCLE \
+		-Wno-misleading-indentation
+#-Werror is omitted
 
 ifeq ($(CONFIG_WLAN_POWER_DEBUGFS), y)
 CDEFINES += -DWLAN_POWER_DEBUGFS
@@ -1829,7 +1830,7 @@ CDEFINES += -DFEATURE_DPTRACE_ENABLE
 endif
 
 ifeq ($(CONFIG_HIF_PCI), 1)
-CDEFINES += -DFORCE_LEGACY_PCI_INTERRUPTS
+#CDEFINES += -DFORCE_LEGACY_PCI_INTERRUPTS
 endif
 
 ifeq ($(CONFIG_SUPPORT_P2P_BY_ONE_INTF_WLAN), y)
