@@ -5,7 +5,7 @@
 #include <linux/of_gpio.h>
 #include <linux/proc_fs.h>
 
-static char *boardinfo;
+static const char *boardinfo;
 static int id0_gpio, id1_gpio;
 static int sku0_gpio, sku1_gpio, sku2_gpio;
 
@@ -108,7 +108,8 @@ static int gpio_hwid_probe(struct platform_device *pdev)
 	int ret;
 	struct proc_dir_entry* file;
 
-	boardinfo = "PE100A";
+	if (device_property_read_string(dev, "boardinfo", &boardinfo))
+		boardinfo = "unknow";
 
 	id0_gpio = of_get_named_gpio(dev->of_node, "id0-gpios", 0);
 	if (!gpio_is_valid(id0_gpio)) {
@@ -197,6 +198,17 @@ static int gpio_hwid_remove(struct platform_device *pdev)
 
 	return 0;
 }
+
+/* PE100A return 0, PV100A return 1 */
+int boardinfo_show(void) {
+	if (strcmp(boardinfo, "PE100A") == 0)
+		return 0;
+	else if (strcmp(boardinfo, "PV100A") == 0)
+		return 1;
+	else
+		return -1;
+}
+EXPORT_SYMBOL_GPL(boardinfo_show);
 
 static struct platform_driver boardinfo_driver = {
 	.probe		= gpio_hwid_probe,

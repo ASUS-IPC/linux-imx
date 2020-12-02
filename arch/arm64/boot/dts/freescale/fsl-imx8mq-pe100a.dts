@@ -127,6 +127,7 @@
 
 	hwid: gpio-hwid {
 		compatible = "gpio-hwid";
+		boardinfo = "PE100A";
 		id0-gpios = <&gpio3 19 GPIO_ACTIVE_HIGH>;
 		id1-gpios = <&gpio3 20 GPIO_ACTIVE_HIGH>;
 		sku0-gpios = <&gpio4 29 GPIO_ACTIVE_HIGH>;

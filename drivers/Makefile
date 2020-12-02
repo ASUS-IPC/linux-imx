@@ -16,6 +16,7 @@ obj-$(CONFIG_PINCTRL)		+= pinctrl/
 obj-$(CONFIG_GPIOLIB)		+= gpio/
 obj-y				+= pwm/
 
+obj-$(CONFIG_BOARDINFO)		+= boardinfo/
 obj-$(CONFIG_PCI)		+= pci/
 obj-$(CONFIG_PCI_ENDPOINT)	+= pci/endpoint/
 # PCI dwc controller drivers
@@ -187,4 +188,3 @@ obj-$(CONFIG_FPGA)		+= fpga/
 obj-$(CONFIG_FSI)		+= fsi/
 obj-$(CONFIG_TEE)		+= tee/
 obj-$(CONFIG_MULTIPLEXER)	+= mux/
-obj-$(CONFIG_BOARDINFO)		+= boardinfo/
