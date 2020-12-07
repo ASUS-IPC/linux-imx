@@ -1347,7 +1347,24 @@ static struct spi_driver mcp251x_can_driver = {
 	.probe = mcp251x_can_probe,
 	.remove = mcp251x_can_remove,
 };
-module_spi_driver(mcp251x_can_driver);
+
+static int __init mcp251x_init_module(void)
+{
+	int ret = 0;
+	printk("mcp251x_init_module enter");
+	ret = spi_register_driver(&mcp251x_can_driver);
+
+	return ret;
+}
+
+static void __exit mcp251x_exit_module(void)
+{
+	spi_unregister_driver(&mcp251x_can_driver);
+}
+
+late_initcall(mcp251x_init_module);
+module_exit(mcp251x_exit_module);
+//module_spi_driver(mcp251x_can_driver);
 
 MODULE_AUTHOR("Chris Elston <celston@katalix.com>, "
 	      "Christian Pellegrin <chripell@evolware.org>");
