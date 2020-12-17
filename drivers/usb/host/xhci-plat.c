@@ -22,6 +22,7 @@
 #include <linux/acpi.h>
 #include <linux/busfreq-imx.h>
 #include <linux/usb/of.h>
+#include <linux/gpio.h>
 
 #include "xhci.h"
 #include "xhci-plat.h"
@@ -163,6 +164,7 @@ static int xhci_plat_probe(struct platform_device *pdev)
 	struct clk              *clk;
 	int			ret;
 	int			irq;
+	struct gpio_desc	*gpio_hub_reset;
 
 	if (usb_disabled())
 		return -ENODEV;
@@ -303,6 +305,14 @@ static int xhci_plat_probe(struct platform_device *pdev)
 
 	device_enable_async_suspend(&pdev->dev);
 	pm_runtime_put_noidle(&pdev->dev);
+
+	gpio_hub_reset = devm_gpiod_get_optional(sysdev, "hub-reset", GPIOD_OUT_LOW);
+	if (IS_ERR(gpio_hub_reset))
+		dev_info(sysdev, "Could not get named GPIO for hub-reset-gpios!\n");
+	else {
+		dev_info(sysdev, "Set hub-reset-gpios to high.\n");
+		gpiod_set_value(gpio_hub_reset, 1);
+	}
 
 	return 0;
 
