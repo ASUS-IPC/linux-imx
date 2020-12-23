@@ -176,9 +176,9 @@
 			linux,default-trigger="gps_led_r";
 		};
 
-		gps-led-g {
-			gpios = <&gpio3 12 GPIO_ACTIVE_LOW>;
-			linux,default-trigger="gps_led_g";
+		ttymxc3-rxtx-g {
+			gpios = <&gpio3 12 GPIO_ACTIVE_HIGH>;
+			linux,default-trigger="ttymxc3-rxtx";
 		};
 
 	};

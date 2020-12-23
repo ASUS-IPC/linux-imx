@@ -38,6 +38,11 @@
 #define uart_console(port)      ({ (void)port; 0; })
 #endif
 
+#define UART_DEV_NAME_LEN 32
+/* keep space for device name + "-tx"/"-rx"/"-rxtx" suffix and null terminator
+ */
+#define UART_LED_NAME_SZ	(UART_DEV_NAME_LEN + 6)
+
 struct uart_port;
 struct serial_struct;
 struct device;
@@ -252,6 +257,14 @@ struct uart_port {
 	struct attribute_group	*attr_group;		/* port specific attributes */
 	const struct attribute_group **tty_groups;	/* all attributes (serial core use only) */
 	struct serial_rs485     rs485;
+#ifdef CONFIG_SERIAL_LEDS
+	struct led_trigger *tx_led_trig;
+	char tx_led_trig_name[UART_LED_NAME_SZ];
+	struct led_trigger *rx_led_trig;
+	char rx_led_trig_name[UART_LED_NAME_SZ];
+	struct led_trigger *rxtx_led_trig;
+	char rxtx_led_trig_name[UART_LED_NAME_SZ];
+#endif
 	void			*private_data;		/* generic platform data pointer */
 };
 
