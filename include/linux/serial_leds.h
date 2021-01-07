@@ -11,7 +11,7 @@
 
 #include <linux/serial_core.h>
 #include <linux/leds.h>
-#define CONFIG_SERIAL_LEDS 1
+
 enum uart_led_event {
 	UART_LED_EVENT_TX,
 	UART_LED_EVENT_RX,
@@ -28,7 +28,7 @@ void uart_led_unregister(struct uart_port *port);
 static inline void uart_led_event(struct uart_port *port, enum uart_led_event event)
 {
 }
-static inline void uart_led_register(struct uart_port *port)
+static inline void uart_led_register(struct uart_driver *drv, struct uart_port *port)
 {
 }
 static inline void uart_led_unregister(struct uart_port *port)
