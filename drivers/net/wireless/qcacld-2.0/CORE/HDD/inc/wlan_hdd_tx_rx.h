@@ -44,6 +44,7 @@
 #include <linux/skbuff.h>
 #include <wlan_qct_tl.h>
 #include "tl_shim.h"
+#include <linux/leds.h>
 
 /*---------------------------------------------------------------------------
   Preprocessor definitions and constants

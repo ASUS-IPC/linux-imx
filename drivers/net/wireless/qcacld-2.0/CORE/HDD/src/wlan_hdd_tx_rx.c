@@ -779,7 +779,9 @@ int hdd_hard_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	int ret;
 
 	vos_ssr_protect(__func__);
+	ledtrig_led_func_ctrl(LED_FUNC_WIFI, LED_LIGHT_GREEN, 1);
 	ret = __hdd_hard_start_xmit(skb, dev);
+	ledtrig_led_func_ctrl(LED_FUNC_WIFI, LED_LIGHT_GREEN, 0);
 	vos_ssr_unprotect(__func__);
 	return ret;
 }
