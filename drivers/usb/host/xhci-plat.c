@@ -23,6 +23,7 @@
 #include <linux/busfreq-imx.h>
 #include <linux/usb/of.h>
 #include <linux/gpio.h>
+#include <linux/delay.h>
 
 #include "xhci.h"
 #include "xhci-plat.h"
@@ -306,12 +307,15 @@ static int xhci_plat_probe(struct platform_device *pdev)
 	device_enable_async_suspend(&pdev->dev);
 	pm_runtime_put_noidle(&pdev->dev);
 
-	gpio_hub_reset = devm_gpiod_get_optional(sysdev, "hub-reset", GPIOD_OUT_LOW);
-	if (IS_ERR(gpio_hub_reset))
-		dev_info(sysdev, "Could not get named GPIO for hub-reset-gpios!\n");
-	else {
-		dev_info(sysdev, "Set hub-reset-gpios to high.\n");
-		gpiod_set_value(gpio_hub_reset, 1);
+	if (!strcmp(dev_name(sysdev), "38200000.dwc3")) {
+		gpio_hub_reset = devm_gpiod_get_optional(sysdev, "hub-reset", GPIOD_OUT_LOW);
+		if (IS_ERR(gpio_hub_reset))
+			dev_info(sysdev, "Could not get named GPIO for hub-reset-gpios!\n");
+		else {
+			msleep(3);
+			dev_info(sysdev, "Set hub-reset-gpios to high.\n");
+			gpiod_set_value(gpio_hub_reset, 1);
+		}
 	}
 
 	return 0;
