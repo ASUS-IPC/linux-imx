@@ -154,34 +154,33 @@
 
 		wifi-led-r {
 			gpios = <&gpio3 7 GPIO_ACTIVE_LOW>;
-			linux,default-trigger="wifi_led_r";
+			linux,default-trigger="wifi-r";
 		};
 
 		wifi-led-g {
 			gpios = <&gpio3 8 GPIO_ACTIVE_LOW>;
-			linux,default-trigger="wifi_led_g";
+			linux,default-trigger="wifi-g";
 		};
 
 		lte-led-r {
 			gpios = <&gpio3 9 GPIO_ACTIVE_LOW>;
-			linux,default-trigger="lte_led_r";
+			linux,default-trigger="lte-r";
 		};
 
 		lte-led-g {
 			gpios = <&gpio3 10 GPIO_ACTIVE_LOW>;
-			linux,default-trigger="lte_led_g";
+			linux,default-trigger="lte-g";
 		};
 
 		gps-led-r {
 			gpios = <&gpio3 11 GPIO_ACTIVE_LOW>;
-			linux,default-trigger="gps_led_r";
+			linux,default-trigger="gps-r";
 		};
 
-		ttymxc3-rxtx-g {
-			gpios = <&gpio3 12 GPIO_ACTIVE_HIGH>;
-			linux,default-trigger="ttymxc3-rxtx";
+		gps-led-g {
+			gpios = <&gpio3 12 GPIO_ACTIVE_LOW>;
+			linux,default-trigger="gps-g";
 		};
-
 	};
 
 };
