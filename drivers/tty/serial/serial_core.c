@@ -137,7 +137,6 @@ static void __uart_start(struct tty_struct *tty)
 
 	if (port && !uart_tx_stopped(port)) {
 		port->ops->start_tx(port);
-		uart_led_event(port, UART_LED_EVENT_RX);
 	}
 }
 
@@ -640,7 +639,6 @@ static int uart_write_room(struct tty_struct *tty)
 
 	port = uart_port_lock(state, flags);
 	ret = uart_circ_chars_free(&state->xmit);
-	uart_led_event(port, UART_LED_EVENT_RX);
 	uart_port_unlock(port, flags);
 	return ret;
 }
@@ -654,7 +652,6 @@ static int uart_chars_in_buffer(struct tty_struct *tty)
 
 	port = uart_port_lock(state, flags);
 	ret = uart_circ_chars_pending(&state->xmit);
-	uart_led_event(port, UART_LED_EVENT_RX);
 	uart_port_unlock(port, flags);
 	return ret;
 }
