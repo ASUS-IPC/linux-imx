@@ -45,6 +45,7 @@
 #include <linux/slab.h>
 #include <linux/kernel.h>
 #include <linux/pm_runtime.h>
+#include <linux/leds.h>
 
 #define DRIVER_VERSION		"22-Aug-2005"
 
@@ -1358,6 +1359,7 @@ netdev_tx_t usbnet_start_xmit (struct sk_buff *skb,
 	struct driver_info	*info = dev->driver_info;
 	unsigned long		flags;
 	int retval;
+	ledtrig_led_func_blink_oneshot(LED_FUNC_LTE, LED_LIGHT_GREEN, 50, 50, 0);
 
 	if (skb)
 		skb_tx_timestamp(skb);
