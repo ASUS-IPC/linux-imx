@@ -22,12 +22,12 @@
 	compatible = "fsl,imx8mq-evk", "fsl,imx8mq";
 
 	clocks {
-		clk_8m: clock@11 {
+		clk_20m: clock@11 {
 			compatible = "fixed-clock";
 			reg = <11>;
 			#clock-cells = <0>;
-			clock-frequency = <8000000>;
-			clock-output-names = "8m";
+			clock-frequency = <20000000>;
+			clock-output-names = "20m";
 		};
 	};
 
@@ -1127,7 +1127,7 @@
 		standby-gpios = <&gpio4 20 GPIO_ACTIVE_LOW>;
 		reg = <0>;
 		spi-max-frequency = <5000000>;
-		clocks = <&clk_8m>;
+		clocks = <&clk_20m>;
 		interrupt-parent = <&gpio1>;
 		interrupts = <3 0x2>;
 		status = "okay";
