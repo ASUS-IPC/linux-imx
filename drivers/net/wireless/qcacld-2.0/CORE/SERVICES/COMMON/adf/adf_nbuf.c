@@ -2445,7 +2445,11 @@ __adf_nbuf_validate_skb_cb(void)
 	 * 48 byte.
 	 */
 	BUILD_BUG_ON(sizeof(struct cvg_nbuf_cb) >
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0)
+		sizeof_field(struct sk_buff, cb));
+#else
 		FIELD_SIZEOF(struct sk_buff, cb));
+#endif
 }
 
 /**

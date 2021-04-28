@@ -87,11 +87,19 @@ static int pktlog_release(struct inode *i, struct file *f);
 static ssize_t pktlog_read(struct file *file, char *buf, size_t nbytes,
 			   loff_t * ppos);
 
-static struct file_operations pktlog_fops = {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0)
+static struct proc_ops pktlog_ops = {
+	proc_open:pktlog_open,
+	proc_release:pktlog_release,
+	proc_read:pktlog_read,
+};
+#else
+static struct file_operations pktlog_ops = {
 	open:pktlog_open,
 	release:pktlog_release,
 	read:pktlog_read,
 };
+#endif
 
 /*
  * Linux implementation of helper functions
@@ -496,7 +504,7 @@ static int pktlog_attach(struct ol_softc *scn)
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0)
 	proc_entry = proc_create_data(proc_name, PKTLOG_PROC_PERM,
-				      g_pktlog_pde, &pktlog_fops,
+				      g_pktlog_pde, &pktlog_ops,
 				      &pl_info_lnx->info);
 
 	if (proc_entry == NULL) {
@@ -518,7 +526,7 @@ static int pktlog_attach(struct ol_softc *scn)
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,31)
 	proc_entry->owner = THIS_MODULE;
 #endif
-	proc_entry->proc_fops = &pktlog_fops;
+	proc_entry->proc_fops = &pktlog_ops;
 #endif
 
 	pl_info_lnx->proc_entry = proc_entry;

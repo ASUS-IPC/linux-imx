@@ -454,16 +454,21 @@ static ssize_t crash_dump_read(struct file *file, char __user *buf,
 	return no_of_bytes_read;
 }
 /**
- * struct crash_dump_fops - file operations for crash firmware ram dump feature
+ * struct crash_dump_ops - file operations for crash firmware ram dump feature
  * @read - read function for crash dump operation.
  *
  * This structure initialize the file operation handle for crash
  * dump feature
  */
-static const struct file_operations crash_dump_fops = {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0)
+static const struct proc_ops crash_dump_ops = {
+	proc_read: crash_dump_read
+};
+#else
+static const struct file_operations crash_dump_ops = {
 	read: crash_dump_read
 };
-
+#endif
 /**
  * crash_dump_procfs_remove() - Remove file/dir under procfs for crash dump
  *
@@ -510,7 +515,7 @@ static int crash_dump_procfs_init(struct ol_softc *scn)
 	crash_file = proc_create_data(PROCFS_CRASH_DUMP_NAME,
 				     PROCFS_CRASH_DUMP_PERM,
 				     crash_dir,
-				     &crash_dump_fops, scn);
+				     &crash_dump_ops, scn);
 	if (crash_file == NULL) {
 		crash_dump_procfs_remove();
 		pr_debug("Error: Could not initialize /proc/debug/%s\n",

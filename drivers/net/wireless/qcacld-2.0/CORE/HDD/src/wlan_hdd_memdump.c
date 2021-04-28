@@ -205,16 +205,21 @@ static ssize_t hdd_driver_memdump_read(struct file *file, char __user *buf,
 
 
 /**
- * struct driver_dump_fops - file operations for driver dump feature
+ * struct driver_dump_ops - proc_ops / file operations for driver dump feature
  * @read - read function for driver dump operation.
  *
  * This structure initialize the file operation handle for memory
  * dump feature
  */
-static const struct file_operations driver_dump_fops = {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0)
+static struct proc_ops driver_dump_ops = {
+	proc_read: hdd_driver_memdump_read
+};
+#else
+static const struct file_operations driver_dump_ops = {
 	read: hdd_driver_memdump_read
 };
-
+#endif
 /**
  * hdd_driver_memdump_procfs_init() - Initialize procfs for driver memory dump
  * @hdd_ctx: hdd context
@@ -235,7 +240,7 @@ static int hdd_driver_memdump_procfs_init(hdd_context_t *hdd_ctx)
 
 	proc_file_driver = proc_create_data(PROCFS_DRIVER_DUMP_NAME,
 				     PROCFS_DRIVER_DUMP_PERM, proc_dir_driver,
-				     &driver_dump_fops, hdd_ctx);
+				     &driver_dump_ops, hdd_ctx);
 	if (proc_file_driver == NULL) {
 		remove_proc_entry(PROCFS_DRIVER_DUMP_NAME, proc_dir_driver);
 		pr_debug("Error: Could not initialize /proc/%s\n",

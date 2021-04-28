@@ -167,10 +167,17 @@ static ssize_t ath_procfs_diag_write(struct file *file, const char __user *buf,
 	}
 }
 
-static const struct file_operations athdiag_fops = {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0)
+static const struct proc_ops athdiag_ops = {
+	.proc_read = ath_procfs_diag_read,
+	.proc_write = ath_procfs_diag_write,
+};
+#else
+static const struct file_operations athdiag_ops = {
 	.read = ath_procfs_diag_read,
 	.write = ath_procfs_diag_write,
 };
+#endif
 
 /**
  *This function is called when the module is loaded
@@ -188,7 +195,7 @@ int athdiag_procfs_init(void *scn)
 
 	proc_file = proc_create_data(PROCFS_NAME,
 					S_IRUSR | S_IWUSR, proc_dir,
-					&athdiag_fops, (void *)scn);
+					&athdiag_ops, (void *)scn);
 	if (proc_file == NULL) {
 		remove_proc_entry(PROCFS_NAME, proc_dir);
 		pr_debug("Error: Could not initialize /proc/%s\n",

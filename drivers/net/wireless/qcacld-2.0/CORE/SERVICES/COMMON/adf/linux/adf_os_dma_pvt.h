@@ -42,12 +42,15 @@
 #include <adf_os_types.h>
 #include <adf_os_util.h>
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 12, 0)
-#define __adf_os_dma_alloc_noncoherent(dev, size, daddr, flag, attr) dma_alloc_attrs(dev, size, daddr, flag, attr)
-#define __adf_os_dma_free_noncoherent(dev, size, vddr, daddr, attr) dma_free_attrs(dev, size, vddr, daddr, attr)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0)
+#define __adf_os_dma_alloc_noncoherent(dev, size, daddr, flag) dma_alloc_noncoherent(dev, size, daddr, DMA_BIDIRECTIONAL, flag)
+#define __adf_os_dma_free_noncoherent(dev, size, vddr, daddr) dma_free_noncoherent(dev, size, vddr, daddr, DMA_BIDIRECTIONAL)
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(4, 12, 0)
+#define __adf_os_dma_alloc_noncoherent(dev, size, daddr, flag) dma_alloc_attrs(dev, size, daddr, flag, DMA_ATTR_NON_CONSISTENT)
+#define __adf_os_dma_free_noncoherent(dev, size, vddr, daddr) dma_free_attrs(dev, size, vddr, daddr, DMA_ATTR_NON_CONSISTENT)
 #else
-#define __adf_os_dma_alloc_noncoherent(dev, size, daddr, flag, attr) dma_alloc_noncoherent(dev, size, daddr, flag)
-#define __adf_os_dma_free_noncoherent(dev, size, vddr, daddr, attr) dma_free_noncoherent(dev, size, vddr, daddr)
+#define __adf_os_dma_alloc_noncoherent(dev, size, daddr, flag) dma_alloc_noncoherent(dev, size, daddr, flag)
+#define __adf_os_dma_free_noncoherent(dev, size, vddr, daddr) dma_free_noncoherent(dev, size, vddr, daddr)
 #endif
 /**
  * XXX:error handling
@@ -83,7 +86,7 @@ __adf_os_dmamem_alloc(adf_os_device_t     osdev,
    else
        vaddr = __adf_os_dma_alloc_noncoherent(osdev->dev, size,
                                      &lmap->seg[0].daddr,
-                                     GFP_ATOMIC, DMA_ATTR_NON_CONSISTENT);
+                                     GFP_ATOMIC);
 
    adf_os_assert(vaddr);
 
@@ -109,8 +112,7 @@ __adf_os_dmamem_free(adf_os_device_t    osdev, __adf_os_size_t size,
         dma_free_coherent(osdev->dev, size, vaddr, dmap->seg[0].daddr);
     else
         __adf_os_dma_free_noncoherent(osdev->dev, size, vaddr,
-                                      dmap->seg[0].daddr,
-                                      DMA_ATTR_NON_CONSISTENT);
+                                      dmap->seg[0].daddr);
 
     kfree(dmap);
 }
