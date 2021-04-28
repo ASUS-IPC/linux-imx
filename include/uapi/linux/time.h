@@ -5,7 +5,6 @@
 #include <linux/types.h>
 #include <linux/time_types.h>
 
-#ifndef __KERNEL__
 #ifndef _STRUCT_TIMESPEC
 #define _STRUCT_TIMESPEC
 struct timespec {
@@ -28,7 +27,6 @@ struct itimerval {
 	struct timeval it_interval;/* timer interval */
 	struct timeval it_value;	/* current value */
 };
-#endif
 
 struct timezone {
 	int	tz_minuteswest;	/* minutes west of Greenwich */
