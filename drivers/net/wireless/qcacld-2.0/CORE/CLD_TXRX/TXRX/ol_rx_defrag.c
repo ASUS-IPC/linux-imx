@@ -62,7 +62,7 @@
 #include <ol_ctrl_txrx_api.h>
 #include <ol_txrx_peer_find.h>
 #include <adf_nbuf.h>
-#include <ieee80211.h>
+#include <ieee80211_common.h>
 #include <adf_os_util.h>
 #include <athdefs.h>
 #include <adf_os_mem.h>

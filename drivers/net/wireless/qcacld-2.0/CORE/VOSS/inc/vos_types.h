@@ -41,7 +41,11 @@
   Include Files
   ------------------------------------------------------------------------*/
 #include "i_vos_types.h"
+#ifndef __KERNEL__
 #include <string.h>
+#else
+#include <linux/string.h>
+#endif /* __KERNEL__ */
 
 /*--------------------------------------------------------------------------
   Preprocessor definitions and constants

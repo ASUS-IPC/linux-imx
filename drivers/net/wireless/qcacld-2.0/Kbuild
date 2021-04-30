@@ -19,7 +19,7 @@ ifeq ($(KERNEL_BUILD),1)
 	# These are provided in external module based builds
 	# Need to explicitly define for Kernel-based builds
 	MODNAME := wlan
-	WLAN_ROOT := drivers/staging/qcacld-2.0
+	WLAN_ROOT := $(srctree)/drivers/net/wireless/qcacld-2.0
 	WLAN_OPEN_SOURCE := 1
 endif
 
@@ -1097,7 +1097,8 @@ CDEFINES :=	-DANI_LITTLE_BYTE_ENDIAN \
 		-DWLAN_VOWIFI_DEBUG \
 		-DATH_SUPPORT_DFS \
 		-DWMI_COEX_BTC_DUTYCYCLE \
-		-Wno-misleading-indentation
+		-Wno-misleading-indentation \
+		
 #-Werror is omitted
 
 ifeq ($(CONFIG_WLAN_POWER_DEBUGFS), y)
