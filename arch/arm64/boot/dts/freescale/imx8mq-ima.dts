@@ -721,7 +721,7 @@
 	assigned-clocks = <&clk IMX8MQ_CLK_SAI2>;
 	assigned-clock-parents = <&clk IMX8MQ_AUDIO_PLL1_OUT>;
 	assigned-clock-rates = <24576000>;
-	status = "okay";
+	status = "disabled";
 };
 
 &sai3 {
@@ -758,7 +758,7 @@
 		<&clk IMX8MQ_AUDIO_PLL2_OUT>;
 	clock-names = "bus", "mclk0", "mclk1", "mclk2", "mclk3", "pll8k", "pll11k";
 	fsl,sai-asynchronous;
-	status = "okay";
+	status = "disabled";
 };
 
 &snvs_pwrkey {
@@ -965,6 +965,7 @@
 	pinctrl_ecspi2_cs: ecspi2_cs_grp {
 		fsl,pins = <
 			MX8MQ_IOMUXC_ECSPI2_SS0_GPIO5_IO13		0x19
+			MX8MQ_IOMUXC_NAND_CE3_B_GPIO3_IO4		0x19
 		>;
 	};
 
@@ -1034,6 +1035,18 @@
 		>;
 	};
 
+	pinctrl_pwm3: pwm3 {
+		fsl,pins = <
+			MX8MQ_IOMUXC_SPDIF_TX_PWM3_OUT			0x7f
+		>;
+	};
+
+	pinctrl_pwm4: pwm4 {
+		fsl,pins = <
+			MX8MQ_IOMUXC_SAI3_MCLK_PWM4_OUT			0x7f
+		>;
+	};
+
 	pinctrl_qspi: qspigrp {
 		fsl,pins = <
 			MX8MQ_IOMUXC_NAND_ALE_QSPI_A_SCLK	0x82
@@ -1058,6 +1071,7 @@
 			MX8MQ_IOMUXC_SAI2_TXC_SAI2_TX_BCLK      0xd6
 			MX8MQ_IOMUXC_SAI2_MCLK_SAI2_MCLK        0xd6
 			MX8MQ_IOMUXC_SAI2_TXD0_SAI2_TX_DATA0    0xd6
+			MX8MQ_IOMUXC_SAI2_RXD0_SAI2_RX_DATA0	0xd6
 		>;
 	};
 
@@ -1126,16 +1140,15 @@
 			MX8MQ_IOMUXC_SAI5_MCLK_SAI5_MCLK	0xd6
 			MX8MQ_IOMUXC_SAI5_RXC_SAI5_RX_BCLK	0xd6
 			MX8MQ_IOMUXC_SAI5_RXFS_SAI5_RX_SYNC	0xd6
-			MX8MQ_IOMUXC_SAI5_RXD0_SAI5_RX_DATA0	0xd6
-			MX8MQ_IOMUXC_SAI5_RXD1_SAI5_RX_DATA1	0xd6
-			MX8MQ_IOMUXC_SAI5_RXD2_SAI5_RX_DATA2	0xd6
-			MX8MQ_IOMUXC_SAI5_RXD3_SAI5_RX_DATA3	0xd6
+			MX8MQ_IOMUXC_SAI5_RXD0_GPIO3_IO21	0x19
+			MX8MQ_IOMUXC_SAI5_RXD1_GPIO3_IO22	0x19
+			MX8MQ_IOMUXC_SAI5_RXD2_GPIO3_IO23	0x19
+			MX8MQ_IOMUXC_SAI5_RXD3_GPIO3_IO24	0x19
 		>;
 	};
 
 	pinctrl_spdif1: spdif1grp {
 		fsl,pins = <
-			MX8MQ_IOMUXC_SPDIF_TX_SPDIF1_OUT	0xd6
 			MX8MQ_IOMUXC_SPDIF_RX_SPDIF1_IN		0xd6
 		>;
 	};
@@ -1321,6 +1334,38 @@
 	fsl,spi-num-chipselects = <1>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_ecspi2>,<&pinctrl_ecspi2_cs>;
-	cs-gpios = <&gpio5 13 GPIO_ACTIVE_HIGH>;
-	status = "okay";
+	cs-gpios = <&gpio5 13 GPIO_ACTIVE_HIGH>,
+		   <&gpio3 4 GPIO_ACTIVE_HIGH>;
+	status = "disabled";
+
+	spidev@0 {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		compatible = "rohm,dh2228fv";
+		spi-max-frequency = <20000000>;
+		reg = <0>;
+		status = "okay";
+	};
+
+	spidev@1 {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		compatible = "rohm,dh2228fv";
+		spi-max-frequency = <20000000>;
+		reg = <1>;
+		status = "okay";
+	};
 };
+
+&pwm3 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pwm3>;
+	status = "disabled";
+};
+
+&pwm4 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pwm4>;
+	status = "disabled";
+};
+
