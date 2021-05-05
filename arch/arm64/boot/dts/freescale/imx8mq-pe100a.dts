@@ -1333,6 +1333,15 @@
 	pinctrl-0 = <&pinctrl_ecspi1 &pinctrl_ecspi1_cs>;
 	cs-gpios = <&gpio5 9 GPIO_ACTIVE_HIGH>;
 	status = "okay";
+
+	tpi@0 {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		compatible = "tcg,tpm_tis-spi";
+		spi-max-frequency = <20000000>;
+		reg = <0>;
+		status = "okay";
+	};
 };
 
 &ecspi2 {
