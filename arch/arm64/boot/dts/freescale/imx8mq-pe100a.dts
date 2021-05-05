@@ -40,6 +40,13 @@
 		clock-output-names = "pmic_osc";
 	};
 
+	can_osc: clock-can-20m {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <20000000>;
+		clock-output-names = "can_osc";
+	};
+
 	modem_reset: modem-reset {
 		compatible = "gpio-reset";
 		reset-gpios = <&gpio3 5 GPIO_ACTIVE_LOW>;
@@ -973,6 +980,12 @@
 		>;
 	};
 
+	pinctrl_can_standby: can_standby {
+		fsl,pins = <
+			MX8MQ_IOMUXC_SAI1_MCLK_GPIO4_IO20		0x19
+		>;
+	};
+
 	pinctrl_fec1: fec1grp {
 		fsl,pins = <
 			MX8MQ_IOMUXC_ENET_MDC_ENET1_MDC			0x3
@@ -1325,7 +1338,18 @@
 &ecspi2 {
 	fsl,spi-num-chipselects = <1>;
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_ecspi2>,<&pinctrl_ecspi2_cs>;
+	pinctrl-0 = <&pinctrl_ecspi2>,<&pinctrl_ecspi2_cs>,<&pinctrl_can_standby>;
 	cs-gpios = <&gpio5 13 GPIO_ACTIVE_HIGH>;
 	status = "okay";
+
+	can0: mcp2515@0 {
+		compatible = "microchip,mcp2515";
+		standby-gpios = <&gpio4 20 GPIO_ACTIVE_LOW>;
+		reg = <0>;
+		spi-max-frequency = <5000000>;
+		clocks = <&can_osc>;
+		interrupt-parent = <&gpio1>;
+		interrupts = <3 0x2>;
+		status = "okay";
+	};
 };
