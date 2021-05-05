@@ -1362,3 +1362,17 @@
 		status = "okay";
 	};
 };
+
+&thermal_zones {
+	cpu-thermal {
+		trips {
+			cpu-alert {
+				temperature = <95000>;
+			};
+
+			cpu-crit {
+				temperature = <105000>;
+			};
+		};
+	};
+};
