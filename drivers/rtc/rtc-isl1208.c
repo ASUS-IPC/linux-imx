@@ -648,8 +648,8 @@ static const struct rtc_class_ops isl1208_rtc_ops = {
 	.proc = isl1208_rtc_proc,
 	.read_time = isl1208_rtc_read_time,
 	.set_time = isl1208_rtc_set_time,
-	.read_alarm = isl1208_rtc_read_alarm,
-	.set_alarm = isl1208_rtc_set_alarm,
+//	.read_alarm = isl1208_rtc_read_alarm,
+//	.set_alarm = isl1208_rtc_set_alarm,
 };
 
 /* sysfs interface */

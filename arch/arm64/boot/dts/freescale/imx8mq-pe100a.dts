@@ -13,6 +13,11 @@
 	model = "NXP i.MX8MQ EVK";
 	compatible = "fsl,imx8mq-evk", "fsl,imx8mq";
 
+	aliases {
+		rtc0 = &rtc_isl1208;
+		rtc1 = &snvs_rtc;
+	};
+
 	chosen {
 		stdout-path = &uart1;
 	};
@@ -529,7 +534,7 @@
 		};
 	};
 
-	rtc@6f {
+	rtc_isl1208: rtc@6f {
 		compatible = "isil,isl1208";
 		reg = <0x6f>;
 	};
