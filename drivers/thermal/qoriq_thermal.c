@@ -137,16 +137,20 @@ static int tmu_get_temp(void *p, int *temp)
 static int tmu_get_trend(void *p, int trip, enum thermal_trend *trend)
 {
 	struct qoriq_sensor *qsensor = p;
-	int trip_temp;
+	int trip_temp, trip_hyst;
 
 	if (!qsensor->tzd)
 		return 0;
 
-	trip_temp = (trip == TMU_TRIP_PASSIVE) ? qsensor->temp_passive :
-					     qsensor->temp_critical;
+	if (!qsensor->tzd->ops->get_trip_temp ||
+		!qsensor->tzd->ops->get_trip_hyst ||
+		qsensor->tzd->ops->get_trip_temp(qsensor->tzd, trip, &trip_temp) ||
+		qsensor->tzd->ops->get_trip_hyst(qsensor->tzd, trip, &trip_hyst)) {
+		*trend = THERMAL_TREND_RAISE_FULL;
+		return 0;
+	}
 
-	if (qsensor->tzd->temperature >=
-		(trip_temp - TMU_TEMP_PASSIVE_COOL_DELTA))
+	if (qsensor->tzd->temperature >= (trip_temp - trip_hyst))
 		*trend = THERMAL_TREND_RAISE_FULL;
 	else
 		*trend = THERMAL_TREND_DROP_FULL;
