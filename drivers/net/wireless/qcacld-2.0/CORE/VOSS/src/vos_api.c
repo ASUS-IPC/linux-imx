@@ -3599,7 +3599,7 @@ int qca_request_firmware(const struct firmware **firmware_p,
 #ifdef CUSTOMIZED_FIRMWARE_PATH
     return customized_request_firmware(firmware_p, name,device);
 #else
-    return request_firmware(firmware_p, name,device);
+    return request_firmware_direct(firmware_p, name, device);
 #endif
 }
 
