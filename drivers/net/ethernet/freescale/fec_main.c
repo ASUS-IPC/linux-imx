@@ -71,6 +71,7 @@
 #include <asm/cacheflush.h>
 
 #include "fec.h"
+#include "eth_mac.h"
 
 static void set_multicast_list(struct net_device *ndev);
 static void fec_enet_itr_coal_init(struct net_device *ndev);
@@ -1769,6 +1770,8 @@ static int fec_get_mac(struct net_device *ndev)
 	 */
 	iap = macaddr;
 
+	eth_mac_eeprom(iap);
+
 	/*
 	 * 2) from device tree data
 	 */
@@ -1829,6 +1832,30 @@ static int fec_get_mac(struct net_device *ndev)
 }
 
 /* ------------------------------------------------------------------------- */
+/*
+ * Set PHY LED configuration
+ */
+void set_led_configuration(struct phy_device *phy_dev) {
+	// To switch Page0xd04
+	phy_write(phy_dev, 31, 0x0d04);
+
+	//Disable EEELCR mode
+	phy_write(phy_dev, 17, 0x0000);
+
+	printk("%s: #### before setting led, Reg16 = 0x%x\n", __func__, phy_read(phy_dev, 16));
+
+	phy_write(phy_dev, 16, 0x091b);
+
+	printk("%s: #### after setting led, Reg16 = 0x%x\n", __func__, phy_read(phy_dev, 16));
+
+	//LED freq
+	phy_write(phy_dev, 18, 0x03e2);
+
+	printk("%s: #### after setting led(12.5,60ms), Reg18 = 0x%x\n", __func__, phy_read(phy_dev, 18));
+
+	//switch to Page0
+	phy_write(phy_dev, 31, 0x0000);
+}
 
 /*
  * Phy section
@@ -2129,6 +2156,7 @@ static int fec_enet_mii_probe(struct net_device *ndev)
 			netdev_err(ndev, "Unable to connect to phy\n");
 			return -ENODEV;
 		}
+		set_led_configuration(ndev->phydev);
 	} else {
 		/* check for attached phy */
 		for (phy_id = 0; (phy_id < PHY_MAX_ADDR); phy_id++) {
@@ -2320,6 +2348,17 @@ static void fec_enet_mii_remove(struct fec_enet_private *fep)
 		mdiobus_unregister(fep->mii_bus);
 		mdiobus_free(fep->mii_bus);
 	}
+}
+
+void set_wakeup_enable(int wakeup_enable, struct net_device *ndev)
+{
+	struct fec_enet_private *fep = netdev_priv(ndev);
+
+	device_set_wakeup_enable(&ndev->dev, wakeup_enable);
+	if (device_may_wakeup(&ndev->dev))
+		fep->wol_flag |= FEC_WOL_FLAG_ENABLE;
+	else
+		fep->wol_flag &= (~FEC_WOL_FLAG_ENABLE);
 }
 
 static void fec_enet_get_drvinfo(struct net_device *ndev,
@@ -4018,6 +4057,17 @@ fec_probe(struct platform_device *pdev)
 
 	pm_runtime_mark_last_busy(&pdev->dev);
 	pm_runtime_put_autosuspend(&pdev->dev);
+
+	/* enable wake on lan */
+	const char *wakeup_enable;
+	if (of_property_read_string(np, "wakeup-enable", &wakeup_enable)) {
+		printk("[WOL]Fail to read wakeup-enable");
+		return -ENODEV;
+	} else {
+		printk("[WOL]wakeup_enable = %s", wakeup_enable);
+		if (!strcmp(wakeup_enable, "1"))
+			set_wakeup_enable(1, ndev);
+	}
 
 	return 0;
 
