@@ -19,6 +19,8 @@
 
 #include "clk.h"
 
+#define USE_CLK_OF_DECLARE 1
+
 static u32 share_count_sai1;
 static u32 share_count_sai2;
 static u32 share_count_sai3;
@@ -304,10 +306,18 @@ static int __init imx_clk_init_on(struct device_node *np,
 	return 0;
 }
 
+#if USE_CLK_OF_DECLARE
+static int __init imx8mq_clocks_init(struct device_node *ccm_node)
+#else
 static int imx8mq_clocks_probe(struct platform_device *pdev)
+#endif
 {
+#if USE_CLK_OF_DECLARE
+	struct device_node *np;
+#else
 	struct device *dev = &pdev->dev;
 	struct device_node *np = dev->of_node;
+#endif
 	void __iomem *base;
 	int err;
 
@@ -321,6 +331,9 @@ static int imx8mq_clocks_probe(struct platform_device *pdev)
 	clk_hw_data->num = IMX8MQ_CLK_END;
 	hws = clk_hw_data->hws;
 
+#if USE_CLK_OF_DECLARE
+	np = ccm_node;
+#endif
 	hws[IMX8MQ_CLK_DUMMY] = imx_clk_hw_fixed("dummy", 0);
 	hws[IMX8MQ_CLK_32K] = imx_obtain_fixed_clk_hw(np, "ckil");
 	hws[IMX8MQ_CLK_25M] = imx_obtain_fixed_clk_hw(np, "osc_25m");
@@ -414,8 +427,13 @@ static int imx8mq_clocks_probe(struct platform_device *pdev)
 	hws[IMX8MQ_SYS2_PLL_500M] = imx_clk_hw_fixed_factor("sys2_pll_500m", "sys2_pll_out", 1, 2);
 	hws[IMX8MQ_SYS2_PLL_1000M] = imx_clk_hw_fixed_factor("sys2_pll_1000m", "sys2_pll_out", 1, 1);
 
+#if USE_CLK_OF_DECLARE
+	np = ccm_node;
+	base = of_iomap(np, 0);
+#else
 	np = dev->of_node;
 	base = devm_platform_ioremap_resource(pdev, 0);
+#endif
 	if (WARN_ON(IS_ERR(base)))
 		return PTR_ERR(base);
 
@@ -618,7 +636,7 @@ static int imx8mq_clocks_probe(struct platform_device *pdev)
 
 	err = of_clk_add_hw_provider(np, of_clk_hw_onecell_get, clk_hw_data);
 	if (err < 0) {
-		dev_err(dev, "failed to register hws for i.MX8MQ\n");
+		pr_err("failed to register hws for i.MX8MQ\n");
 		goto unregister_hws;
 	}
 
@@ -642,6 +660,10 @@ unregister_hws:
 	return err;
 }
 
+#if USE_CLK_OF_DECLARE
+CLK_OF_DECLARE(imx8mq, "fsl,imx8mq-ccm", imx8mq_clocks_init);
+
+#else
 static const struct of_device_id imx8mq_clk_of_match[] = {
 	{ .compatible = "fsl,imx8mq-ccm" },
 	{ /* Sentinel */ },
@@ -666,3 +688,4 @@ module_platform_driver(imx8mq_clk_driver);
 MODULE_AUTHOR("Abel Vesa <abel.vesa@nxp.com>");
 MODULE_DESCRIPTION("NXP i.MX8MQ clock driver");
 MODULE_LICENSE("GPL v2");
+#endif
