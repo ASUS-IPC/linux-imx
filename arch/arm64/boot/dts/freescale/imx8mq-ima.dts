@@ -508,6 +508,18 @@
 	pinctrl-0 = <&pinctrl_i2c2>;
 	status = "okay";
 
+	tinker_mcu: tinker_mcu@45 {
+		status = "okay";
+		compatible = "tinker_mcu";
+		reg = <0x45>;
+	};
+
+	tinker_mcu2: tinker_mcu2@36 {
+		status = "okay";
+		compatible = "tinker_mcu_ili9881c";
+		reg = <0x36>;
+	};
+
 	ov5645_mipi: ov5645_mipi@3c {
 		compatible = "ovti,ov5645_mipi";
 		reg = <0x3c>;
@@ -1263,3 +1275,57 @@
 		};
 	};
 };
+
+&lcdif {
+	status = "okay";
+	max-memory-bandwidth = <497829888>; /* 1920x1080-32@60.02 */
+	port@0 {
+		lcdif_mipi_dsi: endpoint {
+			remote-endpoint = <&mipi_dsi_in>;
+		};
+	};
+};
+
+&mipi_dsi {
+	status = "okay";
+	fsl,clock-drop-level = <2>;
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	panel@0 {
+		compatible = "asus-dsi-panel";
+		reg = <0>;
+		port {
+			panel_in: endpoint {
+				remote-endpoint = <&mipi_dsi_out>;
+			};
+		};
+	};
+
+	ports {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		port@0 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			reg = <0>;
+			mipi_dsi_in: endpoint@0 {
+				reg = <0>;
+				remote-endpoint = <&lcdif_mipi_dsi>;
+			};
+		};
+
+		port@1 {
+			reg = <1>;
+			mipi_dsi_out: endpoint {
+				remote-endpoint = <&panel_in>;
+			};
+		};
+	};
+};
+
+&dphy {
+	status = "okay";
+};
+

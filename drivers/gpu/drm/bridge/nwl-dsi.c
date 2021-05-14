@@ -1123,7 +1123,7 @@ static bool nwl_dsi_bridge_mode_fixup(struct drm_bridge *bridge,
 
 	DRM_DEV_DEBUG_DRIVER(dsi->dev, "lanes=%u, data_rate=%lu\n",
 			     config->lanes, config->bitclock);
-	if (config->lanes < 2 || config->lanes > 4)
+	if (config->lanes < 1 || config->lanes > 4)
 		return false;
 
 	/* Max data rate for this controller is 1.5Gbps */
@@ -1900,6 +1900,9 @@ static const struct component_ops nwl_dsi_component_ops = {
 	.unbind	= nwl_dsi_unbind,
 };
 
+extern int tinker_mcu_is_connected(void);
+extern int tinker_mcu_ili9881c_is_connected(void);
+
 static int nwl_dsi_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -1907,6 +1910,11 @@ static int nwl_dsi_probe(struct platform_device *pdev)
 	const struct soc_device_attribute *attr;
 	struct nwl_dsi *dsi;
 	int ret;
+
+	if(!tinker_mcu_is_connected() && !tinker_mcu_ili9881c_is_connected()) {
+		printk("nwl_dsi_probe: tc358762/ili9881c panel  not connected, dsi driver probe stop\n");
+		return -ENODEV;
+	}
 
 	if (!of_id || !of_id->data)
 		return -ENODEV;
