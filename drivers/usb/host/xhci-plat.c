@@ -19,6 +19,8 @@
 #include <linux/slab.h>
 #include <linux/acpi.h>
 #include <linux/usb/of.h>
+#include <linux/gpio.h>
+#include <linux/delay.h>
 
 #include "xhci.h"
 #include "xhci-plat.h"
@@ -195,6 +197,8 @@ static int xhci_plat_probe(struct platform_device *pdev)
 	int			ret;
 	int			irq;
 	struct xhci_plat_priv	*priv = NULL;
+	struct gpio_desc	*gpio_hub_reset;
+
 
 
 	if (usb_disabled())
@@ -378,6 +382,17 @@ static int xhci_plat_probe(struct platform_device *pdev)
 	 */
 	if (!(xhci->quirks & XHCI_DEFAULT_PM_RUNTIME_ALLOW))
 		pm_runtime_forbid(&pdev->dev);
+
+	if (!strcmp(dev_name(sysdev), "38200000.usb")) {
+		gpio_hub_reset = devm_gpiod_get_optional(sysdev, "hub-reset", GPIOD_OUT_LOW);
+		if (IS_ERR(gpio_hub_reset))
+			dev_info(sysdev, "Could not get named GPIO for hub-reset-gpios!\n");
+		else {
+			msleep(3);
+			dev_info(sysdev, "Set hub-reset-gpios to high.\n");
+			gpiod_set_value(gpio_hub_reset, 1);
+		}
+	}
 
 	return 0;
 

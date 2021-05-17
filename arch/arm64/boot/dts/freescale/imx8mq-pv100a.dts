@@ -876,6 +876,9 @@
 
 &usb_dwc3_1 {
 	dr_mode = "host";
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_usb_dwc3_1>;
+	hub-reset-gpios = <&gpio3 13 GPIO_ACTIVE_HIGH>;
 	status = "okay";
 };
 
@@ -1164,6 +1167,12 @@
 	pinctrl_typec: typecgrp {
 		fsl,pins = <
 			MX8MQ_IOMUXC_NAND_ALE_GPIO3_IO0		0x19
+		>;
+	};
+
+	pinctrl_usb_dwc3_1: usbdwc3_1 {
+		fsl,pins = <
+			MX8MQ_IOMUXC_NAND_DATA07_GPIO3_IO13		0x19
 		>;
 	};
 
