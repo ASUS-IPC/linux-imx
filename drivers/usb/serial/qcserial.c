@@ -26,6 +26,7 @@ enum qcserial_layouts {
 	QCSERIAL_G1K = 1,	/* Gobi 1000 */
 	QCSERIAL_SWI = 2,	/* Sierra Wireless */
 	QCSERIAL_HWI = 3,	/* Huawei */
+	QCSERIAL_CEI = 4,	/* CMIOT F0xX */
 };
 
 #define DEVICE_G1K(v, p) \
@@ -34,6 +35,8 @@ enum qcserial_layouts {
 	USB_DEVICE(v, p), .driver_info = QCSERIAL_SWI
 #define DEVICE_HWI(v, p) \
 	USB_DEVICE(v, p), .driver_info = QCSERIAL_HWI
+#define DEVICE_CEI(v, p) \
+	USB_DEVICE(v, p), .driver_info = QCSERIAL_CEI
 
 static const struct usb_device_id id_table[] = {
 	/* Gobi 1000 devices */
@@ -88,7 +91,6 @@ static const struct usb_device_id id_table[] = {
 	{USB_DEVICE(0x03f0, 0x241d)},	/* HP Gobi 2000 QDL device (VP412) */
 	{USB_DEVICE(0x03f0, 0x251d)},	/* HP Gobi 2000 Modem device (VP412) */
 	{USB_DEVICE(0x05c6, 0x9214)},	/* Acer Gobi 2000 QDL device (VP413) */
-	{USB_DEVICE(0x05c6, 0x9215)},	/* Acer Gobi 2000 Modem device (VP413) */
 	{USB_DEVICE(0x05c6, 0x9264)},	/* Asus Gobi 2000 QDL device (VR305) */
 	{USB_DEVICE(0x05c6, 0x9265)},	/* Asus Gobi 2000 Modem device (VR305) */
 	{USB_DEVICE(0x05c6, 0x9234)},	/* Top Global Gobi 2000 QDL device (VR306) */
@@ -180,6 +182,7 @@ static const struct usb_device_id id_table[] = {
 	{DEVICE_SWI(0x413c, 0x81d0)},   /* Dell Wireless 5819 */
 	{DEVICE_SWI(0x413c, 0x81d1)},   /* Dell Wireless 5818 */
 	{DEVICE_SWI(0x413c, 0x81d2)},   /* Dell Wireless 5818 */
+	{DEVICE_CEI(0x05c6, 0x9091)},   /* CMIOT SDX55 */
 
 	/* Huawei devices */
 	{DEVICE_HWI(0x03f0, 0x581d)},	/* HP lt4112 LTE/HSPA+ Gobi 4G Modem (Huawei me906e) */
@@ -394,6 +397,22 @@ static int qcprobe(struct usb_serial *serial, const struct usb_device_id *id)
 				intf->desc.bInterfaceSubClass,
 				intf->desc.bInterfaceProtocol);
 		}
+		break;
+	case QCSERIAL_CEI:
+	switch (ifnum) {
+		case 0:
+			dev_err(dev, "DM/DIAG interface found\n");
+			break;
+		case 1:
+			dev_err(dev, "Modem port found\n");
+			sendsetup = true;
+			break;
+		default:
+			/* don't claim any unsupported interface */
+			dev_err(dev, "unsupported port found%d\n",ifnum);
+			altsetting = -1;
+			break;
+	}
 		break;
 	default:
 		dev_err(dev, "unsupported device layout type: %lu\n",
