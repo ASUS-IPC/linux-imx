@@ -828,9 +828,6 @@
 
 &usb_dwc3_0 {
 	dr_mode = "otg";
-	hnp-disable;
-	srp-disable;
-	adp-disable;
 	extcon = <&it5201>;
 	snps,dis-u1-entry-quirk;
 	snps,dis-u2-entry-quirk;
