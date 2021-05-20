@@ -99,20 +99,6 @@
 		enable-active-high;
 	};
 
-	buck2_reg: regulator-buck2 {
-		pinctrl-names = "default";
-		pinctrl-0 = <&pinctrl_buck2>;
-		compatible = "regulator-gpio";
-		regulator-name = "vdd_arm";
-		regulator-min-microvolt = <900000>;
-		regulator-max-microvolt = <1000000>;
-		gpios = <&gpio1 13 GPIO_ACTIVE_HIGH>;
-		states = <1000000 0x0
-			  900000 0x1>;
-		regulator-boot-on;
-		regulator-always-on;
-	};
-
 	gpio-keys {
 		compatible = "gpio-keys";
 		wakeup {
@@ -259,19 +245,19 @@
 };
 
 &A53_0 {
-	cpu-supply = <&buck2_reg>;
+	cpu-supply = <&buck2>;
 };
 
 &A53_1 {
-	cpu-supply = <&buck2_reg>;
+	cpu-supply = <&buck2>;
 };
 
 &A53_2 {
-	cpu-supply = <&buck2_reg>;
+	cpu-supply = <&buck2>;
 };
 
 &A53_3 {
-	cpu-supply = <&buck2_reg>;
+	cpu-supply = <&buck2>;
 };
 
 &csi1_bridge {
@@ -935,14 +921,8 @@
 			MX8MQ_IOMUXC_SAI3_RXD_GPIO4_IO30		0x19
 			MX8MQ_IOMUXC_SAI3_TXFS_GPIO4_IO31		0x19
 			MX8MQ_IOMUXC_GPIO1_IO08_GPIO1_IO8		0x19 /* S_PLTRST */
+			MX8MQ_IOMUXC_GPIO1_IO13_GPIO1_IO13		0x19 /* SoC ready*/
 		>;
-	};
-
-	pinctrl_buck2: vddarmgrp {
-		fsl,pins = <
-			MX8MQ_IOMUXC_GPIO1_IO13_GPIO1_IO13		0x19
-		>;
-
 	};
 
 	pinctrl_csi1_pwn: csi1_pwn_grp {
