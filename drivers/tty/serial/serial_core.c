@@ -21,6 +21,7 @@
 #include <linux/device.h>
 #include <linux/serial.h> /* for serial_state and serial_icounter_struct */
 #include <linux/serial_core.h>
+#include <linux/serial_leds.h>
 #include <linux/sysrq.h>
 #include <linux/delay.h>
 #include <linux/mutex.h>
@@ -104,6 +105,7 @@ void uart_write_wakeup(struct uart_port *port)
 	 */
 	BUG_ON(!state);
 	tty_port_tty_wakeup(&state->port);
+	uart_led_event(port, UART_LED_EVENT_TX);
 }
 
 static void uart_stop(struct tty_struct *tty)
@@ -123,8 +125,10 @@ static void __uart_start(struct tty_struct *tty)
 	struct uart_state *state = tty->driver_data;
 	struct uart_port *port = state->uart_port;
 
-	if (port && !uart_tx_stopped(port))
+	if (port && !uart_tx_stopped(port)) {
 		port->ops->start_tx(port);
+		uart_led_event(port, UART_LED_EVENT_RX);
+	}
 }
 
 static void uart_start(struct tty_struct *tty)
@@ -563,6 +567,7 @@ static int uart_put_char(struct tty_struct *tty, unsigned char c)
 		circ->buf[circ->head] = c;
 		circ->head = (circ->head + 1) & (UART_XMIT_SIZE - 1);
 		ret = 1;
+		uart_led_event(port, UART_LED_EVENT_RX);
 	}
 	uart_port_unlock(port, flags);
 	return ret;
@@ -625,6 +630,7 @@ static int uart_write_room(struct tty_struct *tty)
 
 	port = uart_port_lock(state, flags);
 	ret = uart_circ_chars_free(&state->xmit);
+	uart_led_event(port, UART_LED_EVENT_RX);
 	uart_port_unlock(port, flags);
 	return ret;
 }
@@ -638,6 +644,7 @@ static int uart_chars_in_buffer(struct tty_struct *tty)
 
 	port = uart_port_lock(state, flags);
 	ret = uart_circ_chars_pending(&state->xmit);
+	uart_led_event(port, UART_LED_EVENT_RX);
 	uart_port_unlock(port, flags);
 	return ret;
 }
@@ -2942,6 +2949,11 @@ int uart_add_one_port(struct uart_driver *drv, struct uart_port *uport)
 	 */
 	uport->flags &= ~UPF_DEAD;
 
+	/* Register LED triggers for port */
+	if(!strcmp(drv->dev_name, "ttymxc") && (drv->tty_driver->name_base + uport->line) == 3) {
+	    uart_led_register(drv, uport);
+	}
+
  out:
 	mutex_unlock(&port->mutex);
 	mutex_unlock(&port_mutex);
@@ -3004,6 +3016,11 @@ int uart_remove_one_port(struct uart_driver *drv, struct uart_port *uport)
 	 */
 	if (uart_console(uport))
 		unregister_console(uport->cons);
+
+	/* Unregister LED triggers for port */
+	if(!strcmp(drv->dev_name, "ttymxc") && (drv->tty_driver->name_base + uport->line) == 3) {
+	    uart_led_unregister(uport);
+	}
 
 	/*
 	 * Free the port IO and memory resources, if any.
