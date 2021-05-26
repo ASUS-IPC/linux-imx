@@ -417,10 +417,13 @@ static int cdns_hdmi_connector_get_modes(struct drm_connector *connector)
 				container_of(connector, struct cdns_mhdp_device, connector.base);
 	int num_modes = 0;
 	struct edid *edid;
+	struct cec_adapter *adap;
+	u16 pa = CEC_PHYS_ADDR_INVALID;
 
 	edid = drm_do_get_edid(&mhdp->connector.base,
 				   cdns_hdmi_get_edid_block, mhdp);
 	if (edid) {
+		pa = cec_get_edid_phys_addr((const u8 *)edid,EDID_LENGTH * (edid->extensions + 1), NULL);
 		dev_info(mhdp->dev, "%x,%x,%x,%x,%x,%x,%x,%x\n",
 			 edid->header[0], edid->header[1],
 			 edid->header[2], edid->header[3],
@@ -432,9 +435,22 @@ static int cdns_hdmi_connector_get_modes(struct drm_connector *connector)
 						MODE_HDMI_1_4 : MODE_DVI;
 		kfree(edid);
 	}
+	else
+		pa = CEC_PHYS_ADDR_INVALID;
+
+
 
 	if (num_modes == 0)
 		DRM_ERROR("Invalid edid\n");
+
+	DRM_INFO("HDMI/DP physical address: %x.%x.%x.%x\n",cec_phys_addr_exp(pa));
+	adap = mhdp->hdmi.cec.adap;
+	if(PTR_ERR_OR_ZERO(adap)) {
+		DRM_INFO("Get cec adapter fail!\n");
+	} else {
+		cec_s_phys_addr(adap, pa, false);
+	}
+
 	return num_modes;
 }
 
