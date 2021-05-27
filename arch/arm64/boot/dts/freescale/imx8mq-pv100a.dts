@@ -153,6 +153,13 @@
 				<192000>;
 	};
 
+	sound-rt5616 {
+		compatible = "asus,pv100a-audio-card";
+		audio-cpu = <&sai2>;
+		audio-codec = <&rt5616>;
+		status = "okay";
+	};
+
 	hwid: gpio-hwid {
 		compatible = "gpio-hwid";
 		boardinfo = "PV100A";
@@ -335,6 +342,14 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c1>;
 	status = "okay";
+
+	rt5616: rt5616@1b {
+		compatible = "realtek,rt5616";
+		reg = <0x1b>;
+		clocks = <&clk IMX8MQ_CLK_SAI2_ROOT>;
+		clock-names = "mclk1";
+		status = "okay";
+	};
 
 	ov5640_mipi2: ov5640_mipi2@3c {
 		compatible = "ovti,ov5640_mipi";
@@ -662,7 +677,12 @@
 	assigned-clocks = <&clk IMX8MQ_CLK_SAI2>;
 	assigned-clock-parents = <&clk IMX8MQ_AUDIO_PLL1_OUT>;
 	assigned-clock-rates = <24576000>;
-	status = "disabled";
+	clocks = <&clk IMX8MQ_CLK_SAI2_IPG>, <&clk IMX8MQ_CLK_DUMMY>,
+		<&clk IMX8MQ_CLK_SAI2_ROOT>, <&clk IMX8MQ_CLK_DUMMY>,
+		<&clk IMX8MQ_CLK_DUMMY>, <&clk IMX8MQ_AUDIO_PLL1_OUT>,
+		<&clk IMX8MQ_AUDIO_PLL2_OUT>;
+	clock-names = "bus", "mclk0", "mclk1", "mclk2", "mclk3", "pll8k", "pll11k";
+	status = "okay";
 };
 
 &sai3 {
@@ -992,6 +1012,7 @@
 			MX8MQ_IOMUXC_SAI2_TXC_SAI2_TX_BCLK      0xd6
 			MX8MQ_IOMUXC_SAI2_MCLK_SAI2_MCLK        0xd6
 			MX8MQ_IOMUXC_SAI2_TXD0_SAI2_TX_DATA0    0xd6
+			MX8MQ_IOMUXC_SAI2_RXD0_SAI2_RX_DATA0    0xd6
 		>;
 	};
 
