@@ -520,6 +520,11 @@
 		reg = <0x36>;
 	};
 
+	tinker_ft5406: tinker_ft5406@38 {
+		compatible = "tinker_ft5406";
+		reg = <0x38>;
+	};
+
 	ov5645_mipi: ov5645_mipi@3c {
 		compatible = "ovti,ov5645_mipi";
 		reg = <0x3c>;

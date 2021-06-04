@@ -733,6 +733,7 @@ static int ili9881c_prepare(struct drm_panel *panel)
 
 int enable = 0;
 static int powering_on = 0;
+extern void tinker_ft5406_start_polling(void);
 static int ili9881c_enable(struct drm_panel *panel)
 {
 	struct ili9881c *ctx = panel_to_ili9881c(panel);
@@ -820,6 +821,8 @@ static int ili9881c_enable(struct drm_panel *panel)
 	} else {
 		schedule_delayed_work(&ctx->backlight_work, msecs_to_jiffies(2000));
 	}
+
+	tinker_ft5406_start_polling();
 
 	enable = 1;
 	printk("ili9881c_enable-\n");
