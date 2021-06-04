@@ -312,6 +312,7 @@
 		clock-output-names = "pmic_clk";
 		interrupt-parent = <&gpio1>;
 		interrupts = <7 IRQ_TYPE_LEVEL_LOW>;
+		rohm,reset-snvs-powered;
 
 		regulators {
 			buck1: BUCK1 {
