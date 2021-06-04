@@ -220,7 +220,7 @@ static int tc358762_panel_unprepare(struct drm_panel *panel)
 	return 0;
 }
 
-//extern void tinker_ft5406_start_polling(void);
+extern void tinker_ft5406_start_polling(void);
 
 static int tc358762_enable(struct drm_panel *panel)
 {
@@ -241,7 +241,7 @@ static int tc358762_enable(struct drm_panel *panel)
                 //trigger_bridge = 0;
 
 		msleep(100);
-		//tinker_ft5406_start_polling();
+		tinker_ft5406_start_polling();
 	}
 
 	msleep(20);
