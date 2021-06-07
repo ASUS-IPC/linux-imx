@@ -26,13 +26,25 @@
 extern int tinker_mcu_ili9881c_is_connected(void);
 extern int tinker_mcu_is_connected(void);
 
+#if defined(CONFIG_DRM_PANEL_TOSHIBA_TC358762)
 extern int tc358762_dsi_probe(struct mipi_dsi_device *dsi);
 extern int tc358762_dsi_remove(struct mipi_dsi_device *dsi);
 extern int tc358762_dsi_shutdown(struct mipi_dsi_device *dsi);
+#else
+static inline int tc358762_dsi_probe(struct mipi_dsi_device *dsi) { return 0; }
+static inline int tc358762_dsi_remove(struct mipi_dsi_device *dsi) { return 0; }
+static inline int tc358762_dsi_shutdown(struct mipi_dsi_device *dsi) { return 0; }
+#endif
 
+#if defined(CONFIG_DRM_PANEL_ASUS_ILI9881C)
 extern int ili9881c_dsi_probe(struct mipi_dsi_device *dsi);
 extern int ili9881c_dsi_remove(struct mipi_dsi_device *dsi);
 extern void ili9881c_dsi_shutdown(struct mipi_dsi_device *dsi);
+#else
+static inline int ili9881c_dsi_probe(struct mipi_dsi_device *dsi) { return 0; }
+static inline int ili9881c_dsi_remove(struct mipi_dsi_device *dsi) { return 0; }
+static inline void ili9881c_dsi_shutdown(struct mipi_dsi_device *dsi) {}
+#endif
 
 static int asus_dsi_probe(struct mipi_dsi_device *dsi)
 {
