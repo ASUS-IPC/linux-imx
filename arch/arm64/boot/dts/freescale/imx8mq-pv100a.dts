@@ -351,27 +351,6 @@
 		status = "okay";
 	};
 
-	ov5640_mipi2: ov5640_mipi2@3c {
-		compatible = "ovti,ov5640_mipi";
-		reg = <0x3c>;
-		status = "disabled";
-		pinctrl-names = "default";
-		pinctrl-0 = <&pinctrl_csi2_pwn>, <&pinctrl_csi_rst>;
-		clocks = <&clk IMX8MQ_CLK_CLKO2>;
-		clock-names = "csi_mclk";
-		assigned-clocks = <&clk IMX8MQ_CLK_CLKO2>;
-		assigned-clock-parents = <&clk IMX8MQ_SYS2_PLL_200M>;
-		assigned-clock-rates = <20000000>;
-		csi_id = <1>;
-		pwn-gpios = <&gpio1 5 GPIO_ACTIVE_HIGH>;
-		mclk = <20000000>;
-		mclk_source = <0>;
-		port {
-			ov5640_mipi2_ep: endpoint {
-				remote-endpoint = <&mipi2_sensor_ep>;
-			};
-		};
-	};
 
 	pmic: bd71837@4b {
 		compatible = "rohm,bd71837";
