@@ -146,7 +146,7 @@
 #define PCIE_GET_ATU_INB_UNR_REG_OFFSET(region) \
 		(((region) << 9) | BIT(8))
 
-#define MAX_MSI_IRQS			256
+#define MAX_MSI_IRQS			288
 #define MAX_MSI_IRQS_PER_CTRL		32
 #define MAX_MSI_CTRLS			(MAX_MSI_IRQS / MAX_MSI_IRQS_PER_CTRL)
 #define MSI_REG_CTRL_BLOCK_SIZE		12
