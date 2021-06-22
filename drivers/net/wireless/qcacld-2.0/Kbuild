@@ -18,9 +18,18 @@ endif
 ifeq ($(KERNEL_BUILD),1)
 	# These are provided in external module based builds
 	# Need to explicitly define for Kernel-based builds
-	MODNAME := wlan
+	MODNAME := qca6174
 	WLAN_ROOT := $(srctree)/drivers/net/wireless/qcacld-2.0
 	WLAN_OPEN_SOURCE := 1
+	CONFIG_HDD_WLAN_WAIT_TIME := 10000
+	CONFIG_LINUX_QCMBR := y
+	CONFIG_NON_QC_PLATFORM := y
+	CONFIG_PMF_SUPPORT := y
+	TARGET_BUILD_VARIANT := user
+	CONFIG_ROME_IF := pci
+	CONFIG_WLAN_FEATURE_11W := y
+	CONFIG_WLAN_FEATURE_FILS := y
+	CONFIG_WLAN_WAPI_MODE_11AC_DISABLE := y
 endif
 
 ifeq ($(KERNEL_BUILD), 0)
