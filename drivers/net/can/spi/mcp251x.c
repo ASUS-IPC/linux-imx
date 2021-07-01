@@ -799,38 +799,6 @@ static void mcp251x_hw_sleep(struct spi_device *spi)
 	mcp251x_write_reg(spi, CANCTRL, CANCTRL_REQOP_SLEEP);
 }
 
-/* May only be called when device is sleeping! */
-static int mcp251x_hw_wake(struct spi_device *spi)
-{
-	u8 value;
-	int ret;
-
-	/* Force wakeup interrupt to wake device, but don't execute IST */
-	disable_irq(spi->irq);
-	mcp251x_write_2regs(spi, CANINTE, CANINTE_WAKIE, CANINTF_WAKIF);
-
-	/* Wait for oscillator startup timer after wake up */
-	mdelay(MCP251X_OST_DELAY_MS);
-
-	/* Put device into config mode */
-	mcp251x_write_reg(spi, CANCTRL, CANCTRL_REQOP_CONF);
-
-	/* Wait for the device to enter config mode */
-	ret = mcp251x_read_stat_poll_timeout(spi, value, value == CANCTRL_REQOP_CONF,
-					     MCP251X_OST_DELAY_MS * 1000,
-					     USEC_PER_SEC);
-	if (ret) {
-		dev_err(&spi->dev, "MCP251x didn't enter in config mode\n");
-		return ret;
-	}
-
-	/* Disable and clear pending interrupts */
-	mcp251x_write_2regs(spi, CANINTE, 0x00, 0x00);
-	enable_irq(spi->irq);
-
-	return 0;
-}
-
 static netdev_tx_t mcp251x_hard_start_xmit(struct sk_buff *skb,
 					   struct net_device *net)
 {
@@ -1085,13 +1053,9 @@ static void mcp251x_restart_work_handler(struct work_struct *ws)
 
 	mutex_lock(&priv->mcp_lock);
 	if (priv->after_suspend) {
-		if (priv->after_suspend & AFTER_SUSPEND_POWER) {
-			mcp251x_hw_reset(spi);
-			mcp251x_setup(net, spi);
-			mcp251x_gpio_restore(spi);
-		} else {
-			mcp251x_hw_wake(spi);
-		}
+		mcp251x_hw_reset(spi);
+		mcp251x_setup(net, spi);
+		mcp251x_gpio_restore(spi);
 		priv->force_quit = 0;
 		if (priv->after_suspend & AFTER_SUSPEND_RESTART) {
 			mcp251x_set_normal_mode(spi);
@@ -1291,7 +1255,7 @@ static int mcp251x_open(struct net_device *net)
 	INIT_WORK(&priv->tx_work, mcp251x_tx_work_handler);
 	INIT_WORK(&priv->restart_work, mcp251x_restart_work_handler);
 
-	ret = mcp251x_hw_wake(spi);
+	ret = mcp251x_hw_reset(spi);
 	if (ret)
 		goto out_free_wq;
 	ret = mcp251x_setup(net, spi);
@@ -1548,13 +1512,13 @@ static int __maybe_unused mcp251x_can_resume(struct device *dev)
 
 	if (priv->after_suspend & AFTER_SUSPEND_POWER)
 		mcp251x_power_enable(priv->power, 1);
-	if (priv->after_suspend & AFTER_SUSPEND_UP)
-		mcp251x_power_enable(priv->transceiver, 1);
 
-	if (priv->after_suspend & (AFTER_SUSPEND_POWER | AFTER_SUSPEND_UP))
+	if (priv->after_suspend & AFTER_SUSPEND_UP) {
+		mcp251x_power_enable(priv->transceiver, 1);
 		queue_work(priv->wq, &priv->restart_work);
-	else
+	} else {
 		priv->after_suspend = 0;
+	}
 
 	priv->force_quit = 0;
 	enable_irq(spi->irq);
