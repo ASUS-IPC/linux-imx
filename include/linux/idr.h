@@ -167,7 +167,10 @@ static inline bool idr_is_empty(const struct idr *idr)
  * Each idr_preload() should be matched with an invocation of this
  * function.  See idr_preload() for details.
  */
-void idr_preload_end(void);
+static inline void idr_preload_end(void)
+{
+	preempt_enable();
+}
 
 /**
  * idr_find - return pointer for given id

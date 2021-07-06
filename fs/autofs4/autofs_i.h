@@ -20,7 +20,6 @@
 #include <linux/sched.h>
 #include <linux/mount.h>
 #include <linux/namei.h>
-#include <linux/delay.h>
 #include <linux/uaccess.h>
 #include <linux/mutex.h>
 #include <linux/spinlock.h>

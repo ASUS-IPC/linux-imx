@@ -831,8 +831,9 @@ struct mvpp2_pcpu_stats {
 /* Per-CPU port control */
 struct mvpp2_port_pcpu {
 	struct hrtimer tx_done_timer;
-	struct net_device *dev;
 	bool timer_scheduled;
+	/* Tasklet for egress finalization */
+	struct tasklet_struct tx_done_tasklet;
 };
 
 struct mvpp2_queue_vector {
@@ -5954,34 +5955,46 @@ static void mvpp2_link_event(struct net_device *dev)
 	}
 }
 
-static enum hrtimer_restart mvpp2_hr_timer_cb(struct hrtimer *timer)
+static void mvpp2_timer_set(struct mvpp2_port_pcpu *port_pcpu)
 {
-	struct net_device *dev;
-	struct mvpp2_port *port;
-	struct mvpp2_port_pcpu *port_pcpu;
+	ktime_t interval;
+
+	if (!port_pcpu->timer_scheduled) {
+		port_pcpu->timer_scheduled = true;
+		interval = MVPP2_TXDONE_HRTIMER_PERIOD_NS;
+		hrtimer_start(&port_pcpu->tx_done_timer, interval,
+			      HRTIMER_MODE_REL_PINNED);
+	}
+}
+
+static void mvpp2_tx_proc_cb(unsigned long data)
+{
+	struct net_device *dev = (struct net_device *)data;
+	struct mvpp2_port *port = netdev_priv(dev);
+	struct mvpp2_port_pcpu *port_pcpu = this_cpu_ptr(port->pcpu);
 	unsigned int tx_todo, cause;
 
-	port_pcpu = container_of(timer, struct mvpp2_port_pcpu, tx_done_timer);
-	dev = port_pcpu->dev;
-
 	if (!netif_running(dev))
-		return HRTIMER_NORESTART;
-
+		return;
 	port_pcpu->timer_scheduled = false;
-	port = netdev_priv(dev);
 
 	/* Process all the Tx queues */
 	cause = (1 << port->ntxqs) - 1;
 	tx_todo = mvpp2_tx_done(port, cause, smp_processor_id());
 
 	/* Set the timer in case not all the packets were processed */
-	if (tx_todo && !port_pcpu->timer_scheduled) {
-		port_pcpu->timer_scheduled = true;
-		hrtimer_forward_now(&port_pcpu->tx_done_timer,
-				    MVPP2_TXDONE_HRTIMER_PERIOD_NS);
+	if (tx_todo)
+		mvpp2_timer_set(port_pcpu);
+}
 
-		return HRTIMER_RESTART;
-	}
+static enum hrtimer_restart mvpp2_hr_timer_cb(struct hrtimer *timer)
+{
+	struct mvpp2_port_pcpu *port_pcpu = container_of(timer,
+							 struct mvpp2_port_pcpu,
+							 tx_done_timer);
+
+	tasklet_schedule(&port_pcpu->tx_done_tasklet);
+
 	return HRTIMER_NORESTART;
 }
 
@@ -6471,12 +6484,7 @@ out:
 	    txq_pcpu->count > 0) {
 		struct mvpp2_port_pcpu *port_pcpu = this_cpu_ptr(port->pcpu);
 
-		if (!port_pcpu->timer_scheduled) {
-			port_pcpu->timer_scheduled = true;
-			hrtimer_start(&port_pcpu->tx_done_timer,
-				      MVPP2_TXDONE_HRTIMER_PERIOD_NS,
-				      HRTIMER_MODE_REL_PINNED_SOFT);
-		}
+		mvpp2_timer_set(port_pcpu);
 	}
 
 	return NETDEV_TX_OK;
@@ -6867,6 +6875,7 @@ static int mvpp2_stop(struct net_device *dev)
 
 			hrtimer_cancel(&port_pcpu->tx_done_timer);
 			port_pcpu->timer_scheduled = false;
+			tasklet_kill(&port_pcpu->tx_done_tasklet);
 		}
 	}
 	mvpp2_cleanup_rxqs(port);
@@ -7639,10 +7648,13 @@ static int mvpp2_port_probe(struct platform_device *pdev,
 			port_pcpu = per_cpu_ptr(port->pcpu, cpu);
 
 			hrtimer_init(&port_pcpu->tx_done_timer, CLOCK_MONOTONIC,
-				     HRTIMER_MODE_REL_PINNED_SOFT);
+				     HRTIMER_MODE_REL_PINNED);
 			port_pcpu->tx_done_timer.function = mvpp2_hr_timer_cb;
 			port_pcpu->timer_scheduled = false;
-			port_pcpu->dev = dev;
+
+			tasklet_init(&port_pcpu->tx_done_tasklet,
+				     mvpp2_tx_proc_cb,
+				     (unsigned long)dev);
 		}
 	}
 

@@ -38,7 +38,6 @@ void common(void) {
 
 	BLANK();
 	OFFSET(TASK_TI_flags, task_struct, thread_info.flags);
-	OFFSET(TASK_TI_preempt_lazy_count, task_struct, thread_info.preempt_lazy_count);
 	OFFSET(TASK_addr_limit, task_struct, thread.addr_limit);
 
 	BLANK();
@@ -95,7 +94,6 @@ void common(void) {
 
 	BLANK();
 	DEFINE(PTREGS_SIZE, sizeof(struct pt_regs));
-	DEFINE(_PREEMPT_ENABLED, PREEMPT_ENABLED);
 
 	/* TLB state for the entry code */
 	OFFSET(TLB_STATE_user_pcid_flush_mask, tlb_state, user_pcid_flush_mask);

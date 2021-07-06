@@ -38,6 +38,7 @@
 
 #include <linux/module.h>
 #include <linux/spinlock.h>
+#include <linux/rwlock.h>
 #include <net/9p/9p.h>
 #include <net/9p/client.h>
 #include <net/9p/transport.h>

@@ -63,8 +63,7 @@ void trigger_data_free(struct event_trigger_data *data)
  * any trigger that should be deferred, ETT_NONE if nothing to defer.
  */
 enum event_trigger_type
-event_triggers_call(struct trace_event_file *file, void *rec,
-		    struct ring_buffer_event *event)
+event_triggers_call(struct trace_event_file *file, void *rec)
 {
 	struct event_trigger_data *data;
 	enum event_trigger_type tt = ETT_NONE;
@@ -77,7 +76,7 @@ event_triggers_call(struct trace_event_file *file, void *rec,
 		if (data->paused)
 			continue;
 		if (!rec) {
-			data->ops->func(data, rec, event);
+			data->ops->func(data, rec);
 			continue;
 		}
 		filter = rcu_dereference_sched(data->filter);
@@ -87,7 +86,7 @@ event_triggers_call(struct trace_event_file *file, void *rec,
 			tt |= data->cmd_ops->trigger_type;
 			continue;
 		}
-		data->ops->func(data, rec, event);
+		data->ops->func(data, rec);
 	}
 	return tt;
 }
@@ -109,7 +108,7 @@ EXPORT_SYMBOL_GPL(event_triggers_call);
 void
 event_triggers_post_call(struct trace_event_file *file,
 			 enum event_trigger_type tt,
-			 void *rec, struct ring_buffer_event *event)
+			 void *rec)
 {
 	struct event_trigger_data *data;
 
@@ -117,7 +116,7 @@ event_triggers_post_call(struct trace_event_file *file,
 		if (data->paused)
 			continue;
 		if (data->cmd_ops->trigger_type & tt)
-			data->ops->func(data, rec, event);
+			data->ops->func(data, rec);
 	}
 }
 EXPORT_SYMBOL_GPL(event_triggers_post_call);
@@ -917,15 +916,8 @@ void set_named_trigger_data(struct event_trigger_data *data,
 	data->named_data = named_data;
 }
 
-struct event_trigger_data *
-get_named_trigger_data(struct event_trigger_data *data)
-{
-	return data->named_data;
-}
-
 static void
-traceon_trigger(struct event_trigger_data *data, void *rec,
-		struct ring_buffer_event *event)
+traceon_trigger(struct event_trigger_data *data, void *rec)
 {
 	if (tracing_is_on())
 		return;
@@ -934,8 +926,7 @@ traceon_trigger(struct event_trigger_data *data, void *rec,
 }
 
 static void
-traceon_count_trigger(struct event_trigger_data *data, void *rec,
-		      struct ring_buffer_event *event)
+traceon_count_trigger(struct event_trigger_data *data, void *rec)
 {
 	if (tracing_is_on())
 		return;
@@ -950,8 +941,7 @@ traceon_count_trigger(struct event_trigger_data *data, void *rec,
 }
 
 static void
-traceoff_trigger(struct event_trigger_data *data, void *rec,
-		 struct ring_buffer_event *event)
+traceoff_trigger(struct event_trigger_data *data, void *rec)
 {
 	if (!tracing_is_on())
 		return;
@@ -960,8 +950,7 @@ traceoff_trigger(struct event_trigger_data *data, void *rec,
 }
 
 static void
-traceoff_count_trigger(struct event_trigger_data *data, void *rec,
-		       struct ring_buffer_event *event)
+traceoff_count_trigger(struct event_trigger_data *data, void *rec)
 {
 	if (!tracing_is_on())
 		return;
@@ -1058,8 +1047,7 @@ static struct event_command trigger_traceoff_cmd = {
 
 #ifdef CONFIG_TRACER_SNAPSHOT
 static void
-snapshot_trigger(struct event_trigger_data *data, void *rec,
-		 struct ring_buffer_event *event)
+snapshot_trigger(struct event_trigger_data *data, void *rec)
 {
 	struct trace_event_file *file = data->private_data;
 
@@ -1070,8 +1058,7 @@ snapshot_trigger(struct event_trigger_data *data, void *rec,
 }
 
 static void
-snapshot_count_trigger(struct event_trigger_data *data, void *rec,
-		       struct ring_buffer_event *event)
+snapshot_count_trigger(struct event_trigger_data *data, void *rec)
 {
 	if (!data->count)
 		return;
@@ -1079,7 +1066,7 @@ snapshot_count_trigger(struct event_trigger_data *data, void *rec,
 	if (data->count != -1)
 		(data->count)--;
 
-	snapshot_trigger(data, rec, event);
+	snapshot_trigger(data, rec);
 }
 
 static int
@@ -1158,15 +1145,13 @@ static __init int register_trigger_snapshot_cmd(void) { return 0; }
 #define STACK_SKIP 3
 
 static void
-stacktrace_trigger(struct event_trigger_data *data, void *rec,
-		   struct ring_buffer_event *event)
+stacktrace_trigger(struct event_trigger_data *data, void *rec)
 {
 	trace_dump_stack(STACK_SKIP);
 }
 
 static void
-stacktrace_count_trigger(struct event_trigger_data *data, void *rec,
-			 struct ring_buffer_event *event)
+stacktrace_count_trigger(struct event_trigger_data *data, void *rec)
 {
 	if (!data->count)
 		return;
@@ -1174,7 +1159,7 @@ stacktrace_count_trigger(struct event_trigger_data *data, void *rec,
 	if (data->count != -1)
 		(data->count)--;
 
-	stacktrace_trigger(data, rec, event);
+	stacktrace_trigger(data, rec);
 }
 
 static int
@@ -1236,8 +1221,7 @@ static __init void unregister_trigger_traceon_traceoff_cmds(void)
 }
 
 static void
-event_enable_trigger(struct event_trigger_data *data, void *rec,
-		     struct ring_buffer_event *event)
+event_enable_trigger(struct event_trigger_data *data, void *rec)
 {
 	struct enable_trigger_data *enable_data = data->private_data;
 
@@ -1248,8 +1232,7 @@ event_enable_trigger(struct event_trigger_data *data, void *rec,
 }
 
 static void
-event_enable_count_trigger(struct event_trigger_data *data, void *rec,
-			   struct ring_buffer_event *event)
+event_enable_count_trigger(struct event_trigger_data *data, void *rec)
 {
 	struct enable_trigger_data *enable_data = data->private_data;
 
@@ -1263,7 +1246,7 @@ event_enable_count_trigger(struct event_trigger_data *data, void *rec,
 	if (data->count != -1)
 		(data->count)--;
 
-	event_enable_trigger(data, rec, event);
+	event_enable_trigger(data, rec);
 }
 
 int event_enable_trigger_print(struct seq_file *m,
