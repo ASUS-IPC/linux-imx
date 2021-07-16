@@ -2531,8 +2531,6 @@ DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_BROADCOM, 0x43ef, quirk_disable_all_msi);
 DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_MARVELL_EXT, 0x2b42, quirk_disable_all_msi);
 DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_MARVELL_EXT, 0x2b43, quirk_disable_all_msi);
 DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_MARVELL_EXT, 0x2b44, quirk_disable_all_msi);
-DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_INTEL, 0x2723, quirk_disable_all_msi);   /* Intel AX200 */
-DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_ATHEROS, 0x003e, quirk_disable_all_msi); /* QCA6174 */
 
 /* Disable MSI on chipsets that are known to not support it */
 static void quirk_disable_msi(struct pci_dev *dev)
