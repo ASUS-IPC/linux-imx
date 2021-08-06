@@ -97,29 +97,6 @@
 				<192000>;
 	};
 
-	sound-ak4458 {
-		compatible = "fsl,imx-audio-ak4458-mq";
-		model = "ak4458-audio";
-		audio-cpu = <&sai1>;
-		audio-codec = <&ak4458_1>, <&ak4458_2>;
-		ak4458,pdn-gpio = <&gpio3 18 GPIO_ACTIVE_HIGH>;
-	};
-
-	sound-ak5558 {
-		compatible = "fsl,imx-audio-ak5558-mq";
-		model = "ak5558-audio";
-		audio-cpu = <&sai5>;
-		audio-codec = <&ak5558>;
-	};
-
-	sound-ak4497 {
-		compatible = "fsl,imx-audio-ak4497-mq";
-		model = "ak4497-audio";
-		audio-cpu = <&sai1>;
-		audio-codec = <&ak4497>;
-		status = "disabled";
-	};
-
 	hwid: gpio-hwid {
 		compatible = "gpio-hwid";
 		boardinfo = "PE100A";
@@ -767,28 +744,6 @@
 		};
 	};
 
-	ak4458_1: ak4458@10 {
-		compatible = "asahi-kasei,ak4458";
-		reg = <0x10>;
-	};
-
-	ak4458_2: ak4458@12 {
-		compatible = "asahi-kasei,ak4458";
-		reg = <0x12>;
-	};
-
-	ak5558: ak5558@13 {
-		compatible = "asahi-kasei,ak5558";
-		reg = <0x13>;
-		ak5558,pdn-gpio = <&gpio3 17 GPIO_ACTIVE_HIGH>;
-	};
-
-	ak4497: ak4497@11 {
-		compatible = "asahi-kasei,ak4497";
-		reg = <0x11>;
-		ak4497,pdn-gpio = <&gpio3 16 GPIO_ACTIVE_HIGH>;
-	};
-
 	synaptics_dsx_ts: synaptics_dsx_ts@20 {
 		compatible = "synaptics_dsx";
 		reg = <0x20>;
@@ -947,7 +902,7 @@
 	fsl,sai-multi-lane;
 	fsl,dataline,dsd = <0 0xff 0xff 2 0xff 0x11>;
 	dmas = <&sdma2 8 26 0>, <&sdma2 9 26 0>;
-	status = "okay";
+	status = "disabled";
 };
 
 &sai2 {
@@ -956,7 +911,7 @@
 	assigned-clocks = <&clk IMX8MQ_CLK_SAI2>;
 	assigned-clock-parents = <&clk IMX8MQ_AUDIO_PLL1_OUT>;
 	assigned-clock-rates = <24576000>;
-	status = "okay";
+	status = "disabled";
 };
 
 &sai4 {
@@ -983,7 +938,7 @@
 		<&clk IMX8MQ_AUDIO_PLL2_OUT>;
 	clock-names = "bus", "mclk0", "mclk1", "mclk2", "mclk3", "pll8k", "pll11k";
 	fsl,sai-asynchronous;
-	status = "okay";
+	status = "disabled";
 };
 
 //&gpu_pd {
