@@ -646,6 +646,12 @@ bool cdns_hdmi_bridge_mode_fixup(struct drm_bridge *bridge,
 		return true;
 	}
 
+	if(!strcmp(mode->name, "3840x2160") && mode->clock == 594000 && drm_mode_is_420_only(di, mode)) {
+		pr_err("force to set conn_state->colorspace to DRM_MODE_COLORIMETRY_BT709_YCC\n");
+		pr_err("for support 3840x2160@60 yuv420 only\n");
+		conn_state->colorspace = DRM_MODE_COLORIMETRY_BT709_YCC;
+	}
+
 	/* imx8mq */
 	if (conn_state->colorspace == DRM_MODE_COLORIMETRY_DEFAULT)
 		return !drm_mode_is_420_only(di, mode);
