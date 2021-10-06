@@ -925,7 +925,6 @@
 	pinctrl-0 = <&pinctrl_uart1>;
 	assigned-clocks = <&clk IMX8MQ_CLK_UART1>;
 	assigned-clock-parents = <&clk IMX8MQ_CLK_25M>;
-	fsl,uart-has-rtscts;
 	status = "okay";
 };
 
