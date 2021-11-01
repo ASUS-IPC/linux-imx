@@ -174,7 +174,7 @@ static int it5201_setup_i2c_det(
 	}
 
 	ret = devm_request_threaded_irq(info->dev, i2c->irq, NULL,
-		it5201_i2c_irq_handler, IRQF_ONESHOT | IRQF_TRIGGER_FALLING,
+		it5201_i2c_irq_handler, IRQF_TRIGGER_LOW | IRQF_ONESHOT,
 		dev_name(info->dev), info);
 	if (ret < 0) {
 		dev_err(info->dev, "Failed to register i2c interrupt: %d", ret);
