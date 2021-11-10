@@ -210,6 +210,8 @@ struct imx_port {
 	unsigned int		dte_mode:1;
 	unsigned int		inverted_tx:1;
 	unsigned int		inverted_rx:1;
+	unsigned int		rs485_enabled;
+	unsigned int		rs485_rts_active_low;
 	struct clk		*clk_ipg;
 	struct clk		*clk_per;
 	const struct imx_uart_data *devdata;
@@ -2259,6 +2261,16 @@ static int imx_uart_probe_dt(struct imx_port *sport,
 	if (of_get_property(np, "fsl,inverted-rx", NULL))
 		sport->inverted_rx = 1;
 
+	if (of_get_property(np, "linux,rs485-enabled-at-boot-time", NULL)) {
+		dev_info(&pdev->dev, "set rs485_enabled = 1\n");
+		sport->rs485_enabled = 1;
+	}
+
+	if (of_get_property(np, "rs485-rts-active-low", NULL)) {
+		dev_info(&pdev->dev, "set rs485_rts_active_low = 1\n");
+		sport->rs485_rts_active_low = 1;
+	}
+
 	return 0;
 }
 #else
@@ -2392,6 +2404,24 @@ static int imx_uart_probe(struct platform_device *pdev)
 	sport->port.has_sysrq = IS_ENABLED(CONFIG_SERIAL_IMX_CONSOLE);
 	sport->port.ops = &imx_uart_pops;
 	sport->port.rs485_config = imx_uart_rs485_config;
+
+	if (sport->rs485_enabled) {
+		dev_info(&pdev->dev, "set SER_RS485_ENABLED\n");
+		sport->port.rs485.flags |= SER_RS485_ENABLED;
+	}
+
+	if (sport->rs485_rts_active_low) {
+		dev_info(&pdev->dev, "active low, set SER_RS485_RTS_AFTER_SEND\n");
+		sport->port.rs485.flags &= ~SER_RS485_RTS_ON_SEND;
+		sport->port.rs485.flags |= SER_RS485_RTS_AFTER_SEND;
+	} else {
+		dev_info(&pdev->dev, "active high, set SER_RS485_RTS_ON_SEND\n");
+		sport->port.rs485.flags &= ~SER_RS485_RTS_AFTER_SEND;
+		sport->port.rs485.flags |= SER_RS485_RTS_ON_SEND;
+	}
+
+	dev_info(&pdev->dev, "rs485.flags = %d\n", sport->port.rs485.flags);
+
 	sport->port.flags = UPF_BOOT_AUTOCONF;
 	timer_setup(&sport->timer, imx_uart_timeout, 0);
 
