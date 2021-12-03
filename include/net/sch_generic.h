@@ -10,7 +10,6 @@
 #include <linux/percpu.h>
 #include <linux/dynamic_queue_limits.h>
 #include <linux/list.h>
-#include <net/net_seq_lock.h>
 #include <linux/refcount.h>
 #include <linux/workqueue.h>
 #include <net/gen_stats.h>
@@ -91,7 +90,7 @@ struct Qdisc {
 	struct sk_buff		*gso_skb ____cacheline_aligned_in_smp;
 	struct qdisc_skb_head	q;
 	struct gnet_stats_basic_packed bstats;
-	net_seqlock_t		running;
+	seqcount_t		running;
 	struct gnet_stats_queue	qstats;
 	unsigned long		state;
 	struct Qdisc            *next_sched;
@@ -110,22 +109,13 @@ static inline void qdisc_refcount_inc(struct Qdisc *qdisc)
 	refcount_inc(&qdisc->refcnt);
 }
 
-static inline bool qdisc_is_running(struct Qdisc *qdisc)
+static inline bool qdisc_is_running(const struct Qdisc *qdisc)
 {
-#ifdef CONFIG_PREEMPT_RT_BASE
-	return spin_is_locked(&qdisc->running.lock) ? true : false;
-#else
 	return (raw_read_seqcount(&qdisc->running) & 1) ? true : false;
-#endif
 }
 
 static inline bool qdisc_run_begin(struct Qdisc *qdisc)
 {
-#ifdef CONFIG_PREEMPT_RT_BASE
-	if (try_write_seqlock(&qdisc->running))
-		return true;
-	return false;
-#else
 	if (qdisc_is_running(qdisc))
 		return false;
 	/* Variant of write_seqcount_begin() telling lockdep a trylock
@@ -134,16 +124,11 @@ static inline bool qdisc_run_begin(struct Qdisc *qdisc)
 	raw_write_seqcount_begin(&qdisc->running);
 	seqcount_acquire(&qdisc->running.dep_map, 0, 1, _RET_IP_);
 	return true;
-#endif
 }
 
 static inline void qdisc_run_end(struct Qdisc *qdisc)
 {
-#ifdef CONFIG_PREEMPT_RT_BASE
-	write_sequnlock(&qdisc->running);
-#else
 	write_seqcount_end(&qdisc->running);
-#endif
 }
 
 static inline bool qdisc_may_bulk(const struct Qdisc *qdisc)
@@ -352,7 +337,7 @@ static inline spinlock_t *qdisc_root_sleeping_lock(const struct Qdisc *qdisc)
 	return qdisc_lock(root);
 }
 
-static inline net_seqlock_t *qdisc_root_sleeping_running(const struct Qdisc *qdisc)
+static inline seqcount_t *qdisc_root_sleeping_running(const struct Qdisc *qdisc)
 {
 	struct Qdisc *root = qdisc_root_sleeping(qdisc);
 

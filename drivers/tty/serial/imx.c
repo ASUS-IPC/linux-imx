@@ -230,6 +230,8 @@ struct imx_port {
 	unsigned int		have_rtscts:1;
 	unsigned int		have_rtsgpio:1;
 	unsigned int		dte_mode:1;
+	unsigned int		rs485_enabled;
+	unsigned int		rs485_rts_active_low;
 	struct clk		*clk_ipg;
 	struct clk		*clk_per;
 	const struct imx_uart_data *devdata;
@@ -2126,6 +2128,17 @@ static int serial_imx_probe_dt(struct imx_port *sport,
 	if (of_get_property(np, "rts-gpios", NULL))
 		sport->have_rtsgpio = 1;
 
+
+	if (of_get_property(np, "linux,rs485-enabled-at-boot-time", NULL)) {
+		dev_info(&pdev->dev, "set rs485_enabled = 1\n");
+		sport->rs485_enabled = 1;
+	}
+
+	if (of_get_property(np, "rs485-rts-active-low", NULL)) {
+		dev_info(&pdev->dev, "set rs485_rts_active_low = 1\n");
+		sport->rs485_rts_active_low = 1;
+	}
+
 	return 0;
 }
 #else
@@ -2231,6 +2244,24 @@ static int serial_imx_probe(struct platform_device *pdev)
 	sport->port.rs485_config = imx_rs485_config;
 	sport->port.rs485.flags =
 		SER_RS485_RTS_ON_SEND | SER_RS485_RX_DURING_TX;
+
+	if (sport->rs485_enabled) {
+		dev_info(&pdev->dev, "set SER_RS485_ENABLED\n");
+		sport->port.rs485.flags |= SER_RS485_ENABLED;
+	}
+
+	if (sport->rs485_rts_active_low) {
+		dev_info(&pdev->dev, "active low, set SER_RS485_RTS_AFTER_SEND\n");
+		sport->port.rs485.flags &= ~SER_RS485_RTS_ON_SEND;
+		sport->port.rs485.flags |= SER_RS485_RTS_AFTER_SEND;
+	} else {
+		dev_info(&pdev->dev, "active high, set SER_RS485_RTS_ON_SEND\n");
+		sport->port.rs485.flags &= ~SER_RS485_RTS_AFTER_SEND;
+		sport->port.rs485.flags |= SER_RS485_RTS_ON_SEND;
+	}
+
+	dev_info(&pdev->dev, "rs485.flags = %d\n", sport->port.rs485.flags);
+
 	sport->port.flags = UPF_BOOT_AUTOCONF;
 	init_timer(&sport->timer);
 	sport->timer.function = imx_timeout;

@@ -29,7 +29,7 @@ static struct percpu_rw_semaphore name = {				\
 extern int __percpu_down_read(struct percpu_rw_semaphore *, int);
 extern void __percpu_up_read(struct percpu_rw_semaphore *);
 
-static inline void percpu_down_read(struct percpu_rw_semaphore *sem)
+static inline void percpu_down_read_preempt_disable(struct percpu_rw_semaphore *sem)
 {
 	might_sleep();
 
@@ -47,10 +47,16 @@ static inline void percpu_down_read(struct percpu_rw_semaphore *sem)
 	__this_cpu_inc(*sem->read_count);
 	if (unlikely(!rcu_sync_is_idle(&sem->rss)))
 		__percpu_down_read(sem, false); /* Unconditional memory barrier */
+	barrier();
 	/*
-	 * The preempt_enable() prevents the compiler from
+	 * The barrier() prevents the compiler from
 	 * bleeding the critical section out.
 	 */
+}
+
+static inline void percpu_down_read(struct percpu_rw_semaphore *sem)
+{
+	percpu_down_read_preempt_disable(sem);
 	preempt_enable();
 }
 
@@ -77,9 +83,13 @@ static inline int percpu_down_read_trylock(struct percpu_rw_semaphore *sem)
 	return ret;
 }
 
-static inline void percpu_up_read(struct percpu_rw_semaphore *sem)
+static inline void percpu_up_read_preempt_enable(struct percpu_rw_semaphore *sem)
 {
-	preempt_disable();
+	/*
+	 * The barrier() prevents the compiler from
+	 * bleeding the critical section out.
+	 */
+	barrier();
 	/*
 	 * Same as in percpu_down_read().
 	 */
@@ -90,6 +100,12 @@ static inline void percpu_up_read(struct percpu_rw_semaphore *sem)
 	preempt_enable();
 
 	rwsem_release(&sem->rw_sem.dep_map, 1, _RET_IP_);
+}
+
+static inline void percpu_up_read(struct percpu_rw_semaphore *sem)
+{
+	preempt_disable();
+	percpu_up_read_preempt_enable(sem);
 }
 
 extern void percpu_down_write(struct percpu_rw_semaphore *);

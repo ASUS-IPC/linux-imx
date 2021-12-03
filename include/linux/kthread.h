@@ -84,7 +84,7 @@ enum {
 
 struct kthread_worker {
 	unsigned int		flags;
-	raw_spinlock_t		lock;
+	spinlock_t		lock;
 	struct list_head	work_list;
 	struct list_head	delayed_work_list;
 	struct task_struct	*task;

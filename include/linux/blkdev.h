@@ -27,7 +27,6 @@
 #include <linux/percpu-refcount.h>
 #include <linux/scatterlist.h>
 #include <linux/blkzoned.h>
-#include <linux/swork.h>
 
 struct module;
 struct scsi_ioctl_command;
@@ -135,9 +134,6 @@ typedef __u32 __bitwise req_flags_t;
  */
 struct request {
 	struct list_head queuelist;
-#ifdef CONFIG_PREEMPT_RT_FULL
-	struct work_struct work;
-#endif
 	union {
 		struct __call_single_data csd;
 		u64 fifo_time;
@@ -602,7 +598,6 @@ struct request_queue {
 #endif
 	struct rcu_head		rcu_head;
 	wait_queue_head_t	mq_freeze_wq;
-	struct swork_event	mq_pcpu_wake;
 	struct percpu_ref	q_usage_counter;
 	struct list_head	all_q_node;
 
