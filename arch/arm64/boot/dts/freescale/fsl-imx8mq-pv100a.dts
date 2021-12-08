@@ -21,6 +21,10 @@
 	model = "ASUS PV100A";
 	compatible = "fsl,imx8mq-evk", "fsl,imx8mq";
 
+        aliases {
+                rtc0 = &snvs_rtc;
+        };
+
 	clocks {
 		clk_20m: clock@11 {
 			compatible = "fixed-clock";
@@ -755,10 +759,6 @@
 				regulator-always-on;
 			};
 		};
-	};
-	rtc@6f {
-		compatible = "isil,isl1208";
-		reg = <0x6f>;
 	};
 };
 
