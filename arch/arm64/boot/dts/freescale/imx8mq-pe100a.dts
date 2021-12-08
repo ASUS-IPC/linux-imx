@@ -14,8 +14,9 @@
 	compatible = "fsl,imx8mq-evk", "fsl,imx8mq";
 
 	aliases {
-		rtc0 = &rtc_isl1208;
-		rtc1 = &snvs_rtc;
+		rtc0 = &snvs_rtc;
+                rtc1 = &bq32000;
+                rtc2 = &rtc_isl1208;
 	};
 
 	chosen {
@@ -448,6 +449,12 @@
 		compatible = "isil,isl1208";
 		reg = <0x6f>;
 	};
+
+        bq32000: rtc@68 {
+                compatible = "ti,bq32000";
+                reg = <0x68>;
+        };
+
 };
 
 &i2c3 {

@@ -206,6 +206,7 @@ static long rtc_dev_ioctl(struct file *file,
 	int err = 0;
 	struct rtc_device *rtc = file->private_data;
 	const struct rtc_class_ops *ops = rtc->ops;
+	struct rtc_device *rtcX;
 	struct rtc_time tm;
 	struct rtc_wkalrm alarm;
 	void __user *uarg = (void __user *)arg;
@@ -329,8 +330,26 @@ static long rtc_dev_ioctl(struct file *file,
 	case RTC_SET_TIME:
 		mutex_unlock(&rtc->ops_lock);
 
+		dev_info(&rtc->dev, "RTC_SET_TIME sync time between rtc0 and rtcX\n");
+
 		if (copy_from_user(&tm, uarg, sizeof(tm)))
 			return -EFAULT;
+
+		rtcX = rtc_class_open("rtc1");
+		if (rtcX == NULL) {
+			pr_err("unable to open rtc device (rtc1)\n");
+			rtcX = rtc_class_open("rtc2");
+			if (rtcX == NULL) {
+                        	pr_err("unable to open rtc device (rtc2)\n");
+				return rtc_set_time(rtc, &tm);
+                	}
+		}
+
+		err = rtc_set_time(rtcX, &tm);
+		if (err) {
+			pr_err("rtc1 rtc_set_time fail \n");
+		}
+		rtc_class_close(rtcX);
 
 		return rtc_set_time(rtc, &tm);
 

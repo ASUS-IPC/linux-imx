@@ -389,6 +389,8 @@ int __rtc_register_device(struct module *owner, struct rtc_device *rtc)
 {
 	struct rtc_wkalrm alrm;
 	int err;
+	struct rtc_device *rtcX;
+	struct rtc_time tm;
 
 	if (!rtc->ops) {
 		dev_dbg(&rtc->dev, "no ops set\n");
@@ -419,9 +421,33 @@ int __rtc_register_device(struct module *owner, struct rtc_device *rtc)
 	dev_info(rtc->dev.parent, "registered as %s\n",
 		 dev_name(&rtc->dev));
 
+        rtcX = rtc_class_open("rtc1");
+        if (rtcX == NULL) {
+                pr_info("unable to open rtc device (rtc1)\n");
+		rtcX = rtc_class_open("rtc2");
+		if (rtcX == NULL) {
+                	pr_info("unable to open rtc device (rtc2)\n");
+                	return 0;
+        	}
+        }
+
+        err = rtc_read_time(rtcX, &tm);
+        if (err) {
+                dev_err(rtc->dev.parent,
+                        "hctosys: unable to read the hardware clock\n");
+                rtc_class_close(rtcX);
+        } else {
+	        pr_info("__rtc_register_device write rtcX time to rtc0\n");
+                err = rtc_set_time(rtc, &tm);
+                if (err) {
+                        pr_err("rtcX: unable to set the hardware clock\n");
+                }
+                rtc_class_close(rtcX);
+        }
+
 #ifdef CONFIG_RTC_HCTOSYS_DEVICE
-	if (!strcmp(dev_name(&rtc->dev), CONFIG_RTC_HCTOSYS_DEVICE))
-		rtc_hctosys(rtc);
+        if (!strcmp(dev_name(&rtc->dev), CONFIG_RTC_HCTOSYS_DEVICE))
+                rtc_hctosys(rtc);
 #endif
 
 	return 0;
