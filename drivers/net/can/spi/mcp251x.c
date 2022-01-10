@@ -342,7 +342,7 @@ static u8 mcp251x_read_reg(struct spi_device *spi, u8 reg)
 		val = priv->spi_rx_buf[2];
 	}
 
-	dev_info(&spi->dev, "mcp251x_read reg 0x%02x = 0x%02x\n", reg, val);
+	//dev_info(&spi->dev, "mcp251x_read reg 0x%02x = 0x%02x\n", reg, val);
 	return val;
 }
 
@@ -365,7 +365,7 @@ static void mcp251x_read_2regs(struct spi_device *spi, u8 reg, u8 *v1, u8 *v2)
 		*v1 = priv->spi_rx_buf[2];
 		*v2 = priv->spi_rx_buf[3];
 	}
-	dev_info(&spi->dev, "mcp251x_read 2regs 0x%02x = 0x%02x 0x%02x\n", reg, *v1, *v2);
+	//dev_info(&spi->dev, "mcp251x_read 2regs 0x%02x = 0x%02x 0x%02x\n", reg, *v1, *v2);
 }
 
 static void mcp251x_write_reg(struct spi_device *spi, u8 reg, u8 val)
@@ -378,7 +378,7 @@ static void mcp251x_write_reg(struct spi_device *spi, u8 reg, u8 val)
 
 	mcp251x_spi_trans(spi, 3);
 
-	dev_info(&spi->dev, "mcp251x_write reg 0x%02x to 0x%02x\n", reg, val);
+	//dev_info(&spi->dev, "mcp251x_write reg 0x%02x to 0x%02x\n", reg, val);
 }
 
 static void mcp251x_write_2regs(struct spi_device *spi, u8 reg, u8 v1, u8 v2)
@@ -392,7 +392,7 @@ static void mcp251x_write_2regs(struct spi_device *spi, u8 reg, u8 v1, u8 v2)
 
 	mcp251x_spi_trans(spi, 4);
 
-	dev_info(&spi->dev, "mcp251x_write 2regs 0x%02x to 0x%02x 0x%02x\n", reg, v1, v2);
+	//dev_info(&spi->dev, "mcp251x_write 2regs 0x%02x to 0x%02x 0x%02x\n", reg, v1, v2);
 }
 
 static void mcp251x_write_bits(struct spi_device *spi, u8 reg,
@@ -407,7 +407,7 @@ static void mcp251x_write_bits(struct spi_device *spi, u8 reg,
 
 	mcp251x_spi_trans(spi, 4);
 
-	dev_info(&spi->dev, "mcp251x_write_bit reg=0x%02x, mask=0x%02x, val=0x%02x\n", reg, mask, val);
+	//dev_info(&spi->dev, "mcp251x_write_bit reg=0x%02x, mask=0x%02x, val=0x%02x\n", reg, mask, val);
 }
 
 static int spi_cmd_changed_handler(const char *kmessage, const struct kernel_param *kp)
@@ -440,9 +440,9 @@ static int spi_cmd_changed_handler(const char *kmessage, const struct kernel_par
 		priv->spi_tx_buf[1] = spi_cmd[1];
 		mcp251x_spi_trans(glbal_spi, 3);
 		val = priv->spi_rx_buf[2];
-		dev_info(&glbal_spi->dev, "Read reg 0x%02x = 0x%02x\n", spi_cmd[1], val);
+		//dev_info(&glbal_spi->dev, "Read reg 0x%02x = 0x%02x\n", spi_cmd[1], val);
 	} else if (spi_cmd[0] == INSTRUCTION_WRITE) {
-		dev_info(&glbal_spi->dev, "Write reg 0x%02x to 0x%02x\n", spi_cmd[1], spi_cmd[2]);
+		//dev_info(&glbal_spi->dev, "Write reg 0x%02x to 0x%02x\n", spi_cmd[1], spi_cmd[2]);
 		priv->spi_tx_buf[0] = spi_cmd[0];
 		priv->spi_tx_buf[1] = spi_cmd[1];
 		priv->spi_tx_buf[2] = spi_cmd[2];
@@ -890,10 +890,10 @@ static int mcp251x_do_set_bittiming(struct net_device *net)
 			  (bt->prop_seg - 1));
 	mcp251x_write_bits(spi, CNF3, CNF3_PHSEG2_MASK,
 			   (bt->phase_seg2 - 1));
-	dev_info(&spi->dev, "CNF: 0x%02x 0x%02x 0x%02x\n",
+	/*dev_info(&spi->dev, "CNF: 0x%02x 0x%02x 0x%02x\n",
 		mcp251x_read_reg(spi, CNF1),
 		mcp251x_read_reg(spi, CNF2),
-		mcp251x_read_reg(spi, CNF3));
+		mcp251x_read_reg(spi, CNF3));*/
 
 	return 0;
 }
@@ -1097,7 +1097,7 @@ static irqreturn_t mcp251x_can_ist(int irq, void *dev_id)
 
 		/* mask out flags we don't care about */
 		intf &= CANINTF_RX | CANINTF_TX | CANINTF_ERR;
-		dev_info(&spi->dev, "intf = 0x%02x\n", intf);
+		//dev_info(&spi->dev, "intf = 0x%02x\n", intf);
 		/* receive buffer 0 */
 		if (intf & CANINTF_RX0IF) {
 			mcp251x_hw_rx(spi, 0);
