@@ -138,6 +138,7 @@ static int bd718xx_i2c_probe(struct i2c_client *i2c,
 	struct mfd_cell *mfd;
 	int cells;
 
+	printk("bd718xx_i2c_probe\n");
 	if (!i2c->irq) {
 		dev_err(&i2c->dev, "No IRQ configured\n");
 		return -EINVAL;
