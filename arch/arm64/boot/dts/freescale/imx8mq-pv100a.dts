@@ -10,7 +10,7 @@
 #include "imx8mq.dtsi"
 
 / {
-	model = "NXP i.MX8MQ EVK";
+	model = "ASUS PV100A";
 	compatible = "fsl,imx8mq-evk", "fsl,imx8mq";
 
 	chosen {
