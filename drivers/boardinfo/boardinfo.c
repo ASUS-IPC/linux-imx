@@ -8,7 +8,8 @@
 
 static const char *boardinfo;
 static int id0_gpio, id1_gpio;
-static int sku0_gpio, sku1_gpio, sku2_gpio;
+static int sku0_gpio, sku1_gpio, sku2_gpio, sku3_gpio;
+static int iobd0_gpio, iobd1_gpio;
 
 static const struct of_device_id of_gpio_hwid_match[] = {
 	{ .compatible = "gpio-hwid", },
@@ -57,16 +58,35 @@ static int ver_show(struct seq_file *m, void *v)
 
 static int sku_show(struct seq_file *m, void *v)
 {
-	int id0, id1, id2;
+	int id0, id1, id2, id3;
 	int skuid;
 
 	id0 = gpio_get_value(sku0_gpio);
 	id1 = gpio_get_value(sku1_gpio);
 	id2 = gpio_get_value(sku2_gpio);
 
-	skuid = (id2 << 2) + (id1 << 1) + id0;
+	if (strcmp(boardinfo, "PV100A") != 0)
+		id3 = gpio_get_value(sku3_gpio);
+	else
+		id3 = 0;
+
+	skuid = (id3 << 3) + (id2 << 2) + (id1 << 1) + id0;
 
 	seq_printf(m, "%d\n", skuid);
+	return 0;
+}
+
+static int iobd_show(struct seq_file *m, void *v)
+{
+	int id0, id1;
+	int iobd;
+
+	id0 = gpio_get_value(iobd0_gpio);
+	id1 = gpio_get_value(iobd1_gpio);
+
+	iobd = (id1 << 1) + id0;
+
+	seq_printf(m, "%d\n", iobd);
 	return 0;
 }
 
@@ -85,6 +105,11 @@ static int sku_open(struct inode *inode, struct file *file)
 	return single_open(file, sku_show, NULL);
 }
 
+static int iobd_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, iobd_show, NULL);
+}
+
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0)
 static const struct proc_ops boardinfo_ops = {
 	.proc_open = info_open,
@@ -98,6 +123,11 @@ static const struct proc_ops boardver_ops = {
 
 static const struct proc_ops boardsku_ops = {
 	.proc_open = sku_open,
+	.proc_read = seq_read,
+};
+
+static const struct proc_ops boardio_ops = {
+	.proc_open = iobd_open,
 	.proc_read = seq_read,
 };
 #else
@@ -117,6 +147,12 @@ static struct file_operations boardsku_ops = {
 	.owner  = THIS_MODULE,
 	.open   = sku_open,
 	.read   = seq_read,
+};
+
+static struct file_operations boardio_ops = {
+	.owner	= THIS_MODULE,
+	.open	= iobd_open,
+	.read	= seq_read,
 };
 #endif
 
@@ -189,6 +225,46 @@ static int gpio_hwid_probe(struct platform_device *pdev)
 		}
 	}
 
+	if (strcmp(boardinfo, "PV100A") != 0) {
+		sku3_gpio = of_get_named_gpio(dev->of_node, "sku3-gpios", 0);
+		if (!gpio_is_valid(sku3_gpio)) {
+			printk("No sku3-gpio pin available in gpio-hwid\n");
+			return -ENODEV;
+		} else {
+			ret = devm_gpio_request_one(dev, sku3_gpio, GPIOF_DIR_IN, "GPIO_SKU3");
+			if (ret < 0) {
+				printk("Failed to request SKU3 gpio: %d\n", ret);
+				return ret;
+			}
+		}
+	}
+
+	if (strcmp(boardinfo, "PE100A") == 0) {
+		iobd0_gpio = of_get_named_gpio(dev->of_node, "iobd0-gpios", 0);
+		if (!gpio_is_valid(iobd0_gpio)) {
+			printk("No iobd0-gpio pin available in gpio-hwid\n");
+			return -ENODEV;
+		} else {
+			ret = devm_gpio_request_one(dev, iobd0_gpio, GPIOF_DIR_IN, "GPIO_IOBD0");
+			if (ret < 0) {
+				printk("Failed to request IOBD0 gpio: %d\n", ret);
+				return ret;
+			}
+		}
+
+		iobd1_gpio = of_get_named_gpio(dev->of_node, "iobd1-gpios", 0);
+		if (!gpio_is_valid(iobd1_gpio)) {
+			printk("No iobd1-gpio pin available in gpio-hwid\n");
+			return -ENODEV;
+		} else {
+			ret = devm_gpio_request_one(dev, iobd1_gpio, GPIOF_DIR_IN, "GPIO_IOBD1");
+			if (ret < 0) {
+				printk("Failed to request IOBD1 gpio: %d\n", ret);
+				return ret;
+			}
+		}
+	}
+
 	printk("boardinfo = %s\n", boardinfo);
 
 	file = proc_create("boardinfo", 0444, NULL, &boardinfo_ops);
@@ -203,6 +279,12 @@ static int gpio_hwid_probe(struct platform_device *pdev)
 	if (!file)
 		return -ENOMEM;
 
+	if (strcmp(boardinfo, "PE100A") == 0) {
+		file = proc_create("ioboard", 0444, NULL, &boardio_ops);
+		if (!file)
+			return -ENOMEM;
+	}
+
 	return 0;
 }
 
@@ -213,6 +295,14 @@ static int gpio_hwid_remove(struct platform_device *pdev)
 	gpio_free(sku0_gpio);
 	gpio_free(sku1_gpio);
 	gpio_free(sku2_gpio);
+
+	if (strcmp(boardinfo, "PV100A") != 0)
+		gpio_free(sku3_gpio);
+
+	if (strcmp(boardinfo, "PE100A") == 0) {
+		gpio_free(iobd0_gpio);
+		gpio_free(iobd1_gpio);
+	}
 
 	return 0;
 }
