@@ -111,6 +111,9 @@
 		sku0-gpios = <&gpio4 29 GPIO_ACTIVE_HIGH>;
 		sku1-gpios = <&gpio4 30 GPIO_ACTIVE_HIGH>;
 		sku2-gpios = <&gpio4 31 GPIO_ACTIVE_HIGH>;
+		sku3-gpios = <&gpio3 15 GPIO_ACTIVE_HIGH>;
+		iobd0-gpios = <&gpio3 3 GPIO_ACTIVE_HIGH>;
+		iobd1-gpios = <&gpio3 5 GPIO_ACTIVE_HIGH>;
 	};
 };
 
@@ -134,6 +137,9 @@
 				MX8MQ_IOMUXC_SAI3_RXC_GPIO4_IO29		0x19
 				MX8MQ_IOMUXC_SAI3_RXD_GPIO4_IO30		0x19
 				MX8MQ_IOMUXC_SAI3_TXFS_GPIO4_IO31		0x19
+				MX8MQ_IOMUXC_NAND_RE_B_GPIO3_IO15		0x19
+				MX8MQ_IOMUXC_NAND_CE2_B_GPIO3_IO3		0x19
+				MX8MQ_IOMUXC_NAND_CLE_GPIO3_IO5			0x19
 			>;
 		};
 
