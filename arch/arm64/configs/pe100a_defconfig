@@ -901,5 +901,5 @@ CONFIG_CGROUP_NET_PRIO=y
 CONFIG_RT_GROUP_SCHED=y
 CONFIG_EXT3_FS_POSIX_ACL=y
 CONFIG_EXT4_FS_SECURITY=y
-CONFIG_EXTRA_FIRMWARE="imx/sdma/sdma-imx7d.bin"
+CONFIG_EXTRA_FIRMWARE="imx/sdma/sdma-imx7d.bin rtl_bt/rtl8822cu_config.bin rtl_bt/rtl8822cu_fw.bin qca/nvm_usb_00000302.bin qca/rampatch_usb_00000302.bin"
 CONFIG_EXTRA_FIRMWARE_DIR="firmware"
