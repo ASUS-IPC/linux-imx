@@ -335,7 +335,7 @@ cat <<EOF >> debian/control
 
 Package: $kernel_headers_packagename
 Architecture: any
-Provides: linux-headers, linux-headers-2.6
+Provides: linux-headers, linux-headers-generic
 Description: Linux kernel headers for $KERNELRELEASE on \${kernel:debarch}
  This package provides kernel header files for $KERNELRELEASE on \${kernel:debarch}
  .
