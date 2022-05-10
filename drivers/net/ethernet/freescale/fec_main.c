@@ -1833,9 +1833,35 @@ static int fec_get_mac(struct net_device *ndev)
 
 /* ------------------------------------------------------------------------- */
 /*
- * Set PHY LED configuration
+ * Set PHY LED configuration for RTL8211E
  */
-void set_led_configuration(struct phy_device *phy_dev) {
+
+void set_led_configuration_e(struct phy_device *phy_dev) {
+	// disable EEE LED mode
+	phy_write(phy_dev, 31, 0x0005);
+	phy_write(phy_dev, 5, 0x8b82);
+	phy_write(phy_dev, 6, 0x052b);
+	phy_write(phy_dev, 31, 0x0000);
+
+	// To switch to extension Page44
+	phy_write(phy_dev, 31, 0x0007);
+	phy_write(phy_dev, 30, 0x002c);
+
+	printk("%s: #### before setting led, Reg26 = 0x%x , Reg28 = 0x%x\n", __func__, phy_read(phy_dev, 26), phy_read(phy_dev, 28));
+	phy_write(phy_dev, 26, 0x0010);
+	phy_write(phy_dev, 28, 0x0247);
+	printk("%s: #### after setting led, Reg26 = 0x%x , Reg28 = 0x%x\n", __func__, phy_read(phy_dev, 26), phy_read(phy_dev, 28));
+
+	//switch to PHY`s Page0
+	phy_write(phy_dev, 31, 0);
+}
+
+/* ------------------------------------------------------------------------- */
+/*
+ * Set PHY LED configuration for RTL8211F
+ */
+
+void set_led_configuration_f(struct phy_device *phy_dev) {
 	// To switch Page0xd04
 	phy_write(phy_dev, 31, 0x0d04);
 
@@ -1855,6 +1881,25 @@ void set_led_configuration(struct phy_device *phy_dev) {
 
 	//switch to Page0
 	phy_write(phy_dev, 31, 0x0000);
+}
+
+/* ------------------------------------------------------------------------- */
+/*
+ * Set PHY LED configuration
+ */
+
+void set_led_configuration(struct phy_device *phy_dev) {
+	int phy_id2_val = 0;
+
+	printk("%s: PHYID1 = 0x%x, PHYID2 = 0x%x\n", __func__, phy_read(phy_dev, 2), phy_read(phy_dev, 3));
+	phy_id2_val = phy_read(phy_dev, 3);
+	if (phy_id2_val == 0xc915) {
+		printk("%s: PHY is RTL8211E\n", __func__);
+		set_led_configuration_e(phy_dev);
+	} else if (phy_id2_val == 0xc916) {
+		printk("%s: PHY is RTL8211F\n", __func__);
+		set_led_configuration_f(phy_dev);
+	}
 }
 
 /*
