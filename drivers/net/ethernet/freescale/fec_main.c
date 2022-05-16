@@ -1896,7 +1896,7 @@ void set_led_configuration(struct phy_device *phy_dev) {
 	if (phy_id2_val == 0xc915) {
 		printk("%s: PHY is RTL8211E\n", __func__);
 		set_led_configuration_e(phy_dev);
-	} else if (phy_id2_val == 0xc916) {
+	} else {
 		printk("%s: PHY is RTL8211F\n", __func__);
 		set_led_configuration_f(phy_dev);
 	}
