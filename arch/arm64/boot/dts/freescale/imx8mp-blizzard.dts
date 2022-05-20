@@ -567,6 +567,13 @@
 	};
 };
 
+&i2c4 {
+        clock-frequency = <400000>;
+        pinctrl-names = "default";
+        pinctrl-0 = <&pinctrl_i2c4>;
+        status = "okay";
+};
+
 &irqsteer_hdmi {
 	status = "okay";
 };
@@ -988,6 +995,13 @@
 			MX8MP_IOMUXC_I2C3_SDA__I2C3_SDA		0x400001c2
 		>;
 	};
+
+        pinctrl_i2c4: i2c4grp {
+                fsl,pins = <
+                        MX8MP_IOMUXC_I2C4_SCL__I2C4_SCL         0x400001c2
+                        MX8MP_IOMUXC_I2C4_SDA__I2C4_SDA         0x400001c2
+                >;
+        };
 
 	pinctrl_mipi_dsi_en: mipi_dsi_en {
 		fsl,pins = <
