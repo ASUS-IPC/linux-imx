@@ -165,6 +165,12 @@
 				    100>;
 		default-brightness-level = <80>;
 	};
+
+	platform-reset {
+		compatible = "platform-reset";
+		pinctrl-0 = <&pinctrl_platform_reset>;
+		reset-gpio = <&gpio1 8 GPIO_ACTIVE_HIGH>;
+	};
 };
 
 &A53_0 {
@@ -967,7 +973,7 @@
                 >;
         };
 
-	pinctrl_mipi_dsi_en: mipi_dsi_en {
+	pinctrl_platform_reset: platform_reset {
 		fsl,pins = <
 			MX8MP_IOMUXC_GPIO1_IO08__GPIO1_IO08	0x16
 		>;

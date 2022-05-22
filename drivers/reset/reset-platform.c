@@ -33,19 +33,27 @@ static int platform_reset_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	int ret;
 
+	printk(KERN_INFO "platform_reset_probe\n");
+
 	reset_gpio = of_get_named_gpio(dev->of_node, "reset-gpio", 0);
-	if (!gpio_is_valid(reset_gpio)) {
-		printk("No reset-gpio pin available in gpio-rst\n");
+	if (!gpio_is_valid(reset_gpio) && (reset_gpio == ERR_PTR(-EPROBE_DEFER))) {
+		printk("platform_reset_probe EPROBE_DEFER\n", reset_gpio);
+		return -EPROBE_DEFER;
+	} else if (!gpio_is_valid(reset_gpio)) {
+		printk("No reset-gpio pin available in gpio-rst=%d\n", reset_gpio);
 		return -ENODEV;
 	} else {
-		ret = devm_gpio_request_one(dev, reset_gpio, GPIOF_OUT_INIT_LOW, "Platform reset");
+		ret = devm_gpio_request_one(dev, reset_gpio, GPIOF_OUT_INIT_HIGH, "Platform reset");
 		if (ret < 0) {
 			printk("Failed to request reset gpio: %d\n", ret);
 			return ret;
 		}
+		/*
+		//the first reset is  trigger at uboot
 		printk("reset-gpio request success\n");
 		mdelay(100);
 		platform_reset_trigger();
+		*/
 	}
 	return 0;
 }
