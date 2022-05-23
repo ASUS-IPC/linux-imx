@@ -22,6 +22,13 @@
 		      <0x1 0x00000000 0 0xc0000000>;
 	};
 
+	reg_vcc_3v3_sys: regulator-vcc-3v3-sys {
+		compatible = "regulator-fixed";
+		regulator-name = "vcc_3v3_sys";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+	};
+
 	reg_can1_stby: regulator-can1-stby {
 		compatible = "regulator-fixed";
 		regulator-name = "can1-stby";
@@ -618,6 +625,12 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c3>;
 	status = "okay";
+
+	adc: ads7128@14 {
+    	compatible = "ti,ads7128";
+    	reg = <0x14>;
+    	AVDD-supply = <&reg_vcc_3v3_sys>;
+  	};
 
 	pca6416: gpio@20 {
 		compatible = "ti,tca6416";
