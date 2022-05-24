@@ -1368,3 +1368,17 @@ pinctrl_ecspi1: ecspi1grp {
 	pinctrl-0 = <&pinctrl_pwm4>;
 	status = "disabled";
 };
+
+&thermal_zones {
+        cpu-thermal {
+                trips {
+                        cpu-alert {
+                                temperature = <95000>;
+                        };
+
+                        cpu-crit {
+                                temperature = <105000>;
+                        };
+                };
+        };
+};
