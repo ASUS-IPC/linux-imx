@@ -52,7 +52,7 @@
 		pinctrl-0 = <&pinctrl_flexcan2_reg>;
 		regulator-min-microvolt = <3300000>;
 		regulator-max-microvolt = <3300000>;
-		gpio = <&gpio4 27 GPIO_ACTIVE_HIGH>;
+                gpio = <&gpio4 0 GPIO_ACTIVE_HIGH>;
 		enable-active-high;
 	};
 
@@ -511,7 +511,6 @@
 		assigned-clock-rates = <24000000>;
 		csi_id = <0>;
 		powerdown-gpios = <&gpio4 1 GPIO_ACTIVE_HIGH>;
-		reset-gpios = <&gpio4 0 GPIO_ACTIVE_LOW>;
 		mclk = <24000000>;
 		mclk_source = <0>;
 		mipi_csi;
@@ -538,6 +537,15 @@
         pinctrl-names = "default";
         pinctrl-0 = <&pinctrl_i2c4>;
         status = "okay";
+
+	rtc_isl1208: rtc@6f {
+		compatible = "isil,isl1208";
+		pinctrl-names = "default";
+                pinctrl-0 = <&pinctrl_externalrtc_reg>;
+		gpio-rtc-interrupt = <&gpio4 27 GPIO_ACTIVE_HIGH>;
+		reg = <0x6f>;
+		status = "okay";
+	};
 };
 
 &irqsteer_hdmi {
@@ -904,7 +912,13 @@
 
 	pinctrl_flexcan2_reg: flexcan2reggrp {
 		fsl,pins = <
-			MX8MP_IOMUXC_SAI2_MCLK__GPIO4_IO27	0x154	/* CAN2_STBY */
+                        MX8MP_IOMUXC_SAI1_RXFS__GPIO4_IO00      0x154   /* CAN2_STBY */
+                >;
+        };
+
+        pinctrl_externalrtc_reg: externalrtcreggrp {
+                fsl,pins = <
+                        MX8MP_IOMUXC_SAI2_MCLK__GPIO4_IO27      0x154   /* open drain, pull up */
 		>;
 	};
 

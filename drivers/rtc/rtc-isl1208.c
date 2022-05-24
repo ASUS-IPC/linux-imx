@@ -11,6 +11,8 @@
 #include <linux/of_device.h>
 #include <linux/of_irq.h>
 #include <linux/rtc.h>
+#include <linux/gpio.h>
+#include <linux/of_gpio.h>
 
 /* Register map */
 /* rtc section */
@@ -802,6 +804,21 @@ isl1208_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	int rc = 0;
 	struct isl1208_state *isl1208;
 	int evdet_irq = -1;
+	int rtc_gpio_interrupt = 0;
+	int ret = 0;
+
+        rtc_gpio_interrupt = of_get_named_gpio(client->dev.of_node,
+                                                  "gpio-rtc-interrupt", 0);
+        if (!gpio_is_valid(rtc_gpio_interrupt)) {
+		pr_info("rtc_gpio_interrupt is not valid");
+                return -ENODEV;
+        }
+
+        ret = gpio_request_one(rtc_gpio_interrupt, GPIOF_IN, "RTC INTERRUPT");
+        if (ret) {
+                dev_err(&client->dev, "can't get rtc_data gpio\n");
+                return ret;
+        }
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C))
 		return -ENODEV;
