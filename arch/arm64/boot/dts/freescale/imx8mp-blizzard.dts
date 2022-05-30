@@ -223,6 +223,18 @@
 		default-brightness-level = <200>;
 	};
 
+	gpio-hwid {
+		compatible = "gpio-hwid";
+		boardinfo = "BLIZZARD";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_hwid>;
+		pcb0-gpios = <&gpio4 2 GPIO_ACTIVE_HIGH>;
+		pcb1-gpios = <&gpio4 3 GPIO_ACTIVE_HIGH>;
+		sku0-gpios = <&gpio3 21 GPIO_ACTIVE_HIGH>;
+		sku1-gpios = <&gpio3 22 GPIO_ACTIVE_HIGH>;
+		sku2-gpios = <&gpio3 23 GPIO_ACTIVE_HIGH>;
+	};
+
 	platform-reset {
 		compatible = "platform-reset";
 		pinctrl-0 = <&pinctrl_platform_reset>;
@@ -1021,7 +1033,6 @@
 			MX8MP_IOMUXC_SAI1_TXD3__ENET1_RGMII_TD3		0x85
 			MX8MP_IOMUXC_SAI1_TXD4__ENET1_RGMII_TX_CTL	0x85
 			MX8MP_IOMUXC_SAI1_TXD5__ENET1_RGMII_TXC		0x85
-			MX8MP_IOMUXC_SAI1_RXD0__GPIO4_IO02		0x19
 		>;
 	};
 
@@ -1117,6 +1128,16 @@
                 >;
         };
 
+	pinctrl_hwid: hwid {
+		fsl,pins = <
+			MX8MP_IOMUXC_SAI1_RXD0__GPIO4_IO02	0x19
+			MX8MP_IOMUXC_SAI1_RXD1__GPIO4_IO03	0x19
+			MX8MP_IOMUXC_SAI5_RXD0__GPIO3_IO21	0x19
+			MX8MP_IOMUXC_SAI5_RXD1__GPIO3_IO22	0x19
+			MX8MP_IOMUXC_SAI5_RXD2__GPIO3_IO23	0x19
+		>;
+	};
+
 	pinctrl_platform_reset: platform_reset {
 		fsl,pins = <
 			MX8MP_IOMUXC_GPIO1_IO08__GPIO1_IO08	0x16
@@ -1138,9 +1159,6 @@
 	pinctrl_pdm: pdmgrp {
 		fsl,pins = <
 			MX8MP_IOMUXC_SAI5_RXC__AUDIOMIX_PDM_CLK		0xd6
-			MX8MP_IOMUXC_SAI5_RXD0__AUDIOMIX_PDM_BIT_STREAM00	0xd6
-			MX8MP_IOMUXC_SAI5_RXD1__AUDIOMIX_PDM_BIT_STREAM01	0xd6
-			MX8MP_IOMUXC_SAI5_RXD2__AUDIOMIX_PDM_BIT_STREAM02	0xd6
 			MX8MP_IOMUXC_SAI5_RXD3__AUDIOMIX_PDM_BIT_STREAM03	0xd6
 		>;
 	};
