@@ -4,7 +4,7 @@
 #
 
 obj-$(CONFIG_FEC) += fec.o
-fec-objs :=fec_main.o fec_ptp.o
+fec-objs :=fec_main.o fec_ptp.o eth_mac.o
 obj-$(CONFIG_FEC_UIO) += fec_uio.o
 
 obj-$(CONFIG_FEC_MPC52xx) += fec_mpc52xx.o
