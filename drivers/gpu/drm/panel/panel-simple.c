@@ -21,12 +21,16 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
+#include <linux/backlight.h>
 #include <linux/delay.h>
 #include <linux/gpio/consumer.h>
+#include <linux/gpio.h>
 #include <linux/iopoll.h>
 #include <linux/module.h>
+#include <linux/of_gpio.h>
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
+#include <linux/proc_fs.h>
 #include <linux/regulator/consumer.h>
 
 #include <video/display_timing.h>
@@ -56,6 +60,7 @@
  */
 struct panel_desc {
 	const struct drm_display_mode *modes;
+	struct pwseq *pwseq_delay;
 	unsigned int num_modes;
 	const struct display_timing *timings;
 	unsigned int num_timings;
@@ -105,6 +110,8 @@ struct panel_simple {
 
 	const struct panel_desc *desc;
 
+	struct backlight_device *backlight;
+
 	struct regulator *supply;
 	struct i2c_adapter *ddc;
 
@@ -116,10 +123,50 @@ struct panel_simple {
 	enum drm_panel_orientation orientation;
 };
 
+struct pwseq {
+	unsigned int t1;//VCC on to start lvds signal
+	unsigned int t2;//VCC or lvds signal to RSTB
+	unsigned int t3;//RSTB to STBYB pull H
+	unsigned int t4;//LVDS signal(start) or STBYB(H) to turn Backlihgt on
+	unsigned int t5;//Backlihgt(off) to stop lvds signal
+	unsigned int t6;//STBYB pull L to RSTB
+	unsigned int t7;//RSTB or lvds Singal to turn VCC off
+	unsigned int t8;//Restart VCC time
+};
+
+static int id0_gpio, id1_gpio;
 static inline struct panel_simple *to_panel_simple(struct drm_panel *panel)
 {
 	return container_of(panel, struct panel_simple, base);
 }
+
+/*
+LVDS_ID
+0 : Reserved
+1 : AMPIRE Panel
+2 : KOE Panel
+3 : LVDS Panel NC
+*/
+int get_panelid(void)
+{
+	int panelid = ( ( gpio_get_value(id1_gpio) ) << 1 ) + ( gpio_get_value(id0_gpio) );
+	return panelid;
+}
+EXPORT_SYMBOL_GPL(get_panelid);
+
+static int info_show(struct seq_file *m, void *v)
+{
+	seq_printf(m, "%d\n", get_panelid());
+	return 0;
+}
+static int info_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, info_show, NULL);
+}
+static const struct proc_ops panelid_ops = {
+	.proc_open = info_open,
+	.proc_read = seq_read,
+};
 
 static unsigned int panel_simple_get_timings_modes(struct panel_simple *panel,
 						   struct drm_connector *connector)
@@ -234,8 +281,21 @@ static int panel_simple_disable(struct drm_panel *panel)
 {
 	struct panel_simple *p = to_panel_simple(panel);
 
+	printk(KERN_INFO "%s \n", __func__);
 	if (!p->enabled)
 		return 0;
+
+	if (p->backlight) {
+		p->backlight->props.power = FB_BLANK_POWERDOWN;
+		p->backlight->props.state |= BL_CORE_FBBLANK;
+		backlight_update_status(p->backlight);
+	}
+
+	/* Backlihgt(off) to stop lvds signal */
+	if (p->desc->pwseq_delay->t5) {
+		printk("%s - Backlihgt(off) to stop lvds signal time: %u\n", __func__, p->desc->pwseq_delay->t5);
+		msleep(p->desc->pwseq_delay->t5);
+	}
 
 	if (p->desc->delay.disable)
 		msleep(p->desc->delay.disable);
@@ -249,12 +309,26 @@ static int panel_simple_unprepare(struct drm_panel *panel)
 {
 	struct panel_simple *p = to_panel_simple(panel);
 
+	printk(KERN_INFO "%s \n", __func__);
 	if (!p->prepared)
 		return 0;
 
-	gpiod_set_value_cansleep(p->enable_gpio, 0);
+	/* RSTB or lvds Singal to turn VCC off */
+	if (p->desc->pwseq_delay->t7) {
+		printk("%s - RSTB or lvds Singal to turn VCC off time: %u\n", __func__, p->desc->pwseq_delay->t7);
+		msleep(p->desc->pwseq_delay->t7);
+	}
+
+	if (p->enable_gpio)
+		gpiod_set_value_cansleep(p->enable_gpio, 0);
 
 	regulator_disable(p->supply);
+
+	/* Restart VCC time */
+	if (p->desc->pwseq_delay->t8) {
+		printk("%s - Restart VCC time: %u\n", __func__, p->desc->pwseq_delay->t8);
+		msleep(p->desc->pwseq_delay->t8);
+	}
 
 	if (p->desc->delay.unprepare)
 		msleep(p->desc->delay.unprepare);
@@ -296,6 +370,7 @@ static int panel_simple_prepare(struct drm_panel *panel)
 	int err;
 	int hpd_asserted;
 
+	printk(KERN_INFO "%s \n", __func__);
 	if (p->prepared)
 		return 0;
 
@@ -305,13 +380,20 @@ static int panel_simple_prepare(struct drm_panel *panel)
 		return err;
 	}
 
-	gpiod_set_value_cansleep(p->enable_gpio, 1);
+	if (p->enable_gpio)
+		gpiod_set_value_cansleep(p->enable_gpio, 1);
 
 	delay = p->desc->delay.prepare;
 	if (p->no_hpd)
 		delay += p->desc->delay.hpd_absent_delay;
 	if (delay)
 		msleep(delay);
+
+	/* VCC on to start lvds signal */
+	if (p->desc->pwseq_delay->t1) {
+		printk("%s - VCC on to start lvds signal time: %u\n", __func__, p->desc->pwseq_delay->t1);
+		msleep(p->desc->pwseq_delay->t1);
+	}
 
 	if (p->hpd_gpio) {
 		if (IS_ERR(p->hpd_gpio)) {
@@ -342,11 +424,24 @@ static int panel_simple_enable(struct drm_panel *panel)
 {
 	struct panel_simple *p = to_panel_simple(panel);
 
+	printk(KERN_INFO "%s \n", __func__);
 	if (p->enabled)
 		return 0;
 
 	if (p->desc->delay.enable)
 		msleep(p->desc->delay.enable);
+
+	/* LVDS signal(start) or STBYB(H) to turn Backlihgt on */
+	if (p->desc->pwseq_delay->t4) {
+		printk("%s - LVDS signal(start) or STBYB(H) to turn Backlihgt on time: %u\n", __func__, p->desc->pwseq_delay->t4);
+		msleep(p->desc->pwseq_delay->t4);
+	}
+
+	if (p->backlight) {
+		p->backlight->props.power = FB_BLANK_POWERDOWN;
+		p->backlight->props.state |= BL_CORE_FBBLANK;
+		backlight_update_status(p->backlight);
+	}
 
 	p->enabled = true;
 
@@ -504,11 +599,13 @@ static int panel_simple_probe(struct device *dev, const struct panel_desc *desc)
 {
 	struct panel_simple *panel;
 	struct display_timing dt;
+	struct device_node *backlight;
 	struct device_node *ddc;
 	int connector_type;
 	u32 bus_flags;
 	int err;
 
+	printk("panel_simple_probe");
 	panel = devm_kzalloc(dev, sizeof(*panel), GFP_KERNEL);
 	if (!panel)
 		return -ENOMEM;
@@ -541,6 +638,17 @@ static int panel_simple_probe(struct device *dev, const struct panel_desc *desc)
 	if (err) {
 		dev_err(dev, "%pOF: failed to get orientation %d\n", dev->of_node, err);
 		return err;
+	}
+
+	backlight = of_parse_phandle(dev->of_node, "backlight", 0);
+	if (backlight) {
+		panel->backlight = of_find_backlight_by_node(backlight);
+		of_node_put(backlight);
+
+		if (!panel->backlight) {
+			dev_err(dev, "failed to get backlihgt");
+			return -EPROBE_DEFER;
+		}
 	}
 
 	ddc = of_parse_phandle(dev->of_node, "ddc-i2c-bus", 0);
@@ -645,8 +753,13 @@ static int panel_simple_remove(struct device *dev)
 	drm_panel_disable(&panel->base);
 	drm_panel_unprepare(&panel->base);
 
+	gpio_free(id0_gpio);
+	gpio_free(id1_gpio);
 	if (panel->ddc)
 		put_device(&panel->ddc->dev);
+
+	if (panel->backlight)
+		put_device(&panel->backlight->dev);
 
 	return 0;
 }
@@ -658,6 +771,80 @@ static void panel_simple_shutdown(struct device *dev)
 	drm_panel_disable(&panel->base);
 	drm_panel_unprepare(&panel->base);
 }
+
+static const struct display_timing koe_tx38d204vm0baa_timing = {
+	.pixelclock = { 86400000, 88622000, 96400000},
+	.hactive = { 1920, 1920, 1920 },//typ. total-active (998-960)*2=76
+	.hfront_porch = { 20, 20, 40 },
+	.hback_porch = { 30, 36, 60 },
+	.hsync_len = { 20, 20, 40 },
+	.vactive = { 720, 720, 720},//typ, total-active 740-720=20
+	.vfront_porch = { 2, 5, 15 },
+	.vback_porch = { 3, 10, 30 },
+	.vsync_len = { 2, 5, 15 },
+	.flags = DISPLAY_FLAGS_DE_HIGH,
+};
+
+static const struct pwseq koe_pwseq_delay = {
+	.t1 = 0,//	VCC on to LVDS signal start
+	.t2 = 0,//	VCC(LVDS signal) to RSTB
+	.t3 = 0,//	RSTB to STBYB pull H
+	.t4 = 100,//LVDS signal or STBYB(H) to Backlihgt on
+	.t5 = 0,//	Backlihgt off to LVDS signal stop
+	.t6 = 0,//	STBYB pull L to RSTB
+	.t7 = 60,//	RSTB(LVDS Singal stop) to VCC off
+	.t8 = 400,//Restart VCC time
+};
+
+static const struct panel_desc koe_tx38d204vm0baa = {
+	.timings = &koe_tx38d204vm0baa_timing,
+	.num_timings = 1,
+	.bpc = 8,
+	.size = {
+		.width = 374,
+		.height = 154,
+	},
+	.pwseq_delay = &koe_pwseq_delay,
+	.bus_format = MEDIA_BUS_FMT_RGB888_1X7X4_SPWG,
+	.connector_type = DRM_MODE_CONNECTOR_LVDS,
+};
+
+static const struct display_timing am_1920720etzqw_00h_timing = {
+	.pixelclock = { 79079000, 88600000, 202176000 },
+	.hactive = { 1920, 1920, 1920 },//typ. total-active 2020-1920=100
+	.hfront_porch = { 22, 40, 384 },
+	.hback_porch = { 22, 40, 384 },
+	.hsync_len = { 11, 20, 192 },
+	.vactive = { 720, 720, 720},//typ, total-active 731-720=11
+	.vfront_porch = { 3, 4, 144 },
+	.vback_porch = { 3, 4, 144 },
+	.vsync_len = { 2, 3, 72 },
+	.flags = DISPLAY_FLAGS_DE_HIGH,
+};
+
+static const struct pwseq am_pwseq_delay = {
+	.t1 = 0,//	VCC on to LVDS signal start
+	.t2 = 10,//	(us),VCC(LVDS signal) to RSTB
+	.t3 = 36,//	RSTB to STBYB pull H
+	.t4 = 200,//LVDS signal Backlihgt on, STBYB(H) to Backlihgt on 200ms - 36ms -10us
+	.t5 = 200,//Backlihgt off to LVDS signal stop, Backlihgt off to to STBYB(L) 200ms - 133ms
+	.t6 = 133,//STBYB pull L to RSTB
+	.t7 = 0,//	RSTB(LVDS Singal stop) to VCC off
+	.t8 = 500,//Restart VCC time
+};
+
+static const struct panel_desc am_1920720etzqw_00h = {
+	.timings = &am_1920720etzqw_00h_timing,
+	.num_timings = 1,
+	.bpc = 8,
+	.size = {
+		.width = 292,
+		.height = 109,
+	},
+	.pwseq_delay = &am_pwseq_delay,
+	.bus_format = MEDIA_BUS_FMT_RGB888_1X7X4_SPWG,
+	.connector_type = DRM_MODE_CONNECTOR_LVDS,
+};
 
 static const struct drm_display_mode ampire_am_1280800n3tzqw_t00h_mode = {
 	.clock = 71100,
@@ -3939,6 +4126,12 @@ static const struct panel_desc arm_rtsm = {
 
 static const struct of_device_id platform_of_match[] = {
 	{
+		.compatible = "koe,koe-tx38d204vm0baa",
+		.data = &koe_tx38d204vm0baa,
+	}, {
+		.compatible = "ampire,am1920720etzqw-t00h",
+		.data = &am_1920720etzqw_00h,
+	}, {
 		.compatible = "ampire,am-1280800n3tzqw-t00h",
 		.data = &ampire_am_1280800n3tzqw_t00h,
 	}, {
@@ -4350,13 +4543,72 @@ static const struct of_device_id platform_of_match[] = {
 };
 MODULE_DEVICE_TABLE(of, platform_of_match);
 
+static const struct of_device_id platform_of_asusmatch[] = {
+	{
+		.compatible = "asus-panel",
+		.data = &koe_tx38d204vm0baa,
+	}, {
+		// sentinel
+	}
+};
+MODULE_DEVICE_TABLE(of, platform_of_asusmatch);
+
 static int panel_simple_platform_probe(struct platform_device *pdev)
 {
-	const struct of_device_id *id;
+	struct of_device_id *id;
+	struct proc_dir_entry* file;
+	int id0, id1, panelid, ret;
 
-	id = of_match_node(platform_of_match, pdev->dev.of_node);
+	id = of_match_node(platform_of_asusmatch, pdev->dev.of_node);
+
 	if (!id)
 		return -ENODEV;
+
+	printk("panel_simple_platform_probe");
+
+	id0_gpio = of_get_named_gpio(pdev->dev.of_node, "id0-gpios", 0);
+
+	if (!gpio_is_valid(id0_gpio)) {
+		printk("failed to get name gpio: panel-id0, error: %d\n",id0_gpio);
+		return id0_gpio;
+	} else {
+		ret = devm_gpio_request_one(&pdev->dev, id0_gpio, GPIOF_DIR_IN, "GPIO_PID0");
+		if (ret < 0) {
+			printk("failed to request ID0 gpio: %d\n", ret);
+			return ret;
+		} else {
+			id0 = gpio_get_value(id0_gpio);
+		}
+	}
+
+	id1_gpio = of_get_named_gpio(pdev->dev.of_node, "id1-gpios", 0);
+
+	if (!gpio_is_valid(id1_gpio)) {
+		printk("failed to get name gpio: panel-id1, error: %d\n",id1_gpio);
+		return id1_gpio;
+	} else {
+		ret = devm_gpio_request_one(&pdev->dev, id1_gpio, GPIOF_DIR_IN, "GPIO_PID1");
+		if (ret < 0) {
+			printk("failed to request ID1 gpio: %d\n", ret);
+			return ret;
+		} else {
+			id1 = gpio_get_value(id1_gpio);
+		}
+	}
+
+	panelid = get_panelid();
+	if( panelid == 1) {
+		printk("Get panelid: %d, use ampire panel timing",panelid);
+		id->data =  &am_1920720etzqw_00h;
+	} else if(panelid == 2) {
+		printk("Get panelid: %d, use koe panel timing",panelid);
+	} else {
+		printk("Get unknown panelid: %d",panelid);
+	}
+
+	file = proc_create("panelid", 0444, NULL, &panelid_ops);
+	if (!file)
+		return -ENOMEM;
 
 	return panel_simple_probe(&pdev->dev, id->data);
 }
@@ -4374,7 +4626,7 @@ static void panel_simple_platform_shutdown(struct platform_device *pdev)
 static struct platform_driver panel_simple_platform_driver = {
 	.driver = {
 		.name = "panel-simple",
-		.of_match_table = platform_of_match,
+		.of_match_table = platform_of_asusmatch,
 	},
 	.probe = panel_simple_platform_probe,
 	.remove = panel_simple_platform_remove,

@@ -12,6 +12,21 @@
 	model = "NXP i.MX8MPlus EVK board";
 	compatible = "fsl,imx8mp-evk", "fsl,imx8mp";
 
+	lvds0_panel {
+		compatible = "asus-panel";
+		backlight = <&lvds_backlight>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_lvds_pl_id0>, <&pinctrl_lvds_pl_id1>, <&pinctrl_lvds_vdd_en>;
+		id0-gpios = <&gpio3 19 GPIO_ACTIVE_HIGH>;
+		id1-gpios = <&gpio3 20 GPIO_ACTIVE_HIGH>;
+		enable-gpios = <&gpio5 5 GPIO_ACTIVE_HIGH>;
+		port {
+			panel_lvds_in: endpoint {
+				remote-endpoint = <&lvds_out>;
+			};
+		};
+	};
+
 	chosen {
 		stdout-path = &uart2;
 	};
@@ -159,8 +174,11 @@
 
 	lvds_backlight: lvds_backlight {
 		compatible = "pwm-backlight";
-		pwms = <&pwm2 0 100000>;
+		pwms = <&pwm1 0 100000>;
 		status = "okay";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_lvds_bl_en>;
+		enable-gpios = <&gpio1 0 GPIO_ACTIVE_HIGH>;
 
 		brightness-levels = < 0  1  2  3  4  5  6  7  8  9
 				     10 11 12 13 14 15 16 17 18 19
@@ -218,7 +236,7 @@
 &pwm4 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pwm4>;
-	status = "okay";
+	status = "disabled";
 };
 
 &aud2htx {
@@ -436,18 +454,6 @@
 		};
 	};
 
-	lvds_bridge: lvds-to-hdmi-bridge@4c {
-		compatible = "ite,it6263";
-		reg = <0x4c>;
-		reset-gpios = <&gpio1 10 GPIO_ACTIVE_LOW>;
-
-		port {
-			it6263_in: endpoint {
-				remote-endpoint = <&lvds_out>;
-			};
-		};
-	};
-
 	ov5640_0: ov5640_mipi@3c {
 		compatible = "ovti,ov5640";
 		reg = <0x3c>;
@@ -600,9 +606,9 @@
 
 &ldb {
 	status = "okay";
-
+	fsl,dual-channel;
 	lvds-channel@0 {
-		fsl,data-mapping = "jeida";
+		fsl,data-mapping = "spwg";
 		fsl,data-width = <24>;
 		status = "okay";
 
@@ -610,10 +616,22 @@
 			reg = <1>;
 
 			lvds_out: endpoint {
-				remote-endpoint = <&it6263_in>;
+				remote-endpoint = <&panel_lvds_in>;
 			};
 		};
 	};
+};
+
+&clk {
+	assigned-clock-rates = <0>, <0>,
+	<1000000000>,
+	<800000000>,
+	<500000000>,
+	<400000000>,
+	<800000000>,
+	<393216000>,
+	<361267200>,
+	<620354000>;//add for koe lvds typ. pixel clock 88.622M
 };
 
 &ldb_phy {
@@ -1177,6 +1195,30 @@
 	pinctrl_csi_mclk: csi_mclk_grp {
 		fsl,pins = <
 			MX8MP_IOMUXC_GPIO1_IO15__CCM_CLKO2	0x59
+		>;
+	};
+
+	pinctrl_lvds_vdd_en: lvds_vdd_en {
+		fsl,pins = <
+			MX8MP_IOMUXC_SPDIF_EXT_CLK__GPIO5_IO05 0x19
+		>;
+	};
+
+	pinctrl_lvds_bl_en: lvds_bl_en {
+		fsl,pins = <
+			MX8MP_IOMUXC_GPIO1_IO00__GPIO1_IO00 0x19
+		>;
+	};
+
+	pinctrl_lvds_pl_id0: lvds_pl_id0 {
+		fsl,pins = <
+			MX8MP_IOMUXC_SAI5_RXFS__GPIO3_IO19 0x19
+		>;
+	};
+
+	pinctrl_lvds_pl_id1: lvds_pl_id1 {
+		fsl,pins = <
+			MX8MP_IOMUXC_SAI5_RXC__GPIO3_IO20 0x19
 		>;
 	};
 };
