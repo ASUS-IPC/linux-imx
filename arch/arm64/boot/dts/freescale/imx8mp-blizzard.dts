@@ -240,6 +240,14 @@
 		pinctrl-0 = <&pinctrl_platform_reset>;
 		reset-gpio = <&gpio1 8 GPIO_ACTIVE_HIGH>;
 	};
+
+	mode-switch {
+		compatible = "mode-switch";
+		pinctrl-0 = <&pinctrl_mode_switch>;
+		sel1_0 = <&gpio2 0 GPIO_ACTIVE_HIGH>;
+		sel1_1 = <&gpio2 1 GPIO_ACTIVE_HIGH>;
+		sel1_2 = <&gpio2 2 GPIO_ACTIVE_HIGH>;
+	};
 };
 
 &A53_0 {
@@ -1355,6 +1363,14 @@
 	pinctrl_lvds_pl_id1: lvds_pl_id1 {
 		fsl,pins = <
 			MX8MP_IOMUXC_SAI5_RXC__GPIO3_IO20 0x19
+		>;
+	};
+
+	pinctrl_mode_switch: mode_switch_grp {
+		fsl,pins = <
+			MX8MP_IOMUXC_SD1_CLK__GPIO2_IO00	0x16
+			MX8MP_IOMUXC_SD1_CMD__GPIO2_IO01	0x16
+			MX8MP_IOMUXC_SD1_DATA0__GPIO2_IO02	0x16
 		>;
 	};
 };
