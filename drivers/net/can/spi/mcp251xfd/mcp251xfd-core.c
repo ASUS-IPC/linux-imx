@@ -19,7 +19,9 @@
 #include <linux/netdevice.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
+#include <linux/of_gpio.h>
 #include <linux/pm_runtime.h>
+#include <linux/gpio.h>
 
 #include <asm/unaligned.h>
 
@@ -931,7 +933,10 @@ static u8 mcp251xfd_get_normal_mode(const struct mcp251xfd_priv *priv)
 {
 	u8 mode;
 
-	if (priv->can.ctrlmode & CAN_CTRLMODE_LISTENONLY)
+
+	if (priv->can.ctrlmode & CAN_CTRLMODE_LOOPBACK)
+		mode = MCP251XFD_REG_CON_MODE_INT_LOOPBACK;
+	else if (priv->can.ctrlmode & CAN_CTRLMODE_LISTENONLY)
 		mode = MCP251XFD_REG_CON_MODE_LISTENONLY;
 	else if (priv->can.ctrlmode & CAN_CTRLMODE_FD)
 		mode = MCP251XFD_REG_CON_MODE_MIXED;
@@ -2404,7 +2409,7 @@ static int mcp251xfd_open(struct net_device *ndev)
 	can_rx_offload_enable(&priv->offload);
 
 	err = request_threaded_irq(spi->irq, NULL, mcp251xfd_irq,
-				   IRQF_ONESHOT, dev_name(&spi->dev),
+				   IRQF_ONESHOT | IRQF_TRIGGER_FALLING, dev_name(&spi->dev),
 				   priv);
 	if (err)
 		goto out_can_rx_offload_disable;
@@ -2737,10 +2742,30 @@ static int mcp251xfd_probe(struct spi_device *spi)
 	struct clk *clk;
 	u32 freq;
 	int err;
+	struct device_node *np;
+	int standby_gpio, irq_gpio;
+	int ret;
+	int irq;
 
 	if (!spi->irq)
 		return dev_err_probe(&spi->dev, -ENXIO,
 				     "No IRQ specified (maybe node \"interrupts-extended\" in DT missing)!\n");
+
+	/* Add IRQ pin control */
+	np = spi->dev.of_node;
+	if (np) {
+		irq_gpio = of_get_named_gpio(np, "irq-gpio", 0);
+		dev_info(&spi->dev, "can irq gpio=%d\n", irq_gpio);
+		if (gpio_is_valid(irq_gpio)) {
+			ret = devm_gpio_request_one(&spi->dev, irq_gpio, GPIOF_DIR_IN, "can_int");
+			if (ret) {
+				dev_err(&spi->dev, "unable to get can irq gpio\n");
+			} else {
+				irq = gpio_to_irq(irq_gpio);
+				spi->irq = irq;
+			}
+		}
+    }
 
 	rx_int = devm_gpiod_get_optional(&spi->dev, "microchip,rx-int",
 					 GPIOD_IN);
@@ -2788,6 +2813,19 @@ static int mcp251xfd_probe(struct spi_device *spi)
 		return -ERANGE;
 	}
 
+	/* Add Standy pin control */
+	np = spi->dev.of_node;
+	if (np) {
+		standby_gpio = of_get_named_gpio(np, "standby-gpios", 0);
+		dev_info(&spi->dev, "can bus standby gpio=%d, freq=%d\n", standby_gpio, freq);
+		if (gpio_is_valid(standby_gpio)) {
+			ret = devm_gpio_request_one(&spi->dev, standby_gpio, GPIOF_OUT_INIT_LOW, "CAN standby");
+			if (ret) {
+				dev_err(&spi->dev, "unable to get can standby gpio\n");
+			}
+		}
+	}
+
 	ndev = alloc_candev(sizeof(struct mcp251xfd_priv),
 			    MCP251XFD_TX_OBJ_NUM_MAX);
 	if (!ndev)
@@ -2806,9 +2844,9 @@ static int mcp251xfd_probe(struct spi_device *spi)
 	priv->can.do_get_berr_counter = mcp251xfd_get_berr_counter;
 	priv->can.bittiming_const = &mcp251xfd_bittiming_const;
 	priv->can.data_bittiming_const = &mcp251xfd_data_bittiming_const;
-	priv->can.ctrlmode_supported = CAN_CTRLMODE_LISTENONLY |
-		CAN_CTRLMODE_BERR_REPORTING | CAN_CTRLMODE_FD |
-		CAN_CTRLMODE_FD_NON_ISO;
+	priv->can.ctrlmode_supported = CAN_CTRLMODE_LOOPBACK |
+		CAN_CTRLMODE_LISTENONLY | CAN_CTRLMODE_BERR_REPORTING |
+		CAN_CTRLMODE_FD | CAN_CTRLMODE_FD_NON_ISO;
 	priv->ndev = ndev;
 	priv->spi = spi;
 	priv->rx_int = rx_int;
