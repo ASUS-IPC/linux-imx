@@ -12,6 +12,11 @@
 	model = "NXP i.MX8MPlus EVK board";
 	compatible = "fsl,imx8mp-evk", "fsl,imx8mp";
 
+        aliases {
+		rtc0 = &rtc_isl1208;
+                rtc1 = &snvs_rtc;
+        };
+
 	lvds0_panel {
 		compatible = "asus-panel";
 		backlight = <&lvds_backlight>;
@@ -685,7 +690,8 @@
 		compatible = "isil,isl1208";
 		pinctrl-names = "default";
                 pinctrl-0 = <&pinctrl_externalrtc_reg>;
-		gpio-rtc-interrupt = <&gpio4 27 GPIO_ACTIVE_HIGH>;
+                interrupt-parent = <&gpio4>;
+                interrupts = <27 IRQ_TYPE_LEVEL_LOW>;
 		reg = <0x6f>;
 		status = "okay";
 	};
