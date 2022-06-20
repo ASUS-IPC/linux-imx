@@ -1398,6 +1398,15 @@ config TOUCHSCREEN_TINKER_FT5406
 	help
 	  Control ft5406 touch ic.
 
+config TOUCHSCREEN_TINKER_ILITEK
+	tristate "Ilitek touchscreen support"
+	depends on I2C
+	help
+	  Say Y here if you have a touchscreen using the Ilitek touchscreen,
+	  or something similar enough.
+
+	  If unsure, say N.
+
 source "drivers/input/touchscreen/synaptics_dsx/Kconfig"
 endif
 
