@@ -60,6 +60,8 @@
 		clock-frequency = <20000000>;
 		clock-output-names = "can_osc";
 	};
+
+	/*
 	reg_usdhc2_vmmc: regulator-usdhc2 {
 		compatible = "regulator-fixed";
 		pinctrl-names = "default";
@@ -70,6 +72,7 @@
 		gpio = <&gpio2 19 GPIO_ACTIVE_HIGH>;
 		enable-active-high;
 	};
+	*/
 
 	reg_audio_pwr: regulator-audio-pwr {
 		compatible = "regulator-fixed";
@@ -946,6 +949,7 @@
 	status = "disabled";
 };
 
+/*
 &usdhc2 {
 	assigned-clocks = <&clk IMX8MP_CLK_USDHC2>;
 	assigned-clock-rates = <400000000>;
@@ -958,6 +962,7 @@
 	bus-width = <4>;
 	status = "disabled";
 };
+*/
 
 &usdhc3 {
 	assigned-clocks = <&clk IMX8MP_CLK_USDHC3>;
@@ -980,7 +985,20 @@
 
 &iomuxc {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_hog>;
+	pinctrl-0 = <&pinctrl_hog>, <&pinctrl_gpio_init>;
+
+	pinctrl_gpio_init: gpio_init {
+		fsl,pins = <
+			MX8MP_IOMUXC_SD1_CLK__GPIO2_IO00	0x16
+			MX8MP_IOMUXC_SD1_CMD__GPIO2_IO01	0x16
+			MX8MP_IOMUXC_SD1_DATA0__GPIO2_IO02	0x16
+			MX8MP_IOMUXC_UART1_RXD__GPIO5_IO22	0x16
+			MX8MP_IOMUXC_UART1_TXD__GPIO5_IO23	0x16
+			MX8MP_IOMUXC_SD2_RESET_B__GPIO2_IO19	0x1c4
+			MX8MP_IOMUXC_SD2_WP__GPIO2_IO20	0x1c4
+			MX8MP_IOMUXC_SD2_CD_B__GPIO2_IO12	0x1c4
+		>;
+	};
 
 	pinctrl_hog: hoggrp {
 		fsl,pins = <
@@ -1207,11 +1225,13 @@
 		>;
 	};
 
+	/*
 	pinctrl_reg_usdhc2_vmmc: regusdhc2vmmcgrp {
 		fsl,pins = <
 			MX8MP_IOMUXC_SD2_RESET_B__GPIO2_IO19	0x41
 		>;
 	};
+	*/
 
 	pinctrl_pdm: pdmgrp {
 		fsl,pins = <
@@ -1239,7 +1259,6 @@
 			MX8MP_IOMUXC_SAI3_RXD__AUDIOMIX_SAI3_RX_DATA00	0xd6
 			MX8MP_IOMUXC_SAI3_TXD__AUDIOMIX_SAI3_TX_DATA00	0xd6
 			MX8MP_IOMUXC_SAI3_MCLK__AUDIOMIX_SAI3_MCLK	0xd6
-			MX8MP_IOMUXC_SAI3_RXFS__GPIO4_IO28		0xd6
 			MX8MP_IOMUXC_SAI3_RXC__GPIO4_IO29		0xd6
 		>;
 	};
@@ -1252,8 +1271,6 @@
 
 	pinctrl_uart1: uart1grp {
 		fsl,pins = <
-			MX8MP_IOMUXC_UART1_RXD__UART1_DCE_RX	0x140
-			MX8MP_IOMUXC_UART1_TXD__UART1_DCE_TX	0x140
 			MX8MP_IOMUXC_UART3_RXD__UART1_DCE_CTS	0x140
 			MX8MP_IOMUXC_UART3_TXD__UART1_DCE_RTS	0x140
 		>;
@@ -1281,6 +1298,7 @@
 		>;
 	};
 
+	/*
 	pinctrl_usdhc2: usdhc2grp {
 		fsl,pins = <
 			MX8MP_IOMUXC_SD2_CLK__USDHC2_CLK	0x190
@@ -1322,6 +1340,7 @@
 			MX8MP_IOMUXC_SD2_CD_B__GPIO2_IO12	0x1c4
 		>;
 	};
+	*/
 
 	pinctrl_usdhc3: usdhc3grp {
 		fsl,pins = <
