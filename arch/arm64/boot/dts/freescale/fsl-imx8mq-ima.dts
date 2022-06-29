@@ -547,6 +547,9 @@
 	pinctrl-0 = <&pinctrl_fec1>;
 	phy-mode = "rgmii-id";
 	phy-handle = <&ethphy0>;
+	phy-reset-duration = <10>;
+	phy-reset-gpios = <&gpio1 9 0>;
+	phy-reset-post-delay = <30>;
 	fsl,magic-packet;
 	wakeup-enable = "1";
 	status = "okay";
