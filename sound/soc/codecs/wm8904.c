@@ -979,7 +979,7 @@ SND_SOC_DAPM_PGA_E("Headphone Output", SND_SOC_NOPM, WM8904_ANALOGUE_HP_0,
 		   0, NULL, 0, out_pga_event,
 		   SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMU |
 		   SND_SOC_DAPM_PRE_PMD | SND_SOC_DAPM_POST_PMD),
-SND_SOC_DAPM_PGA_E("Line Output", SND_SOC_NOPM, WM8904_ANALOGUE_LINEOUT_0,
+SND_SOC_DAPM_PGA_E("Line Output", SND_SOC_NOPM, WM8904_ANALOGUE_HP_0,
 		   0, NULL, 0, out_pga_event,
 		   SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMU |
 		   SND_SOC_DAPM_PRE_PMD | SND_SOC_DAPM_POST_PMD),
@@ -1128,8 +1128,8 @@ static const struct snd_soc_dapm_route dac_intercon[] = {
 	{ "HPOUTL", NULL, "Headphone Output" },
 	{ "HPOUTR", NULL, "Headphone Output" },
 
-	{ "LINEOUTL", NULL, "Line Output" },
-	{ "LINEOUTR", NULL, "Line Output" },
+	{ "LINEOUTL", NULL, "Headphone Output" },
+	{ "LINEOUTR", NULL, "Headphone Output" },
 };
 
 static const struct snd_soc_dapm_route wm8904_intercon[] = {
