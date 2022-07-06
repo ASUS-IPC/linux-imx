@@ -692,7 +692,8 @@
 	};
 
 	ilitek@41 {
-		compatible = "tchip,ilitek";
+		compatible = "hid-over-i2c";
+		hid-descr-addr = <0x0000>;
 		reg = <0x41>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_ilitek_touch>;
