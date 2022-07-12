@@ -284,15 +284,15 @@ static int gpio_hwid_remove(struct platform_device *pdev)
 	return 0;
 }
 
-/* PE100A return 0, PV100A return 1, IM-A return 2, IM-B return 3 */
+/* PE100A return 0, PV100A return 1, IMX8P-IM-A return 2, IMX8P-IM-B return 3 */
 int boardinfo_show(void) {
 	if (strcmp(boardinfo, "PE100A") == 0)
 		return 0;
 	else if (strcmp(boardinfo, "PV100A") == 0)
 		return 1;
-	else if (strcmp(boardinfo, "IM-A") == 0)
+	else if (strcmp(boardinfo, "IMX8P-IM-A") == 0)
 		return 2;
-	else if (strcmp(boardinfo, "IM-B") == 0)
+	else if (strcmp(boardinfo, "IMX8P-IM-B") == 0)
 		return 3;
 	else
 		return -1;
