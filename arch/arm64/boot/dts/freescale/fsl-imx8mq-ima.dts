@@ -21,7 +21,7 @@
 	model = "ASUS IMX8P-IM-A";
 	compatible = "fsl,imx8mq-evk", "fsl,imx8mq";
 
-        aliases {
+	aliases {
                 rtc0 = &snvs_rtc;
                 rtc1 = &bq32000;
                 rtc2 = &rtc_isl1208;
@@ -270,6 +270,8 @@
 			fsl,pins = <
 				MX8MQ_IOMUXC_UART1_RXD_UART1_DCE_RX		0x49
 				MX8MQ_IOMUXC_UART1_TXD_UART1_DCE_TX		0x49
+				MX8MQ_IOMUXC_UART3_RXD_UART1_DCE_CTS_B      0x49
+				MX8MQ_IOMUXC_UART3_TXD_UART1_DCE_RTS_B      0x49
 			>;
 		};
 
@@ -525,17 +527,16 @@
 			>;
 		};
 
-                pinctrl_pwm3: pwm3 {
-                        fsl,pins = <
-                                MX8MQ_IOMUXC_SPDIF_TX_PWM3_OUT                  0x7f
-                        >;
-                };
-                pinctrl_pwm4: pwm4 {
-                        fsl,pins = <
-                                MX8MQ_IOMUXC_SAI3_MCLK_PWM4_OUT                 0x7f
-                        >;
-                };
-
+	        pinctrl_pwm3: pwm3 {
+        		fsl,pins = <
+				MX8MQ_IOMUXC_SPDIF_TX_PWM3_OUT          0x7f
+			>;
+		};
+		pinctrl_pwm4: pwm4 {
+			fsl,pins = <
+				MX8MQ_IOMUXC_SAI3_MCLK_PWM4_OUT         0x7f
+			>;
+		};
 	};
 };
 
@@ -982,7 +983,7 @@
 	assigned-clocks = <&clk IMX8MQ_CLK_SAI2>;
 	assigned-clock-parents = <&clk IMX8MQ_AUDIO_PLL1_OUT>;
 	assigned-clock-rates = <24576000>;
-	status = "disabled";
+	status = "okay";
 };
 
 &sai4 {
@@ -1147,7 +1148,7 @@
 	cs-gpios = <&gpio5 13 GPIO_ACTIVE_HIGH>,
 		   <&gpio3 4 GPIO_ACTIVE_HIGH>;
 	pinctrl-0 = <&pinctrl_ecspi2>,<&pinctrl_ecspi2_cs>,<&pinctrl_can_standby>;
-	status = "disabled";
+	status = "okay";
 
 	can0: mcp2515@0 {
 		compatible = "microchip,mcp2515";
@@ -1244,11 +1245,11 @@
 &pwm3 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pwm3>;
-	status = "disabled";
+	status = "okay";
 };
 
 &pwm4 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pwm4>;
-	status = "disabled";
+	status = "okay";
 };

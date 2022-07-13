@@ -222,6 +222,17 @@
 				MX8MQ_IOMUXC_GPIO1_IO07_GPIO1_IO7		0x41
 			>;
 		};
+	        pinctrl_pwm3: pwm3 {
+			fsl,pins = <
+				MX8MQ_IOMUXC_SPDIF_TX_PWM3_OUT		0x7f
+			>;
+		};
+
+		pinctrl_pwm4: pwm4 {
+			fsl,pins = <
+				MX8MQ_IOMUXC_SAI3_MCLK_PWM4_OUT		0x7f
+			>;
+		};
 
 		pinctrl_dvfs: dvfsgrp {
 			fsl,pins = <
@@ -426,16 +437,17 @@
 				MX8MQ_IOMUXC_SAI2_TXC_SAI2_TX_BCLK	0xd6
 				MX8MQ_IOMUXC_SAI2_MCLK_SAI2_MCLK	0xd6
 				MX8MQ_IOMUXC_SAI2_TXD0_SAI2_TX_DATA0	0xd6
+				MX8MQ_IOMUXC_SAI2_RXD0_SAI2_RX_DATA0    0xd6
 			>;
 		};
 
 		pinctrl_sai5: sai5grp {
 			fsl,pins = <
 				MX8MQ_IOMUXC_SAI5_MCLK_SAI5_MCLK	0xd6
-				MX8MQ_IOMUXC_SAI5_RXD0_SAI5_RX_DATA0	0xd6
-				MX8MQ_IOMUXC_SAI5_RXD1_SAI5_RX_DATA1    0xd6
-				MX8MQ_IOMUXC_SAI5_RXD2_SAI5_RX_DATA2    0xd6
-				MX8MQ_IOMUXC_SAI5_RXD3_SAI5_RX_DATA3    0xd6
+				MX8MQ_IOMUXC_SAI5_RXD0_GPIO3_IO21	0x19
+				MX8MQ_IOMUXC_SAI5_RXD1_GPIO3_IO22	0x19				
+				MX8MQ_IOMUXC_SAI5_RXD2_GPIO3_IO23	0x19
+				MX8MQ_IOMUXC_SAI5_RXD3_GPIO3_IO24	0x19
 			>;
 		};
 
@@ -927,7 +939,7 @@
 	assigned-clocks = <&clk IMX8MQ_CLK_SAI2>;
 	assigned-clock-parents = <&clk IMX8MQ_AUDIO_PLL1_OUT>;
 	assigned-clock-rates = <24576000>;
-	status = "disabled";
+	status = "okay";
 };
 
 &sai4 {
@@ -1104,6 +1116,19 @@
 		status = "okay";
 	};
 };
+
+&pwm3 {
+	pinctrl-names = "default";
+	inctrl-0 = <&pinctrl_pwm3>;
+	tatus = "okay";
+};
+
+&pwm4 {
+	inctrl-names = "default";
+	inctrl-0 = <&pinctrl_pwm4>;
+	tatus = "okay";
+};
+
 
 &irqsteer_dcss {
 	status = "okay";
