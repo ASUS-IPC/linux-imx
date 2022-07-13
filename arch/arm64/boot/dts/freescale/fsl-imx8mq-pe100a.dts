@@ -1119,14 +1119,14 @@
 
 &pwm3 {
 	pinctrl-names = "default";
-	inctrl-0 = <&pinctrl_pwm3>;
-	tatus = "okay";
+	pinctrl-0 = <&pinctrl_pwm3>;
+	status = "okay";
 };
 
 &pwm4 {
-	inctrl-names = "default";
-	inctrl-0 = <&pinctrl_pwm4>;
-	tatus = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pwm4>;
+	status = "okay";
 };
 
 
