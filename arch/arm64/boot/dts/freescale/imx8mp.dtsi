@@ -125,9 +125,9 @@
 
 	display-subsystem {
 		compatible = "fsl,imx-display-subsystem";
-		ports = <&lcdif1_disp>,
+		ports = <&lcdif3_disp>,
 			<&lcdif2_disp>,
-			<&lcdif3_disp>;
+			<&lcdif1_disp>;
 	};
 
 	a53_opp_table: opp-table {
