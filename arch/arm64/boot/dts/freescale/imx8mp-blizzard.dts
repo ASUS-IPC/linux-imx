@@ -21,10 +21,12 @@
 		compatible = "asus-panel";
 		backlight = <&lvds_backlight>;
 		pinctrl-names = "default";
-		pinctrl-0 = <&pinctrl_lvds_pl_id0>, <&pinctrl_lvds_pl_id1>, <&pinctrl_lvds_vdd_en>;
+		pinctrl-0 = <&pinctrl_lvds_pl_id0>, <&pinctrl_lvds_pl_id1>, <&pinctrl_lvds_vdd_en>, <&pinctrl_am_lvds_stbyb_en>, <&pinctrl_am_lvds_rstb_en>;
 		id0-gpios = <&gpio3 19 GPIO_ACTIVE_HIGH>;
 		id1-gpios = <&gpio3 20 GPIO_ACTIVE_HIGH>;
 		enable-gpios = <&gpio5 5 GPIO_ACTIVE_HIGH>;
+		am-stbyb-gpios = <&gpio4 29 GPIO_ACTIVE_HIGH>;
+		am-rstb-gpios = <&gpio5 27 GPIO_ACTIVE_HIGH>;
 		port {
 			panel_lvds_in: endpoint {
 				remote-endpoint = <&lvds_out>;
@@ -113,7 +115,7 @@
 	};
 	*/
 
-	reg_audio_pwr: regulator-audio-pwr {
+	/*reg_audio_pwr: regulator-audio-pwr {
 		compatible = "regulator-fixed";
 		regulator-name = "audio-pwr";
 		regulator-min-microvolt = <3300000>;
@@ -121,7 +123,7 @@
 		gpio = <&gpio4 29 GPIO_ACTIVE_HIGH>;
 		enable-active-high;
 		regulator-always-on;
-	};
+	};*/
 
 	bt_sco_codec: bt_sco_codec {
 		#sound-dai-cells = <1>;
@@ -631,11 +633,11 @@
 		reg = <0x1a>;
 		clocks = <&audio_blk_ctrl IMX8MP_CLK_AUDIO_BLK_CTRL_SAI3_MCLK1>;
 		clock-names = "mclk";
-		DCVDD-supply = <&reg_audio_pwr>;
+		/*DCVDD-supply = <&reg_audio_pwr>;
 		DBVDD-supply = <&reg_audio_pwr>;
 		AVDD-supply = <&reg_audio_pwr>;
 		CPVDD-supply = <&reg_audio_pwr>;
-		MICVDD-supply = <&reg_audio_pwr>;
+		MICVDD-supply = <&reg_audio_pwr>;*/
 	};
 
 	ov5640_1: ov5640_mipi@3c {
@@ -876,7 +878,7 @@
 	assigned-clocks = <&clk IMX8MP_CLK_UART1>;
 	assigned-clock-parents = <&clk IMX8MP_SYS_PLL1_80M>;
 	fsl,uart-has-rtscts;
-	status = "okay";
+	status = "disabled";
 };
 
 &uart2 {
@@ -1251,7 +1253,6 @@
 			MX8MP_IOMUXC_SAI3_RXD__AUDIOMIX_SAI3_RX_DATA00	0xd6
 			MX8MP_IOMUXC_SAI3_TXD__AUDIOMIX_SAI3_TX_DATA00	0xd6
 			MX8MP_IOMUXC_SAI3_MCLK__AUDIOMIX_SAI3_MCLK	0xd6
-			MX8MP_IOMUXC_SAI3_RXC__GPIO4_IO29		0xd6
 		>;
 	};
 
@@ -1427,6 +1428,18 @@
 	pinctrl_lvds_pl_id1: lvds_pl_id1 {
 		fsl,pins = <
 			MX8MP_IOMUXC_SAI5_RXC__GPIO3_IO20 0x19
+		>;
+	};
+
+	pinctrl_am_lvds_stbyb_en: am_lvds_stbyb_en {
+		fsl,pins = <
+			MX8MP_IOMUXC_SAI3_RXC__GPIO4_IO29 0x19
+		>;
+	};
+
+	pinctrl_am_lvds_rstb_en: am_lvds_rstb_en {
+		fsl,pins = <
+			MX8MP_IOMUXC_UART3_TXD__GPIO5_IO27 0x19
 		>;
 	};
 };

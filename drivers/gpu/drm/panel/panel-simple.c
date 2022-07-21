@@ -118,6 +118,9 @@ struct panel_simple {
 	struct gpio_desc *enable_gpio;
 	struct gpio_desc *hpd_gpio;
 
+	struct gpio_desc *am_stbyb_gpio;
+	struct gpio_desc *am_rstb_gpio;
+
 	struct drm_display_mode override_mode;
 
 	enum drm_panel_orientation orientation;
@@ -280,6 +283,7 @@ static int panel_simple_get_non_edid_modes(struct panel_simple *panel,
 static int panel_simple_disable(struct drm_panel *panel)
 {
 	struct panel_simple *p = to_panel_simple(panel);
+	int panelid;
 
 	printk(KERN_INFO "%s \n", __func__);
 	if (!p->enabled)
@@ -291,10 +295,30 @@ static int panel_simple_disable(struct drm_panel *panel)
 		backlight_update_status(p->backlight);
 	}
 
-	/* Backlihgt(off) to stop lvds signal */
-	if (p->desc->pwseq_delay->t5) {
-		printk("%s - Backlihgt(off) to stop lvds signal time: %u\n", __func__, p->desc->pwseq_delay->t5);
-		msleep(p->desc->pwseq_delay->t5);
+	panelid = get_panelid();
+	if (panelid == 1)
+	{
+		/* Backlihgt(off) to stop lvds signal */
+		if (p->desc->pwseq_delay->t5 && p->desc->pwseq_delay->t6) {
+			printk("%s - Backlihgt(off) to stop lvds signal time - STBYB pull L to RSTB time: %u\n",
+				__func__, p->desc->pwseq_delay->t5 - p->desc->pwseq_delay->t6);
+			msleep(p->desc->pwseq_delay->t5 - p->desc->pwseq_delay->t6);
+
+			if (p->am_stbyb_gpio)
+						gpiod_set_value_cansleep(p->am_stbyb_gpio, 0);
+
+			msleep(p->desc->pwseq_delay->t6);
+
+			if (p->am_rstb_gpio)
+					gpiod_set_value_cansleep(p->am_rstb_gpio, 0);
+		}
+	}
+	else
+	{
+		if (p->desc->pwseq_delay->t5) {
+			printk("%s - Backlihgt(off) to stop lvds signal time: %u\n", __func__, p->desc->pwseq_delay->t5);
+			msleep(p->desc->pwseq_delay->t5);
+		}
 	}
 
 	if (p->desc->delay.disable)
@@ -423,6 +447,7 @@ static int panel_simple_prepare(struct drm_panel *panel)
 static int panel_simple_enable(struct drm_panel *panel)
 {
 	struct panel_simple *p = to_panel_simple(panel);
+	int panelid;
 
 	printk(KERN_INFO "%s \n", __func__);
 	if (p->enabled)
@@ -431,10 +456,37 @@ static int panel_simple_enable(struct drm_panel *panel)
 	if (p->desc->delay.enable)
 		msleep(p->desc->delay.enable);
 
-	/* LVDS signal(start) or STBYB(H) to turn Backlihgt on */
-	if (p->desc->pwseq_delay->t4) {
-		printk("%s - LVDS signal(start) or STBYB(H) to turn Backlihgt on time: %u\n", __func__, p->desc->pwseq_delay->t4);
-		msleep(p->desc->pwseq_delay->t4);
+	panelid = get_panelid();
+	if (panelid == 1)
+	{
+		if (p->desc->pwseq_delay->t2) {
+			printk("%s - VCC(LVDS signal) to RSTB time: %u\n", __func__, p->desc->pwseq_delay->t2);
+			msleep(p->desc->pwseq_delay->t2);
+
+			if (p->am_rstb_gpio)
+				gpiod_set_value_cansleep(p->am_rstb_gpio, 1);
+
+			if (p->desc->pwseq_delay->t3) {
+				printk("%s - RSTB to STBYB pull H time: %u\n", __func__, p->desc->pwseq_delay->t3);
+				msleep(p->desc->pwseq_delay->t3);
+
+				if (p->am_stbyb_gpio)
+					gpiod_set_value_cansleep(p->am_stbyb_gpio, 1);
+			}
+
+			if (p->desc->pwseq_delay->t4) {
+				printk("%s - LVDS signal(start) or STBYB(H) to turn Backlihgt on time: %u\n", __func__, p->desc->pwseq_delay->t4 - p->desc->pwseq_delay->t3);
+				msleep(p->desc->pwseq_delay->t4 - p->desc->pwseq_delay->t3);
+			}
+		}
+	}
+	else
+	{
+		/* LVDS signal(start) or STBYB(H) to turn Backlihgt on */
+		if (p->desc->pwseq_delay->t4) {
+			printk("%s - LVDS signal(start) or STBYB(H) to turn Backlihgt on time: %u\n", __func__, p->desc->pwseq_delay->t4);
+			msleep(p->desc->pwseq_delay->t4);
+		}
 	}
 
 	if (p->backlight) {
@@ -634,6 +686,24 @@ static int panel_simple_probe(struct device *dev, const struct panel_desc *desc)
 		return err;
 	}
 
+	panel->am_stbyb_gpio = devm_gpiod_get_optional(dev, "am-stbyb",
+						     GPIOD_OUT_LOW);
+	if (IS_ERR(panel->am_stbyb_gpio)) {
+		err = PTR_ERR(panel->am_stbyb_gpio);
+		if (err != -EPROBE_DEFER)
+			dev_err(dev, "am-stbyb failed to request GPIO: %d\n", err);
+		return err;
+	}
+
+	panel->am_rstb_gpio = devm_gpiod_get_optional(dev, "am-rstb",
+						     GPIOD_OUT_LOW);
+	if (IS_ERR(panel->am_rstb_gpio)) {
+		err = PTR_ERR(panel->am_rstb_gpio);
+		if (err != -EPROBE_DEFER)
+			dev_err(dev, "am-rstb failed to request GPIO: %d\n", err);
+		return err;
+	}
+
 	err = of_drm_get_panel_orientation(dev->of_node, &panel->orientation);
 	if (err) {
 		dev_err(dev, "%pOF: failed to get orientation %d\n", dev->of_node, err);
@@ -824,10 +894,10 @@ static const struct display_timing am_1920720etzqw_00h_timing = {
 
 static const struct pwseq am_pwseq_delay = {
 	.t1 = 0,//	VCC on to LVDS signal start
-	.t2 = 10,//	(us),VCC(LVDS signal) to RSTB
+	.t2 = 1,//	10 us, we set 1 ms, VCC(LVDS signal) to RSTB
 	.t3 = 36,//	RSTB to STBYB pull H
-	.t4 = 200,//LVDS signal Backlihgt on, STBYB(H) to Backlihgt on 200ms - 36ms -10us
-	.t5 = 200,//Backlihgt off to LVDS signal stop, Backlihgt off to to STBYB(L) 200ms - 133ms
+	.t4 = 300,//LVDS signal Backlihgt on, STBYB(H) to Backlihgt on 300ms - 36ms -10us
+	.t5 = 300,//Backlihgt off to LVDS signal stop, Backlihgt off to to STBYB(L) 200ms - 133ms
 	.t6 = 133,//STBYB pull L to RSTB
 	.t7 = 0,//	RSTB(LVDS Singal stop) to VCC off
 	.t8 = 500,//Restart VCC time
