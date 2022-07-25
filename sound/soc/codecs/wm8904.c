@@ -580,8 +580,9 @@ SOC_DOUBLE_R_TLV("Digital Capture Volume", WM8904_ADC_DIGITAL_VOLUME_LEFT,
 		 WM8904_ADC_DIGITAL_VOLUME_RIGHT, 1, 119, 0, digital_tlv),
 
 /* No TLV since it depends on mode */
+/* 20220725 ASUS Kengyen modify Line-In Volume to 0x1c */
 SOC_DOUBLE_R("Capture Volume", WM8904_ANALOGUE_LEFT_INPUT_0,
-	     WM8904_ANALOGUE_RIGHT_INPUT_0, 0, 31, 0),
+	     WM8904_ANALOGUE_RIGHT_INPUT_0, 0, 37, 0),
 SOC_DOUBLE_R("Capture Switch", WM8904_ANALOGUE_LEFT_INPUT_0,
 	     WM8904_ANALOGUE_RIGHT_INPUT_0, 7, 1, 1),
 
@@ -687,6 +688,31 @@ static int sysclk_event(struct snd_soc_dapm_widget *w,
 
 	return 0;
 }
+
+/* 20220725 ASUS Kengyen add Line-in event for IN2L +++ */
+static int in_sel_event(struct snd_soc_dapm_widget *w,
+	struct snd_kcontrol *kcontrol, int event)
+{
+	struct snd_soc_component *component = snd_soc_dapm_to_component(w->dapm);
+
+	switch (event) {
+	case SND_SOC_DAPM_POST_PMD:
+		snd_soc_component_write(component, WM8904_MIC_BIAS_CONTROL_1, 0x0000);
+		snd_soc_component_write(component, WM8904_ANALOGUE_LEFT_INPUT_1, 0x0044);
+		break;
+
+	case SND_SOC_DAPM_PRE_PMU:
+		snd_soc_component_write(component, WM8904_MIC_BIAS_CONTROL_1, 0x0003); //INL_ENA=1, INR_ENA=1
+		snd_soc_component_write(component, WM8904_ANALOGUE_LEFT_INPUT_1, 0x0054); //Select IN2L_P and IN2L_N and enable Left Input PGA
+		break;
+
+	default:
+		return 0;
+	}
+
+	return 0;
+}
+/* 20220725 ASUS Kengyen add Line-in event for IN2L --- */
 
 static int out_pga_event(struct snd_soc_dapm_widget *w,
 			 struct snd_kcontrol *kcontrol, int event)
@@ -952,6 +978,11 @@ SND_SOC_DAPM_ADC("ADCR", NULL, WM8904_POWER_MANAGEMENT_6, 0, 0),
 SND_SOC_DAPM_MUX("AIFOUTL Mux", SND_SOC_NOPM, 0, 0, &aifoutl_mux),
 SND_SOC_DAPM_MUX("AIFOUTR Mux", SND_SOC_NOPM, 0, 0, &aifoutr_mux),
 
+/* 20220725 ASUS Kengyen add Line-in event for IN2L */
+SND_SOC_DAPM_PGA_S("AIFOUT Sel", 1, SND_SOC_NOPM, 0, 0,
+		   in_sel_event,
+		   SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD),
+
 SND_SOC_DAPM_AIF_OUT("AIFOUTL", "Capture", 0, SND_SOC_NOPM, 0, 0),
 SND_SOC_DAPM_AIF_OUT("AIFOUTR", "Capture", 1, SND_SOC_NOPM, 0, 0),
 };
@@ -1090,8 +1121,13 @@ static const struct snd_soc_dapm_route adc_intercon[] = {
 	{ "AIFOUTR Mux", "Left", "ADCL" },
 	{ "AIFOUTR Mux", "Right", "ADCR" },
 
-	{ "AIFOUTL", NULL, "AIFOUTL Mux" },
-	{ "AIFOUTR", NULL, "AIFOUTR Mux" },
+	/* 20220725 ASUS Kengyen add Line-in event for IN2L +++ */
+	{ "AIFOUT Sel", NULL, "AIFOUTL Mux" },
+	{ "AIFOUT Sel", NULL, "AIFOUTR Mux" },
+
+	{ "AIFOUTL", NULL, "AIFOUT Sel" },
+	{ "AIFOUTR", NULL, "AIFOUT Sel" },
+	/* 20220725 ASUS Kengyen add Line-in event for IN2L --- */
 
 	{ "ADCL", NULL, "CLK_DSP" },
 	{ "ADCL", NULL, "Left Capture PGA" },
