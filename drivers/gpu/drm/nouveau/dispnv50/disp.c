@@ -2308,7 +2308,7 @@ nv50_disp_atomic_commit(struct drm_device *dev,
 			goto err_cleanup;
 	}
 
-	ret = drm_atomic_helper_swap_state(state, true);
+	ret = drm_atomic_helper_swap_state(state, true, nonblock);
 	if (ret)
 		goto err_cleanup;
 
