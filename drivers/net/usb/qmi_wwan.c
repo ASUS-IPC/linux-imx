@@ -865,6 +865,19 @@ static const struct driver_info	qmi_wwan_info_quirk_dtr = {
 #define QMI_GOBI_DEVICE(vend, prod) \
 	QMI_FIXED_INTF(vend, prod, 0)
 
+/* Many devices have QMI and DIAG functions which are distinguishable
+ * from other vendor specific functions by class, subclass and
+ * protocol all being 0xff. The DIAG function has exactly 2 endpoints
+ * and is silently rejected when probed.
+ *
+ * This makes it possible to match dynamically numbered QMI functions
+ * as seen on e.g. many Quectel modems.
+ */
+#define QMI_MATCH_FF_FF_FF(vend, prod) \
+	USB_DEVICE_AND_INTERFACE_INFO(vend, prod, USB_CLASS_VENDOR_SPEC, \
+				      USB_SUBCLASS_VENDOR_SPEC, 0xff), \
+	.driver_info = (unsigned long)&qmi_wwan_info_quirk_dtr
+
 static const struct usb_device_id products[] = {
 	/* 1. CDC ECM like devices match on the control interface */
 	{	/* Huawei E392, E398 and possibly others sharing both device id and more... */
@@ -1256,14 +1269,21 @@ static const struct usb_device_id products[] = {
 	{QMI_FIXED_INTF(0x03f0, 0x9d1d, 1)},	/* HP lt4120 Snapdragon X5 LTE */
 	{QMI_FIXED_INTF(0x22de, 0x9061, 3)},	/* WeTelecom WPD-600N */
 	{QMI_QUIRK_SET_DTR(0x1e0e, 0x9001, 5)},	/* SIMCom 7100E, 7230E, 7600E ++ */
-	{QMI_QUIRK_SET_DTR(0x2c7c, 0x0125, 4)},	/* Quectel EC25, EC20 R2.0  Mini PCIe */
+
 	{QMI_QUIRK_SET_DTR(0x2c7c, 0x0121, 4)},	/* Quectel EC21 Mini PCIe */
 	{QMI_QUIRK_SET_DTR(0x2c7c, 0x0191, 4)},	/* Quectel EG91 */
-	{QMI_QUIRK_SET_DTR(0x2C7C, 0x0195, 4)}, /* Quectel EG95 */
-	{QMI_FIXED_INTF(0x2c7c, 0x0296, 4)},	/* Quectel BG96 */
-	{QMI_QUIRK_SET_DTR(0x2c7c, 0x0306, 4)},	/* Quectel EP06 Mini PCIe */
-	{QMI_QUIRK_SET_DTR(0x2C7C, 0x0512, 4)}, /* Quectel EG12/EP12/EM12/EG16/EG18 */
-	{QMI_QUIRK_SET_DTR(0x2C7C, 0x0435, 4)}, /* Quectel AG35 */
+	{QMI_QUIRK_SET_DTR(0x2c7c, 0x0195, 4)}, /* Quectel EG95 */
+	{QMI_QUIRK_SET_DTR(0x2c7c, 0x0435, 4)}, /* Quectel AG35 */
+	{QMI_QUIRK_SET_DTR(0x2c7c, 0x0296, 4)},	/* Quectel BG96 */
+	/*{QMI_QUIRK_SET_DTR(0x2c7c, 0x0700, 3)},  Quectel BG95 */
+	{QMI_QUIRK_SET_DTR(0x2c7c, 0x0801, 4)}, /* Quectel RG520 */
+
+	{QMI_MATCH_FF_FF_FF(0x2c7c, 0x0125)},	/* Quectel EC25, EC20 R2.0  Mini PCIe */
+	{QMI_MATCH_FF_FF_FF(0x2c7c, 0x0306)},	/* Quectel EP06/EG06/EM06 */
+	{QMI_MATCH_FF_FF_FF(0x2c7c, 0x0512)},	/* Quectel EG12/EM12 */
+	{QMI_MATCH_FF_FF_FF(0x2c7c, 0x0620)},	/* Quectel EM160R-GL */
+	{QMI_MATCH_FF_FF_FF(0x2c7c, 0x0800)},	/* Quectel RM500Q-GL */
+
 	{QMI_QUIRK_SET_DTR(0x2cb7, 0x0104, 4)},	/* Fibocom NL678 series */
 
 	/* 4. Gobi 1000 devices */
@@ -1372,6 +1392,15 @@ static int qmi_wwan_probe(struct usb_interface *intf,
 		dev_dbg(&intf->dev, "Quectel EC20 quirk, skipping interface 0\n");
 		return -ENODEV;
 	}
+
+	/* Several Quectel modems supports dynamic interface configuration, so
+	 * we need to match on class/subclass/protocol. These values are
+	 * identical for the diagnostic- and QMI-interface, but bNumEndpoints is
+	 * different. Ignore the current interface if the number of endpoints
+	 * equals the number for the diag interface (two).
+	 */
+	if (desc->bNumEndpoints == 2)
+		return -ENODEV;
 
 	return usbnet_probe(intf, id);
 }
