@@ -62,6 +62,21 @@
 		};
 	};
 
+	gpio-keys {
+		compatible = "gpio-keys";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_gpio_keys>;
+		autorepeat;
+		status = "okay";
+
+		power {
+			label = "GPIO Power";
+			gpios = <&gpio4 28 GPIO_ACTIVE_HIGH>;
+			linux,code = <KEY_POWER>; /* SW_LID */
+			wakeup-source;
+		};
+	};
+
 	memory@40000000 {
 		device_type = "memory";
 		reg = <0x0 0x40000000 0 0xc0000000>,
@@ -1041,7 +1056,7 @@
 		fsl,pins = <
              MX8MP_IOMUXC_SAI2_RXC__GPIO4_IO22     0x19
         >;
-	};	
+	};
 
 	 pinctrl_can4_int: can4intgrp {
         fsl,pins = <
@@ -1440,6 +1455,12 @@
 	pinctrl_am_lvds_rstb_en: am_lvds_rstb_en {
 		fsl,pins = <
 			MX8MP_IOMUXC_UART3_TXD__GPIO5_IO27 0x19
+		>;
+	};
+
+	pinctrl_gpio_keys: gpiokeys {
+		fsl,pins = <
+			MX8MP_IOMUXC_SAI3_RXFS__GPIO4_IO28	0x1c4
 		>;
 	};
 };
