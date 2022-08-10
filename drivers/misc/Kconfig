@@ -489,6 +489,7 @@ config HISI_HIKEY_USB
 config HED_SOFTWARE_CONFIGURABLE_IO
         bool "HED Software Configurable I/O"
         depends on OF_GPIO
+        depends on IIO
         help
 	  This allows the selection of input modes (Voltage to Digital, Switch
 	  to Battery, Switch to Ground, Resistance to Digital) for inputs. This
