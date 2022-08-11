@@ -67,6 +67,7 @@ static int pv100a_aif1_hw_params(struct snd_pcm_substream *substream,
 	int ret;
 
 	/* Configure codec DAI PLL, freq_in=24.576MHz */
+	/*
 	ret = snd_soc_dai_set_pll(codec_dai, 0, RT5616_PLL1_S_BCLK1,
 			params_rate(params) * 32,
 			params_rate(params) * 256);
@@ -74,8 +75,9 @@ static int pv100a_aif1_hw_params(struct snd_pcm_substream *substream,
 		dev_err(rtd->dev, "Can't set codec PLL: %d\n", ret);
 		return ret;
 	}
+	*/
 	/* Configure codec DAI system clock */
-	ret = snd_soc_dai_set_sysclk(codec_dai, RT5616_SCLK_S_PLL1,  params_rate(params) * 512, SND_SOC_CLOCK_IN);
+	ret = snd_soc_dai_set_sysclk(codec_dai, RT5616_SCLK_S_MCLK,  params_rate(params) * 512, SND_SOC_CLOCK_IN);
 	if (ret < 0) {
 		dev_err(rtd->dev, "Can't set codec_dai sysclk in %d\n", ret);
 		return ret;
