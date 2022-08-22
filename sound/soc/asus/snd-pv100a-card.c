@@ -103,6 +103,7 @@ static struct snd_soc_dai_link pv100a_dailink[] = {
 		.name = "rt5616",
 		.stream_name = "RT5616 PCM",
 		.codec_dai_name = "rt5616-aif1",
+		.ignore_pmdown_time = 1,
 		.ops = &pv100a_aif1_ops,
 		/* set rt5616 as slave */
 		.dai_fmt = SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF | SND_SOC_DAIFMT_CBS_CFS,

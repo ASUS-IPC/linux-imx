@@ -11,6 +11,7 @@
 
 #include <linux/pm_qos.h>
 #include <sound/dmaengine_pcm.h>
+#include <linux/delay.h>
 
 #define FSL_SAI_FORMATS (SNDRV_PCM_FMTBIT_S16_LE |\
 			 SNDRV_PCM_FMTBIT_S24_LE |\
@@ -283,6 +284,9 @@ struct fsl_sai {
 
 	struct fsl_sai_verid verid;
 	struct fsl_sai_param param;
+
+        /*asus kengyen added for disable mclk delay */
+        struct delayed_work disable_mclk_tx_work;
 };
 
 #define TX 1
