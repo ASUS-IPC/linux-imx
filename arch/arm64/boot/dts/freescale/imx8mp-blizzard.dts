@@ -267,6 +267,12 @@
 		pinctrl-0 = <&pinctrl_platform_reset>;
 		reset-gpio = <&gpio1 8 GPIO_ACTIVE_HIGH>;
 	};
+
+	resmem: reserved-memory {
+		linux,cma {
+			size = <0 0x34000000>;
+		};
+	};
 };
 
 &A53_0 {
