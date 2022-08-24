@@ -178,7 +178,7 @@ enum __adf_net_wireless_evcode{
     __ADF_CUSTOM_PUSH_BUTTON = IWEVCUSTOM,
 };
 
-#define __adf_os_print               printk
+#define __adf_os_print               {}
 #define __adf_os_vprint              vprintk
 #define __adf_os_snprint             snprintf
 #define __adf_os_vsnprint            vsnprintf
