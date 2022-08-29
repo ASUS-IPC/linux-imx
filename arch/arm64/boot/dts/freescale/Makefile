@@ -115,7 +115,8 @@ dtb-$(CONFIG_ARCH_FSL_IMX8MQ) += fsl-imx8mq-ddr3l-arm2.dtb \
 				 fsl-imx8mq-ima.dtb \
 				 fsl-imx8mq-imb.dtb \
 				 fsl-imx8mq-pe100a.dtb \
-				 fsl-imx8mq-pv100a.dtb
+				 fsl-imx8mq-pv100a.dtb \
+				 fsl-imx8mq-p100ivm.dtb
 dtb-$(CONFIG_ARCH_FSL_IMX8MM) += fsl-imx8mm-evk.dtb \
 				 fsl-imx8mm-evk-ak4497.dtb \
 				 fsl-imx8mm-evk-m4.dtb \

@@ -64,7 +64,8 @@ static int sku_show(struct seq_file *m, void *v)
 	id1 = gpio_get_value(sku1_gpio);
 	id2 = gpio_get_value(sku2_gpio);
 
-	if (strcmp(boardinfo, "PV100A") != 0)
+	if ((strcmp(boardinfo, "PV100A") != 0) &&
+			(strcmp(boardinfo, "P100IVM") != 0))
 		id3 = gpio_get_value(sku3_gpio);
 	else
 		id3 = 0;
@@ -202,7 +203,8 @@ static int gpio_hwid_probe(struct platform_device *pdev)
 		}
 	}
 
-	if (strcmp(boardinfo, "PV100A") != 0) {
+	if ((strcmp(boardinfo, "PV100A") != 0) &&
+			(strcmp(boardinfo, "P100IVM") != 0)) {
 		sku3_gpio = of_get_named_gpio(dev->of_node, "sku3-gpios", 0);
 		if (!gpio_is_valid(sku3_gpio)) {
 			printk("No sku3-gpio pin available in gpio-hwid\n");
@@ -273,7 +275,8 @@ static int gpio_hwid_remove(struct platform_device *pdev)
 	gpio_free(sku1_gpio);
 	gpio_free(sku2_gpio);
 
-	if (strcmp(boardinfo, "PV100A") != 0)
+	if ((strcmp(boardinfo, "PV100A") != 0) &&
+		(strcmp(boardinfo, "P100IVM") != 0))
 		gpio_free(sku3_gpio);
 
 	if (strcmp(boardinfo, "PE100A") == 0) {
@@ -284,7 +287,7 @@ static int gpio_hwid_remove(struct platform_device *pdev)
 	return 0;
 }
 
-/* PE100A return 0, PV100A return 1, IMX8P-IM-A return 2, IMX8P-IM-B return 3 */
+/* PE100A return 0, PV100A return 1, IMX8P-IM-A return 2, IMX8P-IM-B return 3 P100IVM return 4*/
 int boardinfo_show(void) {
 	if (strcmp(boardinfo, "PE100A") == 0)
 		return 0;
@@ -294,6 +297,8 @@ int boardinfo_show(void) {
 		return 2;
 	else if (strcmp(boardinfo, "IMX8P-IM-B") == 0)
 		return 3;
+	else if (strcmp(boardinfo, "P100IVM") == 0)
+		return 4;
 	else
 		return -1;
 }
