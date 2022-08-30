@@ -1012,7 +1012,7 @@ static char *ol_board_id_to_filename(struct ol_softc *scn, uint16_t board_id)
 #ifdef HIF_SDIO
 #define MAX_SUPPORTED_PEERS 32
 #else
-#define MAX_SUPPORTED_PEERS 10
+#define MAX_SUPPORTED_PEERS 32
 #endif
 #else
 #define MAX_SUPPORTED_PEERS_REV1_1 14
@@ -3657,12 +3657,41 @@ ol_target_ready(struct ol_softc *scn, void *cfg_ctx)
 }
 #endif
 
+#if (defined(HIF_USB)) && (defined(USB_RESET_RESUME_PERSISTENCE))
+static A_STATUS ol_usb_reset_resume_enable(struct ol_softc *scn)
+{
+	A_STATUS status;
+	u_int32_t value, addr;
+
+	addr = host_interest_item_address(scn->target_type,
+			offsetof(struct host_interest_s, hi_option_flag2));
+
+	status = BMIReadMemory(scn->hif_hdl, addr, (A_UCHAR *)&value, 4, scn);
+	if (status != A_OK)
+		return status;
+
+	value |= HI_OPTION_USB_RESET_RESUME;
+
+	status = BMIWriteMemory(scn->hif_hdl, addr, (A_UCHAR *)&value, 4, scn);
+	return status;
+}
+#else
+static inline A_STATUS ol_usb_reset_resume_enable(struct ol_softc *scn)
+{
+	return A_OK;
+}
+#endif
+
 #ifdef HIF_USB
 static A_STATUS
 ol_usb_extra_initialization(struct ol_softc *scn)
 {
 	A_STATUS status = !EOK;
 	u_int32_t param = 0;
+
+	status = ol_usb_reset_resume_enable(scn);
+	if (status != A_OK)
+		return status;
 
 	param |= HI_ACS_FLAGS_ALT_DATA_CREDIT_SIZE;
 	status = BMIWriteMemory(scn->hif_hdl,

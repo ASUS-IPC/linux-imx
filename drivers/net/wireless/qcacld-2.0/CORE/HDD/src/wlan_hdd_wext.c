@@ -1,5 +1,6 @@
 /*
- * Copyright (c) 2011-2020 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011-2020, 2021 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2021 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -260,6 +261,10 @@ typedef enum eMonFilterType{
 #define WE_MOTION_DET_BASE_LINE_START_STOP        94
 #endif
 #define WE_SET_WOW_START                          95
+#define WE_SAP_TX_OFF                             96
+#define WE_SET_TXRX_PRINT_LEVEL                   97
+#define WE_SAP_SET_TARGET_CHANNEL                 98
+#define WE_SAP_SET_CAC_TIME                       99
 
 /* Private ioctls and their sub-ioctls */
 #define WLAN_PRIV_SET_NONE_GET_INT                (SIOCIWFIRSTPRIV + 1)
@@ -906,6 +911,36 @@ void hdd_wlan_dump_stats(hdd_adapter_t *pAdapter, int value)
     }
 }
 
+#ifdef CLD_REGDB
+void hdd_wlan_dump_cld_regdb(hdd_adapter_t *adapter)
+{
+	hdd_context_t *hdd_ctx;
+	struct wiphy *wiphy;
+	uint32_t i;
+	uint32_t j;
+	struct ieee80211_supported_band *band;
+
+	hdd_ctx = WLAN_HDD_GET_CTX(adapter);
+
+	wiphy = hdd_ctx->wiphy;
+	for (i = 0; i < IEEE80211_NUM_BANDS; i++) {
+		band = wiphy->bands[i];
+		if (!band)
+			continue;
+
+		for (j = 0; j < band->n_channels; j++)
+			pr_info("[CLD-REGDB-DEBUG]: freq %d flags 0x%x\n",
+				band->channels[j].center_freq,
+				band->channels[j].flags);
+	}
+}
+#else
+void hdd_wlan_dump_cld_regdb(hdd_adapter_t *adapter)
+{
+
+}
+#endif
+
 /**---------------------------------------------------------------------------
 
   \brief hdd_wlan_get_version() -
@@ -929,10 +964,6 @@ void hdd_wlan_get_version(hdd_adapter_t *pAdapter, union iwreq_data *wrqu,
 
     hdd_context_t *pHddContext;
     int i = 0;
-#ifdef CLD_REGDB
-    struct wiphy *wiphy = NULL;
-    int j;
-#endif
 
     pHddContext = WLAN_HDD_GET_CTX(pAdapter);
     if (!pHddContext) {
@@ -981,19 +1012,7 @@ void hdd_wlan_get_version(hdd_adapter_t *pAdapter, union iwreq_data *wrqu,
                 pHWversion);
     }
 
-#ifdef CLD_REGDB
-    wiphy = pHddContext->wiphy;
-    for (i = 0; i < IEEE80211_NUM_BANDS; i++) {
-        if (NULL == wiphy->bands[i])
-            continue;
-
-        for (j = 0; j < wiphy->bands[i]->n_channels; j++) {
-            struct ieee80211_supported_band *band = wiphy->bands[i];
-            printk("[CLD-REGDB-DEBUG]: channel %d flags 0x%x\n",
-                   band->channels[j].center_freq, band->channels[j].flags);
-        }
-    }
-#endif
+    hdd_wlan_dump_cld_regdb(pAdapter);
 
 error:
     return;
@@ -7177,6 +7196,57 @@ static int __iw_setint_getnone(struct net_device *dev,
             }
             break;
 #endif
+        case WE_SAP_TX_OFF:
+        {
+            ol_txrx_pdev_handle pdev =
+                vos_get_context(VOS_MODULE_ID_TXRX, pHddCtx->pvosContext);
+
+            pdev->cfg.sap_tx_off = set_value;
+            PMAC_STRUCT(hHal)->sap_tx_off = set_value;
+            break;
+        }
+#if !defined(WDI_API_AS_FUNCS)
+        case WE_SET_TXRX_PRINT_LEVEL:
+            {
+                if ( (set_value < 0) || (set_value > 0xff)) {
+                     hddLog(LOGE, FL("Invalid value %d in set_txrx_dbg"),
+                             set_value);
+                    return -EINVAL;
+                }
+                ret = process_wma_set_command((int)pAdapter->sessionId,
+                        (int)GEN_PARAM_SET_TXRX_PRINT_LEVEL,
+                        set_value, GEN_CMD);
+            }
+            break;
+#endif
+        case WE_SAP_SET_TARGET_CHANNEL:
+        {
+                if ((set_value < 0) || (set_value > 0xff)) {
+                     hddLog(LOGE, FL("Invalid value %d in set_target_ch"),
+                             set_value);
+                    return -EINVAL;
+                }
+                if ((set_value != 0) &&
+                    ((set_value < 36) || (vos_nv_getChannelEnabledState(set_value) != NV_CHANNEL_ENABLE))) {
+                     hddLog(LOGE, FL("%d is not a valid non-DFS channel"),
+                             set_value);
+                    return -EINVAL;
+                }
+                PMAC_STRUCT(hHal)->target_channel = set_value;
+                break;
+        }
+
+        case WE_SAP_SET_CAC_TIME:
+        {
+                if ( (set_value < 0) || (set_value > 0xff)) {
+                     hddLog(LOGE, FL("Invalid value %d in set_cac_time"),
+                             set_value);
+                    return -EINVAL;
+                }
+                PMAC_STRUCT(hHal)->cac_time = set_value;
+                break;
+        }
+
         default:
         {
             hddLog(LOGE, "%s: Invalid sub command %d", __func__, sub_cmd);
@@ -8947,6 +9017,25 @@ int wlan_hdd_get_rx_group(hdd_adapter_t *pAdapter,
 	}
 	wrqu->data.length += length;
 	return 0;
+}
+
+int wlan_hdd_au_set_cts(hdd_adapter_t * pAdapter, int mode, int profile)
+{
+	int ret;
+
+	if (mode < 0 || mode > 2) {
+		hddLog(LOGW, FL("Invalid cts mode %d"), mode);
+		return -EINVAL;
+	}
+
+	ret = process_wma_set_command_twoargs((int)pAdapter->sessionId,
+		(int)GEN_PARAM_MULTICAST_SET_CTS,
+		mode, profile, GEN_CMD);
+
+	if (!ret) {
+		hddLog(LOGW, FL("Set CST mode fail, mode %d"), mode);
+	}
+	return ret;
 }
 #endif
 
@@ -13155,6 +13244,24 @@ static const struct iw_priv_args we_private_args[] = {
         IW_PRIV_TYPE_CHAR | WE_MAX_STR_LEN,
         "au_rx_show_grp" },
 #endif
+    {
+        WE_SAP_TX_OFF,
+        IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1,
+        0, "sap_tx_off"},
+#if !defined(WDI_API_AS_FUNCS)
+    {   WE_SET_TXRX_PRINT_LEVEL,
+        IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1,
+        0,
+        "set_txrx_level" },
+#endif
+    {   WE_SAP_SET_TARGET_CHANNEL,
+        IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1,
+        0,
+        "set_target_ch" },
+    {   WE_SAP_SET_CAC_TIME,
+        IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1,
+        0,
+        "set_cac_time" },
 };
 
 

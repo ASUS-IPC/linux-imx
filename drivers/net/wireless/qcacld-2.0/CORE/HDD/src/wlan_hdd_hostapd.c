@@ -1,5 +1,6 @@
 /*
- * Copyright (c) 2012-2018 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2020 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2021 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -130,6 +131,22 @@ struct index_data_rate_type {
 	uint8_t   beacon_rate_index;
 	uint16_t  supported_rate[4];
 };
+
+#ifndef BSS_MEMBERSHIP_SELECTOR_HT_PHY
+#define BSS_MEMBERSHIP_SELECTOR_HT_PHY  127
+#endif
+
+#ifndef BSS_MEMBERSHIP_SELECTOR_VHT_PHY
+#define BSS_MEMBERSHIP_SELECTOR_VHT_PHY 126
+#endif
+
+#ifndef BSS_MEMBERSHIP_SELECTOR_SAE_H2E
+#define BSS_MEMBERSHIP_SELECTOR_SAE_H2E 123
+#endif
+
+#ifndef BSS_MEMBERSHIP_SELECTOR_HE_PHY
+#define BSS_MEMBERSHIP_SELECTOR_HE_PHY  122
+#endif
 
 /*
  * 11B, 11G Rate table include Basic rate and Extended rate
@@ -3758,6 +3775,10 @@ static int __iw_softap_set_two_ints_getnone(struct net_device *dev,
                         value[1], value[2]);
                 ret = wlan_hdd_set_multicast_probe(pAdapter, value[1], value[2]);
                 break;
+   case QCSAP_AUDIO_AGGR_SET_CTS:
+                hddLog(LOG1, "au_set_cts: %d %d", value[1], value[2]);
+                ret = wlan_hdd_au_set_cts(pAdapter, value[1], value[2]);
+                break;
 #endif
     default:
         hddLog(LOGE, "%s: Invalid IOCTL command %d", __func__, sub_cmd);
@@ -3959,11 +3980,15 @@ static int wlan_hdd_add_multicast_grp(hdd_adapter_t *pAdapter,
 	if (num_args < 3)
 		return -EINVAL;
 
-	client_num = args[2];
+	if (num_args == 3)
+		client_num = 0;
+	else {
+		client_num = args[3];
 
-	if (client_num > MAX_CLIENT_NUM|| (num_args != (3+2*client_num))) {
-		hddLog(LOGW, FL("add_multicast_group: Invalid arguments"));
-		return -EINVAL;
+		if (client_num > MAX_CLIENT_NUM|| (num_args != (4+2*client_num))) {
+			hddLog(LOGW, FL("add_multicast_group: Invalid arguments"));
+			return -EINVAL;
+		}
 	}
 
 	pMultiGroup = vos_mem_malloc(sizeof(*pMultiGroup));
@@ -3973,12 +3998,13 @@ static int wlan_hdd_add_multicast_grp(hdd_adapter_t *pAdapter,
 	}
 	adf_os_mem_zero(pMultiGroup, sizeof(*pMultiGroup));
 
-	pMultiGroup->multicast_addr.mac_addr31to0 = args[0];
-	pMultiGroup->multicast_addr.mac_addr47to32 = args[1];
+	pMultiGroup->group_id = args[0];
+	pMultiGroup->multicast_addr.mac_addr31to0 = args[1];
+	pMultiGroup->multicast_addr.mac_addr47to32 = args[2];
 	pMultiGroup->client_num = client_num;
 	for (i = 0; i < client_num; i++) {
-		pMultiGroup->client_addr[i].mac_addr31to0 = args[3+2*i];
-		pMultiGroup->client_addr[i].mac_addr47to32 = args[4+2*i];
+		pMultiGroup->client_addr[i].mac_addr31to0 = args[4+2*i];
+		pMultiGroup->client_addr[i].mac_addr47to32 = args[5+2*i];
 	}
 
 	group_id = wma_add_multicast_group(pHddCtx->pvosContext,
@@ -3998,7 +4024,7 @@ static int wlan_hdd_add_multicast_grp(hdd_adapter_t *pAdapter,
 	}
 
 	vos_mem_free(pMultiGroup);
-	return group_id;
+	return 0;
 }
 
 static int
@@ -4006,7 +4032,7 @@ wlan_hdd_multicast_del_group(hdd_adapter_t * adapter, int group_id)
 {
 	int ret;
 
-	if (group_id < MIN_GROUP_ID || group_id >= MAX_GROUP_ID) {
+	if ((group_id != 0xff) && (group_id < MIN_GROUP_ID || group_id >= MAX_GROUP_ID)) {
 		hddLog(LOGW, FL("Invalid group id %d"), group_id);
 		return -EINVAL;
 	}
@@ -4016,6 +4042,7 @@ wlan_hdd_multicast_del_group(hdd_adapter_t * adapter, int group_id)
 		group_id, GEN_CMD);
 
 	if (!ret) {
+		hddLog(LOGW, FL("Delete group fail, id %d"), group_id);
 	}
 	return ret;
 }
@@ -4066,6 +4093,364 @@ wlan_hdd_get_all_group_info(hdd_adapter_t * pAdapter,
 	wrqu->data.length ++;
 	return 0;
  }
+
+struct au_txrx_stat_priv {
+	eHalStatus status;
+	int buf_len;
+	char buf[WE_MAX_STR_LEN];
+};
+
+void hdd_au_txrx_stat_ind_cb(struct sir_au_get_txrx_stat_resp *au_txrx_stat, void *context)
+{
+	struct hdd_request *request;
+	struct au_txrx_stat_priv *priv;
+	struct sir_au_group_stat *au_group_stat;
+	struct sir_au_peer_stat *au_peer_stat;
+	char *buf;
+	int i = 0, length = 0;
+
+	request = hdd_request_get(context);
+	if (!request) {
+		hddLog(VOS_TRACE_LEVEL_ERROR,
+		       "Obsolete request %pK", context);
+		return;
+	}
+	priv = hdd_request_priv(request);
+
+	if (!au_txrx_stat) {
+		hddLog(VOS_TRACE_LEVEL_ERROR,
+		       "%s: Bad param,  au_txrx_stat [%pK] context [%pK]",
+		       __func__, au_txrx_stat, context);
+		priv->status = eHAL_STATUS_INVALID_PARAMETER;
+		hdd_request_complete(request);
+		hdd_request_put(request);
+
+		return;
+	}
+
+	buf = priv->buf;
+	length += scnprintf(buf+length, WE_MAX_STR_LEN - length,
+		"\nGroups number:%d\n", au_txrx_stat->num_groups);
+
+	for (i = 0 ; i < au_txrx_stat->num_groups ; i++) {
+		au_group_stat = &au_txrx_stat->au_group_stat[i];
+		length += scnprintf(buf+length, WE_MAX_STR_LEN - length,
+			"[group id:%d]\n"
+			"mac addr:[0x%x,0x%x]\n"
+			"mc_tx:%d\n"
+			"mc_tx_ok:%d\n"
+			"mc_tx_ok_retry:%d\n"
+			"mc_tx_tbd_lost:%d\n"
+			"mc_tx_tbd_lost_retry:%d\n",
+			au_group_stat->group_id,
+			au_group_stat->group_addr.mac_addr31to0,
+			au_group_stat->group_addr.mac_addr47to32,
+			au_group_stat->mcast_tx,
+			au_group_stat->mcast_tx_ok,
+			au_group_stat->mcast_tx_ok_retry,
+			au_group_stat->mcast_tx_tbd_lost,
+			au_group_stat->mcast_tx_tbd_lost_retry);
+	}
+
+	length += scnprintf(buf+length, WE_MAX_STR_LEN - length,
+		"\nPeers number:%d\n", au_txrx_stat->num_peers);
+	for (i = 0 ; i < au_txrx_stat->num_peers ; i++) {
+		au_peer_stat = &au_txrx_stat->au_peer_stat[i];
+		length += scnprintf(buf+length, WE_MAX_STR_LEN - length,
+			"[peer id:%d]\n"
+			"mac addr:[0x%x,0x%x]\n"
+			"uc_rx:%d\n"
+			"uc_tx:%d\n"
+			"uc_tx_ok:%d\n"
+			"uc_tx_retry:%d\n"
+			"uc_tx_lost:%d\n"
+			"null_frame_tx:%d\n"
+			"null_frame_tx_lost:%d\n",
+			i,
+			au_peer_stat->peer_addr.mac_addr31to0,
+			au_peer_stat->peer_addr.mac_addr47to32,
+			au_peer_stat->ucast_rx,
+			au_peer_stat->ucast_tx,
+			au_peer_stat->ucast_tx_ok,
+			au_peer_stat->ucast_tx_retry,
+			au_peer_stat->ucast_tx_lost,
+			au_peer_stat->null_frame_tx,
+			au_peer_stat->null_frame_tx_lost);
+	}
+	priv->status = eHAL_STATUS_SUCCESS;
+	priv->buf_len = length;
+	hdd_request_complete(request);
+	hdd_request_put(request);
+
+	return;
+}
+
+static int
+wlan_hdd_au_get_txrx_stat(hdd_adapter_t * pAdapter,
+		union iwreq_data *wrqu, char *extra)
+{
+	int length = 0, ret = 0;
+	void *cookie;
+	struct hdd_request *request = NULL;
+	struct au_txrx_stat_priv *priv;
+	static const struct hdd_request_params params = {
+		.priv_size = sizeof(*priv),
+		.timeout_ms = WLAN_WAIT_TIME_STATS,
+	};
+
+	if (NULL == pAdapter) {
+		hddLog(VOS_TRACE_LEVEL_ERROR, "%s: pAdapter is NULL", __func__);
+		return VOS_STATUS_E_FAULT;
+	}
+
+	request = hdd_request_alloc(&params);
+	if (!request) {
+		hddLog(VOS_TRACE_LEVEL_ERROR,
+			"%s: Request allocation failure", __func__);
+		return VOS_STATUS_E_NOMEM;
+	}
+	cookie = hdd_request_cookie(request);
+	priv = hdd_request_priv(request);
+	priv->status = eHAL_STATUS_FAILURE;
+
+	ret = sme_au_get_txrx_stat(WLAN_HDD_GET_HAL_CTX(pAdapter),
+				    pAdapter->sessionId,
+				    cookie,
+				    hdd_au_txrx_stat_ind_cb);
+
+	if (ret) {
+		hddLog(LOGW, FL("Get group txrx stat fail"));
+	} else {
+		/* request was sent -- wait for the response */
+		ret = hdd_request_wait_for_response(request);
+		if (ret) {
+			hddLog(VOS_TRACE_LEVEL_ERROR,
+				FL("timed out while retrieving au txrx stats"));
+			/* we'll returned a cached value below */
+		} else {
+			/* update the adapter with the fresh results */
+			priv = hdd_request_priv(request);
+			length = priv->buf_len;
+
+			if (priv->buf_len >= WE_MAX_STR_LEN)
+				length = WE_MAX_STR_LEN - 1;
+
+			if (priv->status != eHAL_STATUS_SUCCESS || (length <= 0))
+				ret = -EINVAL;
+		}
+	}
+
+	if (!ret)
+		vos_mem_copy(extra, priv->buf, length);
+	else
+		scnprintf(extra, WE_MAX_STR_LEN,
+			"\nGet group txrx stat fail, ret:%d\n", ret);
+
+        wrqu->data.length = strlen(extra)+1;
+
+	hdd_request_put(request);
+
+	return ret;
+}
+
+static int
+wlan_hdd_au_reset_txrx_stat(hdd_adapter_t * pAdapter,
+		union iwreq_data *wrqu, char *extra)
+{
+	int ret;
+
+	ret = process_wma_set_command((int)pAdapter->sessionId,
+		(int)GEN_PARAM_MULTICAST_RESET_TXRX_STAT,
+		0, GEN_CMD);
+
+	if (!ret) {
+		hddLog(LOGW, FL("Reset group txrx stat fail"));
+	}
+	return ret;
+}
+
+struct au_tx_sched_priv {
+	eHalStatus status;
+	int tx_sched;
+	int rtscts_config;
+};
+
+static int
+wlan_hdd_au_set_tx_sched(hdd_adapter_t * adapter, int tx_sched)
+{
+	int ret;
+
+	if ((tx_sched < 1 || tx_sched > 2)) {
+		hddLog(LOGW, FL("Invalid audio tx sched %d"), tx_sched);
+		return -EINVAL;
+	}
+
+	ret = process_wma_set_command((int)adapter->sessionId,
+		(int)GEN_PARAM_MULTICAST_SET_TX_SCHED,
+		tx_sched, GEN_CMD);
+
+	if (!ret) {
+		hddLog(LOGW, FL("Set TX sched fail, mode %d"), tx_sched);
+	}
+	return ret;
+}
+
+void hdd_au_tx_sched_ind_cb(struct sir_au_get_tx_sched_resp *au_tx_sched, void *context)
+{
+	struct hdd_request *request;
+	struct au_tx_sched_priv *priv;
+
+	request = hdd_request_get(context);
+	if (!request) {
+		hddLog(VOS_TRACE_LEVEL_ERROR,
+		       "Obsolete request %pK", context);
+		return;
+	}
+	priv = hdd_request_priv(request);
+
+	if (!au_tx_sched) {
+		hddLog(VOS_TRACE_LEVEL_ERROR,
+		       "%s: Bad param,  au_tx_sched [%pK] context [%pK]",
+		       __func__, au_tx_sched, context);
+		priv->status = eHAL_STATUS_INVALID_PARAMETER;
+		hdd_request_complete(request);
+		hdd_request_put(request);
+
+		return;
+	}
+
+	priv->status = eHAL_STATUS_SUCCESS;
+	priv->tx_sched = au_tx_sched->tx_sched;
+	priv->rtscts_config = au_tx_sched->rtscts_config;
+	hdd_request_complete(request);
+	hdd_request_put(request);
+
+	return;
+}
+
+static int
+wlan_hdd_au_get_tx_sched(hdd_adapter_t * pAdapter, int *value)
+{
+	int ret = 0;
+	void *cookie;
+	struct hdd_request *request = NULL;
+	struct au_tx_sched_priv *priv;
+	static const struct hdd_request_params params = {
+		.priv_size = sizeof(*priv),
+		.timeout_ms = WLAN_WAIT_TIME_STATS,
+	};
+
+	if (NULL == pAdapter) {
+		hddLog(VOS_TRACE_LEVEL_ERROR, "%s: pAdapter is NULL", __func__);
+		return VOS_STATUS_E_FAULT;
+	}
+
+	request = hdd_request_alloc(&params);
+	if (!request) {
+		hddLog(VOS_TRACE_LEVEL_ERROR,
+			"%s: Request allocation failure", __func__);
+		return VOS_STATUS_E_NOMEM;
+	}
+	cookie = hdd_request_cookie(request);
+	priv = hdd_request_priv(request);
+	priv->status = eHAL_STATUS_FAILURE;
+
+	ret = sme_au_get_tx_sched(WLAN_HDD_GET_HAL_CTX(pAdapter),
+				    pAdapter->sessionId,
+				    cookie,
+				    hdd_au_tx_sched_ind_cb);
+
+	if (ret) {
+		hddLog(LOGW, FL("Get group tx sched method fail"));
+	} else {
+		/* request was sent -- wait for the response */
+		ret = hdd_request_wait_for_response(request);
+		if (ret) {
+			hddLog(VOS_TRACE_LEVEL_ERROR,
+				FL("timed out while retrieving au tx sched method"));
+			/* we'll returned a cached value below */
+		} else {
+			/* update the adapter with the fresh results */
+			priv = hdd_request_priv(request);
+
+			if (priv->status != eHAL_STATUS_SUCCESS)
+				ret = -EINVAL;
+			else
+				*value = priv->tx_sched;
+		}
+	}
+
+	hdd_request_put(request);
+
+	return ret;
+}
+
+static int
+wlan_hdd_au_get_cts(hdd_adapter_t * pAdapter,
+		union iwreq_data *wrqu, char *extra)
+{
+	int ret = 0, length = 0;
+	void *cookie;
+	struct hdd_request *request = NULL;
+	struct au_tx_sched_priv *priv;
+	static const struct hdd_request_params params = {
+		.priv_size = sizeof(*priv),
+		.timeout_ms = WLAN_WAIT_TIME_STATS,
+	};
+
+	if (NULL == pAdapter) {
+		hddLog(VOS_TRACE_LEVEL_ERROR, "%s: pAdapter is NULL", __func__);
+		return VOS_STATUS_E_FAULT;
+	}
+
+	request = hdd_request_alloc(&params);
+	if (!request) {
+		hddLog(VOS_TRACE_LEVEL_ERROR,
+			"%s: Request allocation failure", __func__);
+		return VOS_STATUS_E_NOMEM;
+	}
+	cookie = hdd_request_cookie(request);
+	priv = hdd_request_priv(request);
+	priv->status = eHAL_STATUS_FAILURE;
+
+	ret = sme_au_get_tx_sched(WLAN_HDD_GET_HAL_CTX(pAdapter),
+				    pAdapter->sessionId,
+				    cookie,
+				    hdd_au_tx_sched_ind_cb);
+
+	if (ret) {
+		hddLog(LOGW, FL("Get group cts config fail"));
+	} else {
+		/* request was sent -- wait for the response */
+		ret = hdd_request_wait_for_response(request);
+		if (ret) {
+			hddLog(VOS_TRACE_LEVEL_ERROR,
+				FL("timed out while retrieving group cts config "));
+			/* we'll returned a cached value below */
+		} else {
+			/* update the adapter with the fresh results */
+			priv = hdd_request_priv(request);
+
+			if (priv->status != eHAL_STATUS_SUCCESS)
+				ret = -EINVAL;
+		}
+	}
+
+	if (ret == eHAL_STATUS_SUCCESS) {
+		length += scnprintf(extra+length, WE_MAX_STR_LEN - length,
+			"\ncts_mode:%d\n", (priv->rtscts_config >> 16));
+		length += scnprintf(extra+length, WE_MAX_STR_LEN - length,
+			"profile:0x%02x\n", (priv->rtscts_config & 0xFF));
+	}
+	else
+		scnprintf(extra, WE_MAX_STR_LEN, "\nFail, ret:%d\n", ret);
+
+
+        wrqu->data.length = strlen(extra)+1;
+	hdd_request_put(request);
+
+	return ret;
+}
 #endif
 
 int
@@ -4808,7 +5193,78 @@ static __iw_softap_setparam(struct net_device *dev,
                 hddLog(LOG1, "QCSAP_MULTICAST_DEL_GROUP val %d", set_value);
                 ret = wlan_hdd_multicast_del_group(pHostapdAdapter,set_value);
                 break;
+
+        case QCSAP_AUDIO_AGGR_SET_TX_SCHED:
+                hddLog(LOG1, "QCSAP_AUDIO_AGGR_SET_TX_SCHED val %d", set_value);
+                ret = wlan_hdd_au_set_tx_sched(pHostapdAdapter,set_value);
+                break;
 #endif
+
+	case QCSAP_SET_AID:
+	{
+		sir_aid_set_t aid_set;
+
+		vos_mem_copy(aid_set.bssid,
+			     pHostapdAdapter->macAddressCurrent.bytes,
+			     VOS_MAC_ADDR_SIZE);
+		aid_set.aid = set_value;
+		sme_aid_set(hHal, &aid_set);
+		break;
+	}
+
+        case QCSAP_TX_OFF:
+	{
+		ol_txrx_pdev_handle pdev =
+			vos_get_context(VOS_MODULE_ID_TXRX, pVosContext);
+
+		pdev->cfg.sap_tx_off = set_value;
+		PMAC_STRUCT(hHal)->sap_tx_off = set_value;
+
+		break;
+	}
+
+#if !defined(WDI_API_AS_FUNCS)
+	case QCSAP_SET_TXRX_PRINT_LEVEL:
+            {
+                if ( (set_value < 0) || (set_value > 0xff)) {
+                     hddLog(LOGE, FL("Invalid value %d in set_txrx_dbg"),
+                             set_value);
+                    return -EINVAL;
+                }
+                ret = process_wma_set_command((int)pHostapdAdapter->sessionId,
+                        (int)GEN_PARAM_SET_TXRX_PRINT_LEVEL,
+                        set_value, GEN_CMD);
+            }
+            break;
+#endif
+
+        case QCSAP_SET_TARGET_CHANNEL:
+        {
+                if ((set_value < 0) || (set_value > 0xff)) {
+                     hddLog(LOGE, FL("Invalid value %d in set_target_ch"),
+                             set_value);
+                    return -EINVAL;
+                }
+                if ((set_value != 0) &&
+                    ((set_value < 36) || (vos_nv_getChannelEnabledState(set_value) != NV_CHANNEL_ENABLE))) {
+                     hddLog(LOGE, FL("%d is not a valid non-DFS channel"),
+                             set_value);
+                    return -EINVAL;
+                }
+                PMAC_STRUCT(hHal)->target_channel = set_value;
+                break;
+        }
+
+        case QCSAP_SET_CAC_TIME:
+        {
+                if ((set_value < 0) || (set_value > 0xff)) {
+                     hddLog(LOGE, FL("Invalid value %d in set_cac_time"),
+                             set_value);
+                    return -EINVAL;
+                }
+                PMAC_STRUCT(hHal)->cac_time = set_value;
+                break;
+        }
 
         default:
             hddLog(LOGE, FL("Invalid setparam command %d value %d"),
@@ -5182,6 +5638,11 @@ static __iw_softap_getparam(struct net_device *dev,
     case QCSAP_PARAM_CHAN_WIDTH:
         ret = hdd_sap_get_chan_width(pHostapdAdapter, value);
         break;
+#ifdef AUDIO_MULTICAST_AGGR_SUPPORT
+    case QCSAP_AUDIO_AGGR_GET_TX_SCHED:
+        ret = wlan_hdd_au_get_tx_sched(pHostapdAdapter, value);
+        break;
+#endif
     default:
         hddLog(LOGE, FL("Invalid getparam command %d"), sub_cmd);
         ret = -EINVAL;
@@ -5911,6 +6372,20 @@ static __iw_get_char_setnone(struct net_device *dev,
         {
             return wlan_hdd_get_all_group_info(pAdapter, wrqu,
                                extra);
+        }
+        case QCSAP_AUDIO_AGGR_GET_TXRX_STAT:
+        {
+            return wlan_hdd_au_get_txrx_stat(pAdapter, wrqu,
+                               extra);
+        }
+        case QCSAP_AUDIO_AGGR_RESET_TXRX_STAT:
+        {
+            return wlan_hdd_au_reset_txrx_stat(pAdapter, wrqu,
+                               extra);
+        }
+        case QCSAP_AUDIO_AGGR_GET_CTS:
+        {
+            return wlan_hdd_au_get_cts(pAdapter, wrqu, extra);
         }
 #endif
     }
@@ -8154,7 +8629,59 @@ static const struct iw_priv_args hostapd_private_args[] = {
         IW_PRIV_TYPE_CHAR | WE_MAX_STR_LEN,
         IW_PRIV_TYPE_CHAR | WE_MAX_STR_LEN,
         "au_get_retry" },
+
+    {   QCSAP_AUDIO_AGGR_GET_TXRX_STAT,
+         0,
+        IW_PRIV_TYPE_CHAR | WE_MAX_STR_LEN,
+        "au_get_stat" },
+
+    {   QCSAP_AUDIO_AGGR_RESET_TXRX_STAT,
+         0,
+        IW_PRIV_TYPE_CHAR | WE_MAX_STR_LEN,
+        "au_reset_stat" },
+
+    {   QCSAP_AUDIO_AGGR_SET_CTS,
+        IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 2,
+        0, "au_set_cts"},
+
+    {   QCSAP_AUDIO_AGGR_GET_CTS,
+         0,
+        IW_PRIV_TYPE_CHAR | WE_MAX_STR_LEN,
+        "au_get_cts" },
+
+    {   QCSAP_AUDIO_AGGR_SET_TX_SCHED,
+        IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1,
+        0, "au_set_txsched" },
+
+    {   QCSAP_AUDIO_AGGR_GET_TX_SCHED,
+         0,
+        IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1,
+        "au_get_txsched" },
 #endif
+    {   QCSAP_SET_AID,
+        IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1,
+        0,
+        "set_aid" },
+    {   QCSAP_TX_OFF,
+        IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1,
+        0,
+        "sap_tx_off" },
+
+#if !defined(WDI_API_AS_FUNCS)
+    {   QCSAP_SET_TXRX_PRINT_LEVEL,
+        IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1,
+        0,
+        "set_txrx_level" },
+#endif
+
+    {   QCSAP_SET_TARGET_CHANNEL,
+        IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1,
+        0,
+        "set_target_ch" },
+    {   QCSAP_SET_CAC_TIME,
+        IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1,
+        0,
+        "set_cac_time" },
 };
 
 static const iw_handler hostapd_private[] = {

@@ -612,6 +612,12 @@ void lim_check_and_reset_protection_params(tpAniSirGlobal mac_ctx);
 eHalStatus lim_send_ext_cap_ie(tpAniSirGlobal mac_ctx,
 			       uint32_t session_id,
 			       tDot11fIEExtCap *extracted_extcap, bool merge);
+eHalStatus
+lim_strip_ie(tpAniSirGlobal mac_ctx,
+	     uint8_t *addn_ie, uint16_t *addn_ielen,
+	     uint8_t eid, eSizeOfLenField size_of_len_field,
+	     uint8_t *oui, uint8_t oui_length, uint8_t *extracted_ie,
+	     uint32_t eid_max_len);
 
 tSirRetStatus lim_strip_extcap_ie(tpAniSirGlobal mac_ctx, uint8_t *addn_ie,
 			uint16_t *addn_ielen, uint8_t *extracted_extcap);
@@ -651,4 +657,6 @@ void lim_send_chan_switch_action_frame(tpAniSirGlobal mac_ctx,
 bool lim_check_if_vendor_oui_match(tpAniSirGlobal mac_ctx,
                 uint8_t *oui, uint8_t oui_len,
                 uint8_t *ie, uint8_t ie_len);
+
+void lim_process_sme_aid_set(tpAniSirGlobal mac, sir_aid_set_t *aid_set);
 #endif /* __LIM_UTILS_H */

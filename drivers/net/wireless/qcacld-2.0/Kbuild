@@ -145,6 +145,9 @@ ifeq ($(KERNEL_BUILD), 0)
         ifeq ($(CONFIG_ROME_IF),sdio)
                 CONFIG_WLAN_FEATURE_11W := y
         endif
+        ifeq ($(CONFIG_ROME_IF),pci)
+                CONFIG_WLAN_FEATURE_11W := y
+        endif
 
         ifneq ($(CONFIG_MOBILE_ROUTER), y)
         #Flag to enable NAN
@@ -808,14 +811,13 @@ VOSS_OBJS :=    $(VOSS_SRC_DIR)/vos_api.o \
 		$(VOSS_SRC_DIR)/vos_types.o \
                 $(VOSS_SRC_DIR)/vos_utils.o
 
-ifeq ($(CONFIG_CLD_REGDB),y)
-VOSS_OBJS += $(VOSS_SRC_DIR)/vos_regdb.o
-endif
-
 ifeq ($(BUILD_DIAG_VERSION),1)
 VOSS_OBJS += $(VOSS_SRC_DIR)/vos_diag.o
 endif
 
+ifeq ($(CONFIG_CLD_REGDB),y)
+VOSS_OBJS += $(VOSS_SRC_DIR)/vos_regdb.o
+endif
 ########### BMI ###########
 BMI_DIR := CORE/SERVICES/BMI
 
@@ -1139,10 +1141,6 @@ CDEFINES +=     -DWLAN_FEATURE_MBSSID \
 		-DWLAN_FEATURE_SAP_TO_FOLLOW_STA_CHAN
 endif
 
-ifeq ($(CONFIG_CLD_REGDB), y)
-CDEFINES +=     -DCLD_REGDB
-endif
-
 ifeq ($(CONFIG_QCA_WIFI_SDIO), 1)
 CDEFINES +=     -DCONFIG_HL_SUPPORT \
                 -DCONFIG_AR6320_SUPPORT \
@@ -1284,7 +1282,9 @@ endif
 ifeq ($(CONFIG_SLUB_DEBUG_ON),y)
 CDEFINES += -DTIMER_MANAGER
 CDEFINES += -DMEMORY_DEBUG
+ifneq ($(CONFIG_ROME_IF), sdio)
 CDEFINES += -DNBUF_MAP_UNMAP_DEBUG
+endif
 endif
 
 ifeq ($(HAVE_CFG80211),1)
@@ -1902,6 +1902,10 @@ endif
 
 ifeq ($(CONFIG_SPECTRAL_SCAN), y)
 CDEFINES += -DWLAN_SPECTRAL_SCAN
+endif
+
+ifeq ($(CONFIG_CLD_REGDB), y)
+CDEFINES += -DCLD_REGDB
 endif
 
 # Module information used by KBuild framework

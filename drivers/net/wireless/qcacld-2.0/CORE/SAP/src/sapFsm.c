@@ -1,5 +1,6 @@
 /*
- * Copyright (c) 2012-2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2020 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2021 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -1193,7 +1194,7 @@ static void sapSetBitmap(chan_bonding_bitmap *pBitmap, v_U8_t channel)
             return;
         }
     }
-    VOS_TRACE(VOS_MODULE_ID_SAP, VOS_TRACE_LEVEL_ERROR,
+    VOS_TRACE(VOS_MODULE_ID_SAP, VOS_TRACE_LEVEL_INFO_HIGH,
               FL("Channel=%d is not in the bitmap"), channel);
 }
 
@@ -1633,7 +1634,7 @@ static v_U8_t sapRandomChannelSel(ptSapContext sapContext)
         /* prepare temp list of just the valid channels */
         for (i = 0; i < sapContext->SapAllChnlList.numChannel; i++) {
             if (sapContext->SapAllChnlList.channelList[i].valid) {
-                VOS_TRACE(VOS_MODULE_ID_SAP, VOS_TRACE_LEVEL_ERROR,
+                VOS_TRACE(VOS_MODULE_ID_SAP, VOS_TRACE_LEVEL_INFO_HIGH,
                           FL("sapdfs: Adding Channel = %d to temp List"),
                           sapContext->SapAllChnlList.channelList[i].channel);
                 tempChannels[j++] =
@@ -1642,13 +1643,14 @@ static v_U8_t sapRandomChannelSel(ptSapContext sapContext)
         }
 
 #ifdef WLAN_ENABLE_CHNL_MATRIX_RESTRICTION
-        VOS_TRACE(VOS_MODULE_ID_SAP, VOS_TRACE_LEVEL_ERROR,
+        VOS_TRACE(VOS_MODULE_ID_SAP, VOS_TRACE_LEVEL_INFO_HIGH,
                   FL("sapdfs: Processing temp channel list against NOL."));
-        if (VOS_STATUS_SUCCESS != sapMarkChannelsLeakingIntoNOL(sapContext,
+        if ((sapContext->channel < RF_CHAN_149)
+            && (VOS_STATUS_SUCCESS != sapMarkChannelsLeakingIntoNOL(sapContext,
                                                                cbModeCurrent,
                                                                pNol,
                                                                valid_chnl_count,
-                                                               tempChannels)) {
+                                                               tempChannels))) {
             vos_mem_free(tempChannels);
             return target_channel;
         }
@@ -1662,7 +1664,7 @@ static v_U8_t sapRandomChannelSel(ptSapContext sapContext)
         channelBitmap.chanBondingSet[4].startChannel = 132;
         channelBitmap.chanBondingSet[5].startChannel = 149;
         /* now loop through whatever is left of channel list */
-        VOS_TRACE(VOS_MODULE_ID_SAP, VOS_TRACE_LEVEL_ERROR,
+        VOS_TRACE(VOS_MODULE_ID_SAP, VOS_TRACE_LEVEL_INFO_HIGH,
                   FL("sapdfs: Moving temp channel list to final."));
         for (i = 0; i < valid_chnl_count; i++ ){
             /*
@@ -3678,6 +3680,11 @@ sapSignalHDDevent
                                      ASSOC_REQ_IE_OFFSET);
             sta_event_ptr->ies = (pCsrRoamInfo->assocReqPtr +
                                      ASSOC_REQ_IE_OFFSET);
+            if (pCsrRoamInfo->fReassocReq) {
+                sta_event_ptr->iesLen -= VOS_MAC_ADDR_SIZE;
+                sta_event_ptr->ies += VOS_MAC_ADDR_SIZE;
+            }
+
             /* also fill up the channel info from the csrRoamInfo */
             pChanInfo =
             &sta_event_ptr->chan_info;
@@ -4891,6 +4898,13 @@ sapFsm
                     vosStatus = sapGotoDisconnecting(sapContext);
                 }
             }
+            else if (msg == eSAP_HDD_STOP_INFRA_BSS)
+            {
+                VOS_TRACE( VOS_MODULE_ID_SAP, VOS_TRACE_LEVEL_INFO_MED,
+                          "In %s, in state %s, event msg %d",
+                          __func__, "eSAP_DISCONNECTING ", msg);
+                vosStatus = sapGotoDisconnecting(sapContext);
+            }
             else
             {
                 VOS_TRACE( VOS_MODULE_ID_SAP, VOS_TRACE_LEVEL_ERROR,
@@ -5082,6 +5096,7 @@ sapconvertToCsrProfile(tsap_Config_t *pconfig_params, eCsrRoamBssType bssType, t
         profile->extended_rates.numRates =
             pconfig_params->extended_rates.numRates;
     }
+    profile->require_h2e = pconfig_params->require_h2e;
 
     return eSAP_STATUS_SUCCESS; /* Success. */
 }
@@ -5800,6 +5815,10 @@ int sapStartDfsCacTimer(ptSapContext sapContext)
     {
         cacTimeOut = ETSI_WEATHER_CH_CAC_TIMEOUT;
     }
+
+    if (pMac->cac_time)
+        cacTimeOut = (pMac->cac_time * 1000);
+
     VOS_TRACE(VOS_MODULE_ID_SAP, VOS_TRACE_LEVEL_INFO_MED,
               "sapdfs: SAP_DFS_CHANNEL_CAC_START on CH - %d, CAC TIMEOUT - %d sec",
               sapContext->channel, cacTimeOut/1000);

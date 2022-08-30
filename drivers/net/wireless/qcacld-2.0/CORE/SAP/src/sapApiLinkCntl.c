@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2017 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2017,2020 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -760,6 +760,11 @@ WLANSAP_RoamCallback
            pMac->sap.SapDfsInfo.target_channel =
                      sapIndicateRadar(sapContext, &pCsrRoamInfo->dfs_event);
 
+           if (0 < pMac->target_channel)
+           {
+               pMac->sap.SapDfsInfo.target_channel = pMac->target_channel;
+           }
+
            /* if there is an assigned next channel hopping */
            if (0 < pMac->sap.SapDfsInfo.user_provided_target_channel)
            {
@@ -788,7 +793,9 @@ WLANSAP_RoamCallback
                         "sapdfs: no available channel for sapctx[%pK], StopBss",
                                   pSapContext);
 
-                        WLANSAP_StopBss(pSapContext);
+                        sapSignalHDDevent(sapContext, pCsrRoamInfo,
+                                         eSAP_MAC_TRIG_STOP_BSS_EVENT,
+                                         (v_PVOID_t) eSAP_STATUS_SUCCESS );
                      }
                }
                break;

@@ -86,7 +86,13 @@ typedef enum {
     GEN_PARAM_MULTICAST_AGGR_ENABLED,
     GEN_PARAM_MULTICAST_DEL_GROUP,
     GEN_PARAM_MULTICAST_SET_PROBE,
+    GEN_PARAM_MULTICAST_GET_TXRX_STAT,
+    GEN_PARAM_MULTICAST_RESET_TXRX_STAT,
+    GEN_PARAM_MULTICAST_SET_CTS,
+    GEN_PARAM_MULTICAST_SET_TX_SCHED,
+    GEN_PARAM_MULTICAST_GET_TX_SCHED,
 #endif
+    GEN_PARAM_SET_TXRX_PRINT_LEVEL,
 } GEN_PARAM;
 
 #define VDEV_CMD 1
@@ -207,5 +213,7 @@ int wma_add_multicast_group(void *wmapvosContext, int vdev_id,
 			struct audio_multicast_add_group * multi_group);
 int wma_cli_au_get_rx_group_info(void *wmapvosContext, int vdev_id,
 			 char *extra);
+VOS_STATUS wma_multicast_del_group(WMA_HANDLE wma_handle,
+			ol_txrx_vdev_handle vdev,  int group_id);
 #endif
 #endif

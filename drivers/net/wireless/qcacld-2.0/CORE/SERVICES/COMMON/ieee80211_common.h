@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2011,2014, 2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2021 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -1372,6 +1373,7 @@ enum {
     IEEE80211_ELEMID_QUIET_CHANNEL    = 198,  /* Quiet Channel */
     IEEE80211_ELEMID_OP_MODE_NOTIFY   = 199,  /* Operating Mode Notification */
     IEEE80211_ELEMID_VENDOR           = 221,  /* vendor private */
+    IEEE80211_ELEMID_RSNXE            = 244,
 };
 
 #define IEEE80211_MAX_IE_LEN                255
@@ -2250,5 +2252,14 @@ struct ieee80211_ie_wide_bw_switch {
 #define IEEE80211_P2P_WILDCARD_SSID         "DIRECT-"
 
 #define IEEE80211_P2P_WILDCARD_SSID_LEN     (sizeof(IEEE80211_P2P_WILDCARD_SSID) - 1)
+
+#define WLAN_BASIC_RATE_MASK   0x80
+
+#define WLAN_BSS_MEMBERSHIP_SELECTOR_HT_PHY       127
+#define WLAN_BSS_MEMBERSHIP_SELECTOR_VHT_PHY      126
+#define WLAN_BSS_MEMBERSHIP_SELECTOR_GLK          125
+#define WLAN_BSS_MEMBERSHIP_SELECTOR_EPD          124
+#define WLAN_BSS_MEMBERSHIP_SELECTOR_SAE_H2E      123
+#define WLAN_BSS_MEMBERSHIP_SELECTOR_HE_PHY       122
 
 #endif /* _COMMON_IEEE80211_H_ */

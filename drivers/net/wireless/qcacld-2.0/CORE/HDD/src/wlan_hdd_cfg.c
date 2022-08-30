@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2019,2021 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -3512,6 +3512,13 @@ REG_TABLE_ENTRY g_registry_table[] =
                  CFG_ENABLE_DEBUG_CONNECT_ISSUE_MIN ,
                  CFG_ENABLE_DEBUG_CONNECT_ISSUE_MAX),
 
+   REG_VARIABLE( CFG_ENABLE_SAP_EAPOL_CHECKING, WLAN_PARAM_Integer,
+                 hdd_config_t, gEnableSapEapolChecking,
+                 VAR_FLAGS_OPTIONAL | VAR_FLAGS_RANGE_CHECK_ASSUME_DEFAULT,
+                 CFG_ENABLE_SAP_EAPOL_CHECKING_DEFAULT,
+                 CFG_ENABLE_SAP_EAPOL_CHECKING_MIN ,
+                 CFG_ENABLE_SAP_EAPOL_CHECKING_MAX),
+
    REG_VARIABLE( CFG_RX_HANDLE, WLAN_PARAM_Integer,
                  hdd_config_t, rxhandle,
                  VAR_FLAGS_OPTIONAL | VAR_FLAGS_RANGE_CHECK_ASSUME_DEFAULT,
@@ -5473,6 +5480,18 @@ REG_TABLE_ENTRY g_registry_table[] =
 		CFG_HOST_LOG_CUSTOM_NETLINK_PROTO_MIN,
 		CFG_HOST_LOG_CUSTOM_NETLINK_PROTO_MAX),
 #endif
+
+	REG_VARIABLE(CFG_AID_BY_USER_NAME, WLAN_PARAM_Integer,
+		struct hdd_config, aid_by_user,
+		VAR_FLAGS_OPTIONAL | VAR_FLAGS_RANGE_CHECK_ASSUME_DEFAULT,
+		CFG_AID_BY_USER_DEFAULT,
+		CFG_AID_BY_USER_MIN,
+		CFG_AID_BY_USER_MAX),
+
+	REG_VARIABLE_STRING(CFG_ENABLE_CONCURRENT_STA_NAME, WLAN_PARAM_String,
+			    hdd_config_t, enable_concurrent_sta,
+			    VAR_FLAGS_OPTIONAL,
+			    (void *)CFG_ENABLE_CONCURRENT_STA_DEFAULT),
 };
 
 

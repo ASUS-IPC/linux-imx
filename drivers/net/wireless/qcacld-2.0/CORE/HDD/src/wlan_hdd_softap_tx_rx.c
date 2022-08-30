@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2018 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2018,2021 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -236,6 +236,8 @@ int __hdd_softap_hard_start_xmit(struct sk_buff *skb, struct net_device *dev)
    hdd_adapter_t *pAdapter = (hdd_adapter_t *)netdev_priv(dev);
    hdd_ap_ctx_t *pHddApCtx = WLAN_HDD_GET_AP_CTX_PTR(pAdapter);
    hdd_context_t *hddCtxt = WLAN_HDD_GET_CTX(pAdapter);
+   tHalHandle hal = WLAN_HDD_GET_HAL_CTX(pAdapter);
+   tpAniSirGlobal mac = PMAC_STRUCT(hal);
    v_MACADDR_t *pDestMacAddress;
    v_U8_t STAId;
    struct sk_buff *skb_next, *list_head = NULL, *list_tail = NULL;
@@ -246,6 +248,8 @@ int __hdd_softap_hard_start_xmit(struct sk_buff *skb, struct net_device *dev)
 #endif /* QCA_PKT_PROTO_TRACE */
 
    ++pAdapter->hdd_stats.hddTxRxStats.txXmitCalled;
+   if (mac->sap_tx_off)
+       goto drop_list;
    /* Prevent this function to be called during SSR since TL context may
       not be reinitialized at this time which will lead crash. */
    if (hddCtxt->isLogpInProgress)
@@ -938,6 +942,37 @@ VOS_STATUS hdd_softap_rx_packet_cbk(v_VOID_t *vosContext,
          }
       }
 #endif /* QCA_PKT_PROTO_TRACE */
+
+      if (pHddCtx->cfg_ini->gEnableSapEapolChecking) {
+          if (adf_nbuf_is_eapol_pkt(skb)) {
+              /* CR 2868053 */
+              VOS_TRACE(VOS_MODULE_ID_HDD_DATA, VOS_TRACE_LEVEL_INFO,
+                  "%s: QSV2020005, dev, mode=%d, session=%u, %s, addr (%pM)",
+                  __FUNCTION__,
+                  pAdapter->device_mode,
+                  pAdapter->sessionId,
+                  pAdapter->dev->name,
+                  pAdapter->dev->dev_addr);
+              VOS_TRACE(VOS_MODULE_ID_HDD_DATA, VOS_TRACE_LEVEL_INFO,
+                  "%s:QSV2020005 pkt addr (%pM)",
+                  __FUNCTION__,
+                  skb->data);
+              if (adf_os_mem_cmp(pAdapter->dev->dev_addr,
+                skb->data, VOS_MAC_ADDR_SIZE)) {
+                  /* CR 2868053, discard this EAPOL */
+                  VOS_TRACE(VOS_MODULE_ID_HDD_DATA, VOS_TRACE_LEVEL_ERROR,
+                      "%s:QSV2020005 discard invalid EAPOL frame, dev=%pM, "
+                      "pkt_da=%pM",
+                      __FUNCTION__,
+                      pAdapter->dev->dev_addr,
+                      skb->data);
+
+                  adf_nbuf_free(skb);
+                  skb = skb_next;
+                  continue;
+              }
+          }
+      }
 
       skb->protocol = eth_type_trans(skb, skb->dev);
 
