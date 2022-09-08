@@ -13,6 +13,8 @@
 #include <linux/module.h>
 #include <linux/delay.h>
 
+#include "rtl9010aa_va_sample_code_v04.h"
+
 #define RTL821x_PHYSR				0x11
 #define RTL821x_PHYSR_DUPLEX			BIT(13)
 #define RTL821x_PHYSR_SPEED			GENMASK(15, 14)
@@ -54,6 +56,11 @@
 #define RTL_LPADV_10000FULL			BIT(11)
 #define RTL_LPADV_5000FULL			BIT(6)
 #define RTL_LPADV_2500FULL			BIT(5)
+
+#define RTL9010AA_GINSR			0x1d
+#define RTL9010AA_GINER			0x12
+#define RTL9010AA_GINER_LINK_STATUS		BIT(4)
+#define RTL9010AA_PAGE_SELECT			0x1f
 
 #define RTLGEN_SPEED_MASK			0x0630
 
@@ -614,6 +621,250 @@ static int rtlgen_resume(struct phy_device *phydev)
 	return ret;
 }
 
+static int RTL9010AA_VA_Initial_Configuration(struct phy_device *phydev)
+{
+	u32 mdio_data = 0;
+	u32 timer = 2000; // set a 2ms timer
+
+	pr_info("%s +++\n", __func__);
+
+	// PHY Parameter Start //
+	phy_write(phydev, 0x1f, 0x0BC4);
+	phy_write(phydev, 0x15, 0x16FE);
+	phy_write(phydev, 0x1B, 0xB820);
+	phy_write(phydev, 0x1C, 0x0010);
+	phy_write(phydev, 0x1B, 0xB830);
+	phy_write(phydev, 0x1C, 0x8000);
+	phy_write(phydev, 0x1B, 0xB800);
+	mdio_data = ((u16) phy_read(phydev, 0x1C) & 0x0040);
+
+	while (mdio_data != 0x0040)
+	{
+		phy_write(phydev, 0x1B, 0xB800);
+		mdio_data = ((u16) phy_read(phydev, 0x1C) & 0x0040);
+		timer--;
+		if (timer == 0) {
+			return ERROR;
+		}
+	}
+
+	phy_write(phydev, 0x1B, 0x8020);
+	phy_write(phydev, 0x1C, 0x9100);
+	phy_write(phydev, 0x1B, 0xB82E);
+	phy_write(phydev, 0x1C, 0x0001);
+	phy_write(phydev, 0x1B, 0xB820);
+	phy_write(phydev, 0x1C, 0x0290);
+	phy_write(phydev, 0x1B, 0xA012);
+	phy_write(phydev, 0x1C, 0x0000);
+	phy_write(phydev, 0x1B, 0xA014);
+	phy_write(phydev, 0x1C, 0xD700);
+	phy_write(phydev, 0x1C, 0x880F);
+	phy_write(phydev, 0x1C, 0x262D);
+	phy_write(phydev, 0x1B, 0xA01A);
+	phy_write(phydev, 0x1C, 0x0000);
+	phy_write(phydev, 0x1B, 0xA000);
+	phy_write(phydev, 0x1C, 0x162C);
+	phy_write(phydev, 0x1B, 0xB820);
+	phy_write(phydev, 0x1C, 0x0210);
+	phy_write(phydev, 0x1B, 0xB82E);
+	phy_write(phydev, 0x1C, 0x0000);
+	phy_write(phydev, 0x1B, 0x8020);
+	phy_write(phydev, 0x1C, 0x0000);
+	phy_write(phydev, 0x1B, 0xB820);
+	phy_write(phydev, 0x1C, 0x0000);
+	phy_write(phydev, 0x1B, 0xB800);
+	mdio_data = phy_read(phydev, 0x1C) & 0x0040;
+	timer = 2000; // set a 2ms timer
+
+	while (mdio_data != 0x0000){
+		phy_write(phydev, 0x1B, 0xB800);
+		mdio_data = ((u16) phy_read(phydev, 0x1C) & 0x0040);
+		timer--;
+		if (timer == 0) {
+			return ERROR;
+		}
+	}
+	// End //
+
+	phy_write(phydev, 0x0, 0x8000); // PHY soft-reset
+	mdio_data = 0;
+
+	while (mdio_data != 0x0140){	// Check soft-reset complete
+		mdio_data = phy_read(phydev, 0x0);
+	}
+
+	pr_info("%s ---\n", __func__);
+	return SUCCESS;
+}
+static int RTL9010AA_VA_Initial_with_NWAY_Configuration(struct phy_device *phydev)
+{
+
+	u32 mdio_data = 0;
+	u32 timer = 2000; // set a 2ms timer
+
+	pr_info("%s +++\n", __func__);
+
+	// PHY Parameter Start //
+	phy_write(phydev, 0x1f, 0x0A54);
+	phy_write(phydev, 0x15, 0xFA06);
+	phy_write(phydev, 0x1f, 0x0BC4);
+	phy_write(phydev, 0x15, 0x16FE);
+	phy_write(phydev, 0x1B, 0xB820);
+	phy_write(phydev, 0x1C, 0x0010);
+	phy_write(phydev, 0x1B, 0xB830);
+	phy_write(phydev, 0x1C, 0x8000);
+	phy_write(phydev, 0x1B, 0xB800);
+	mdio_data = ((u16) phy_read(phydev, 0x1C) & 0x0040);
+
+	while (mdio_data != 0x0040)
+	{
+		phy_write(phydev, 0x1B, 0xB800);
+		mdio_data = ((u16) phy_read(phydev, 0x1C) & 0x0040);
+		timer--;
+		if (timer == 0) {
+			return ERROR;
+		}
+	}
+
+	phy_write(phydev, 0x1B, 0x8020);
+	phy_write(phydev, 0x1C, 0x9100);
+	phy_write(phydev, 0x1B, 0xB82E);
+	phy_write(phydev, 0x1C, 0x0001);
+	phy_write(phydev, 0x1B, 0xB820);
+	phy_write(phydev, 0x1C, 0x0290);
+	phy_write(phydev, 0x1B, 0xA012);
+	phy_write(phydev, 0x1C, 0x0000);
+	phy_write(phydev, 0x1B, 0xA014);
+	phy_write(phydev, 0x1C, 0x2C03);
+	phy_write(phydev, 0x1C, 0x2C07);
+	phy_write(phydev, 0x1C, 0x2C0B);
+	phy_write(phydev, 0x1C, 0x6054);
+	phy_write(phydev, 0x1C, 0xA701);
+	phy_write(phydev, 0x1C, 0xD500);
+	phy_write(phydev, 0x1C, 0x2108);
+	phy_write(phydev, 0x1C, 0x4054);
+	phy_write(phydev, 0x1C, 0x8701);
+	phy_write(phydev, 0x1C, 0xA74A);
+	phy_write(phydev, 0x1C, 0x20DE);
+	phy_write(phydev, 0x1C, 0xD700);
+	phy_write(phydev, 0x1C, 0x880F);
+	phy_write(phydev, 0x1C, 0x262D);
+	phy_write(phydev, 0x1B, 0xA01A);
+	phy_write(phydev, 0x1C, 0x0000);
+	phy_write(phydev, 0x1B, 0xA004);
+	phy_write(phydev, 0x1C, 0x062C);
+	phy_write(phydev, 0x1B, 0xA002);
+	phy_write(phydev, 0x1C, 0x00DD);
+	phy_write(phydev, 0x1B, 0xA000);
+	phy_write(phydev, 0x1C, 0x7107);
+	phy_write(phydev, 0x1B, 0xB820);
+	phy_write(phydev, 0x1C, 0x0210);
+	phy_write(phydev, 0x1B, 0xB82E);
+	phy_write(phydev, 0x1C, 0x0000);
+	phy_write(phydev, 0x1B, 0x8020);
+	phy_write(phydev, 0x1C, 0x0000);
+	phy_write(phydev, 0x1B, 0xB820);
+	phy_write(phydev, 0x1C, 0x0000);
+	phy_write(phydev, 0x1B, 0xB800);
+	mdio_data = ((u16) phy_read(phydev, 0x1C) & 0x0040);
+	timer = 2000; // set a 2ms timer
+
+	while (mdio_data != 0x0000){
+		phy_write(phydev, 0x1B, 0xB800);
+		mdio_data = ((u16) phy_read(phydev, 0x1C) & 0x0040);
+		timer--;
+		if (timer == 0) {
+			return ERROR;
+		}
+	}
+	// End //
+
+	phy_write(phydev, 0x0, 0x8000); // PHY soft-reset
+	mdio_data = 0;
+
+	while (mdio_data != 0x0140){    // Check soft-reset complete
+		mdio_data = phy_read(phydev, 0x0);
+	}
+
+	pr_info("%s ---\n", __func__);
+	return SUCCESS;
+}
+static int RTL9010AA_VA_RGMII_driving_strength(struct phy_device *phydev)
+{
+	// Weak_RGMII_1V8
+	pr_info("%s : Weak_RGMII_1V8\n", __func__);
+	phy_write(phydev, 0x1B, 0xD414);
+	phy_write(phydev, 0x1C, 0x0201);
+	phy_write(phydev, 0x1B, 0xD416);
+	phy_write(phydev, 0x1C, 0x0101);
+	phy_write(phydev, 0x1B, 0xD418);
+	phy_write(phydev, 0x1C, 0x0200);
+	phy_write(phydev, 0x1B, 0xD41A);
+	phy_write(phydev, 0x1C, 0x0100);
+	phy_write(phydev, 0x1B, 0xD42E);
+	phy_write(phydev, 0x1C, 0xC8C8);
+
+        return 0;
+}
+
+static int RTL9010AA_VA_Soft_Reset(struct phy_device *phydev)
+{
+	u32 mdio_data = 0;
+	u32 timer = 2000; // set a 2ms timer
+
+	pr_info("%s +++\n", __func__);
+
+	phy_write(phydev, 0x0, 0x8000); // PHY soft-reset
+
+	while (mdio_data != 0x0140){	// Check soft-reset complete
+		mdio_data = phy_read(phydev, 0x0);
+		if(mdio_data == 0xFFFF)
+			return ERROR;
+		timer--;
+		if (timer == 0){
+			return ERROR;
+		}
+	}
+
+	pr_info("%s ---\n", __func__);
+	return SUCCESS;
+}
+
+static int rtl9010aa_read_page(struct phy_device *phydev)
+{
+	return __phy_read(phydev, RTL9010AA_PAGE_SELECT);
+}
+static int rtl9010aa_write_page(struct phy_device *phydev, int page)
+{
+	return __phy_write(phydev, RTL9010AA_PAGE_SELECT, page);
+}
+static int rtl9010aa_config_init(struct phy_device *phydev)
+{
+	pr_info("%s\n", __func__);
+	//RTL9010AA_VA_Initial_Configuration(phydev);
+	RTL9010AA_VA_Initial_with_NWAY_Configuration(phydev);
+	phy_write_paged(phydev, 0xa4c, 0x12, 0x20ff); // 1V8
+	pr_info("rtl9010 : io power select 1V8 : 0x%x\n", phy_read_paged(phydev, 0xa4c, 0x12));
+	RTL9010AA_VA_RGMII_driving_strength(phydev);
+	RTL9010AA_VA_Soft_Reset(phydev);
+	return 0;
+}
+static int rtl9010aa_ack_interrupt(struct phy_device *phydev)
+{
+	int err;
+	err = phy_read_paged(phydev, 0xa43, RTL9010AA_GINSR);
+	return (err < 0) ? err : 0;
+}
+static int rtl9010aa_config_intr(struct phy_device *phydev)
+{
+	u16 val;
+	if (phydev->interrupts == PHY_INTERRUPT_ENABLED)
+		val = RTL9010AA_GINER_LINK_STATUS;
+	else
+		val = 0;
+	return phy_write_paged(phydev, 0xa42, RTL9010AA_GINER, val);
+}
+
 static struct phy_driver realtek_drvs[] = {
 	{
 		PHY_ID_MATCH_EXACT(0x00008201),
@@ -695,6 +946,18 @@ static struct phy_driver realtek_drvs[] = {
 		.resume		= rtl821x_resume,
 		.read_page	= rtl821x_read_page,
 		.write_page	= rtl821x_write_page,
+	}, {
+		PHY_ID_MATCH_EXACT(0x001ccb30),
+		.name		= "RTL9010AA Gigabit Ethernet",
+		.features	= PHY_BASIC_T1_FEATURES,
+		.config_init	= rtl9010aa_config_init,
+		.read_status	= rtlgen_read_status,
+		.ack_interrupt	= rtl9010aa_ack_interrupt,
+		.config_intr	= rtl9010aa_config_intr,
+		.suspend	= genphy_suspend,
+		.resume		= genphy_resume,
+		.read_page	= rtl9010aa_read_page,
+		.write_page	= rtl9010aa_write_page,
 	}, {
 		.name		= "Generic FE-GE Realtek PHY",
 		.match_phy_device = rtlgen_match_phy_device,
