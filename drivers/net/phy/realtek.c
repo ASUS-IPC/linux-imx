@@ -779,6 +779,27 @@ static int RTL9010AA_VA_Initial_with_NWAY_Configuration(struct phy_device *phyde
 	}
 	// End //
 
+	pr_info("RTL9010ARG : RGMII Timing Control : TXC latching TXD = 00 : Speed of adjusting TXC delay = 11\n");
+	phy_write(phydev, 0x1B, 0xD084);
+	pr_info("RTL9010ARG : RGTR2 : 0xD084(default) = 0x%x\n", phy_read(phydev, 0x1C));
+	phy_write(phydev, 0x1B, 0xD082);
+	pr_info("RTL9010ARG : RGTR3 : 0xD082(default) = 0x%x\n", phy_read(phydev, 0x1C));
+
+	phy_write(phydev, 0x1B, 0xD084);
+	phy_write(phydev, 0x1C, 0xC000);
+	phy_write(phydev, 0x1B, 0xD082);
+	phy_write(phydev, 0x1C, 0x8083);
+	phy_write(phydev, 0x1B, 0xD084);
+	phy_write(phydev, 0x1C, 0x0000);
+	phy_write(phydev, 0x1B, 0xD084);
+	phy_write(phydev, 0x1C, 0x0007);
+	phy_write(phydev, 0x1B, 0xD084);
+	phy_write(phydev, 0x1C, 0x0000);
+	phy_write(phydev, 0x1B, 0xD082);
+	phy_write(phydev, 0x1C, 0x8083);
+	phy_write(phydev, 0x1B, 0xD084);
+	phy_write(phydev, 0x1C, 0x0007);
+
 	phy_write(phydev, 0x0, 0x8000); // PHY soft-reset
 	mdio_data = 0;
 
@@ -841,10 +862,11 @@ static int rtl9010aa_write_page(struct phy_device *phydev, int page)
 static int rtl9010aa_config_init(struct phy_device *phydev)
 {
 	pr_info("%s\n", __func__);
+	pr_info("RTL9010ARG : check PHY is accessible = 0x%x\n", phy_read_paged(phydev, 0xa42, 0x10));
 	//RTL9010AA_VA_Initial_Configuration(phydev);
 	RTL9010AA_VA_Initial_with_NWAY_Configuration(phydev);
-	phy_write_paged(phydev, 0xa4c, 0x12, 0x20ff); // 1V8
-	pr_info("rtl9010 : io power select 1V8 : 0x%x\n", phy_read_paged(phydev, 0xa4c, 0x12));
+	phy_write_paged(phydev, 0xa4c, 0x12, 0x20ff); // 1v8
+	pr_info("RTL9010ARG : io power select 1v8 = 0x%x\n", phy_read_paged(phydev, 0xa4c, 0x12));
 	RTL9010AA_VA_RGMII_driving_strength(phydev);
 	RTL9010AA_VA_Soft_Reset(phydev);
 	return 0;
