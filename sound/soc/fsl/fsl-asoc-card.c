@@ -798,7 +798,7 @@ static int fsl_asoc_card_probe(struct platform_device *pdev)
 		//priv->card.set_bias_level = NULL;
 		priv->codec_priv.mclk_id = WM8904_CLK_FLL;
 		priv->codec_priv.fll_id = WM8904_CLK_FLL;
-		priv->codec_priv.pll_id = WM8904_FLL_BCLK;
+		priv->codec_priv.pll_id = WM8904_FLL_LRCLK;
 		priv->dai_fmt |= SND_SOC_DAIFMT_CBS_CFS;
 		/*if (strstr(cpu_np->name, "esai")) {
 			priv->cpu_priv.sysclk_freq[TX] = priv->codec_priv.mclk_freq;

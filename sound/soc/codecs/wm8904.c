@@ -120,8 +120,8 @@ static const struct reg_default wm8904_reg_defaults[] = {
 	{ 45,  0x0085 },     /* R45  - Analogue Right Input 0 */
 	{ 46,  0x0044 },     /* R46  - Analogue Left Input 1 */
 	{ 47,  0x0044 },     /* R47  - Analogue Right Input 1 */
-	{ 57,  0x002D },     /* R57  - Analogue OUT1 Left */
-	{ 58,  0x002D },     /* R58  - Analogue OUT1 Right */
+	{ 57,  0x0030 },     /* R57  - Analogue OUT1 Left */
+	{ 58,  0x0030 },     /* R58  - Analogue OUT1 Right */
 	{ 59,  0x0039 },     /* R59  - Analogue OUT2 Left */
 	{ 60,  0x0039 },     /* R60  - Analogue OUT2 Right */
 	{ 61,  0x0000 },     /* R61  - Analogue OUT12 ZC */
@@ -673,6 +673,13 @@ static int sysclk_event(struct snd_soc_dapm_widget *w,
 			snd_soc_component_update_bits(component, WM8904_FLL_CONTROL_1,
 					    WM8904_FLL_ENA,
 					    WM8904_FLL_ENA);
+			/* Fine tune FOUT from FLL_CLK_SOURCE_RCLK */
+			snd_soc_component_write(component, WM8904_FLL_CONTROL_1, 0x0003);
+			snd_soc_component_write(component, WM8904_FLL_CONTROL_2, 0x0703);
+			snd_soc_component_write(component, WM8904_FLL_CONTROL_3, 0x0000);
+			snd_soc_component_write(component, WM8904_FLL_CONTROL_4, 0x2000);
+			snd_soc_component_write(component, WM8904_FLL_CONTROL_5, 0x0006);
+
 			break;
 
 		default:
@@ -818,6 +825,10 @@ static int out_pga_event(struct snd_soc_dapm_widget *w,
 		snd_soc_component_update_bits(component, reg,
 				    WM8904_HPL_ENA_OUTP | WM8904_HPR_ENA_OUTP,
 				    WM8904_HPL_ENA_OUTP | WM8904_HPR_ENA_OUTP);
+
+                snd_soc_component_write(component, WM8904_ANALOGUE_OUT1_LEFT, 0x00f0);
+                snd_soc_component_write(component, WM8904_ANALOGUE_OUT1_RIGHT, 0x00f0);
+
 		break;
 
 	case SND_SOC_DAPM_POST_PMU:
@@ -1779,12 +1790,12 @@ static int wm8904_set_fll(struct snd_soc_dai *dai, int fll_id, int source,
 				    WM8904_FLL_CLK_REF_SRC_MASK, 0);
 		break;
 
-	case WM8904_FLL_LRCLK:
+	case WM8904_FLL_BCLK:
 		snd_soc_component_update_bits(component, WM8904_FLL_CONTROL_5,
 				    WM8904_FLL_CLK_REF_SRC_MASK, 1);
 		break;
 
-	case WM8904_FLL_BCLK:
+	case WM8904_FLL_LRCLK:
 		snd_soc_component_update_bits(component, WM8904_FLL_CONTROL_5,
 				    WM8904_FLL_CLK_REF_SRC_MASK, 2);
 		break;
