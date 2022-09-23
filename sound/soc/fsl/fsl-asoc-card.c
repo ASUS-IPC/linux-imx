@@ -812,7 +812,7 @@ static int fsl_asoc_card_probe(struct platform_device *pdev)
 		//priv->card.set_bias_level = NULL;
 		priv->codec_priv.mclk_id = WM8904_CLK_FLL;
 		priv->codec_priv.fll_id = WM8904_CLK_FLL;
-		priv->codec_priv.pll_id = WM8904_FLL_BCLK;
+		priv->codec_priv.pll_id = WM8904_FLL_LRCLK;
 		priv->dai_fmt |= SND_SOC_DAIFMT_CBS_CFS;
 		priv->card_type = CARD_WM8904;
 	} else if (of_device_is_compatible(np, "fsl,imx-audio-ac97")) {
