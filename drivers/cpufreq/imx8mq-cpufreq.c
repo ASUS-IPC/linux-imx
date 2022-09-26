@@ -41,6 +41,7 @@ static int imx8mq_set_target(struct cpufreq_policy *policy, unsigned int index)
 	unsigned long freq_hz, volt;
 	unsigned int old_freq, new_freq;
 	int ret;
+	static int count = 0;
 
 	new_freq = freq_table[index].frequency;
 	freq_hz = new_freq * 1000;
@@ -60,7 +61,8 @@ static int imx8mq_set_target(struct cpufreq_policy *policy, unsigned int index)
 	if (new_freq == policy->max) {
 		if (!IS_ERR(dc_reg)) {
 			ret = regulator_set_voltage_tol(dc_reg, DC_VOLTAGE_MAX, 0);
-			if (ret) {
+			if (ret && (count < 1000)) {
+				count++;
 				dev_err(cpu_dev, "failed to scale dc_reg up: %d\n", ret);
 				return ret;
 			}
@@ -70,7 +72,8 @@ static int imx8mq_set_target(struct cpufreq_policy *policy, unsigned int index)
 	if (new_freq > old_freq) {
 		if (!IS_ERR(arm_reg)) {
 			ret = regulator_set_voltage_tol(arm_reg, volt, 0);
-			if (ret) {
+			if (ret && (count < 1000)) {
+				count++;
 				dev_err(cpu_dev, "failed to scale arm_reg up: %d\n", ret);
 				return ret;
 			}
@@ -84,7 +87,8 @@ static int imx8mq_set_target(struct cpufreq_policy *policy, unsigned int index)
 	if (old_freq == policy->max) {
 		if (!IS_ERR(dc_reg)) {
 			ret = regulator_set_voltage_tol(dc_reg, DC_VOLTAGE_MIN, 0);
-			if (ret) {
+			if (ret && (count < 1000)) {
+				count++;
 				dev_err(cpu_dev, "failed to scale dc_reg down: %d\n", ret);
 				return ret;
 			}
@@ -94,7 +98,8 @@ static int imx8mq_set_target(struct cpufreq_policy *policy, unsigned int index)
 	if (new_freq < old_freq) {
 		if (!IS_ERR(arm_reg)) {
 			ret = regulator_set_voltage_tol(arm_reg, volt, 0);
-			if (ret) {
+			if (ret && (count < 1000)) {
+				count++;
 				dev_err(cpu_dev, "failed to scale arm_reg down: %d\n", ret);
 				return ret;
 			}

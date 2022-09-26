@@ -1892,6 +1892,7 @@ static int __target_index(struct cpufreq_policy *policy, int index)
 	unsigned int newfreq = policy->freq_table[index].frequency;
 	int retval = -EINVAL;
 	bool notify;
+	static int count = 0;
 
 	if (newfreq == policy->cur)
 		return 0;
@@ -1918,9 +1919,11 @@ static int __target_index(struct cpufreq_policy *policy, int index)
 	}
 
 	retval = cpufreq_driver->target_index(policy, index);
-	if (retval)
+	if (retval && (count < 1000)) {
+		count++;
 		pr_err("%s: Failed to change cpu frequency: %d\n", __func__,
 		       retval);
+	}
 
 	if (notify) {
 		cpufreq_freq_transition_end(policy, &freqs, retval);
