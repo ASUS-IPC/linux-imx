@@ -15,6 +15,7 @@
 #define _XMIT_OSDEP_C_
 
 #include <drv_types.h>
+#include <linux/leds.h>
 
 #define DBG_DUMP_OS_QUEUE_CTL 0
 
@@ -558,6 +559,7 @@ int rtw_xmit_entry(_pkt *pkt, _nic_hdl pnetdev)
 	int ret = 0;
 
 	if (pkt) {
+		ledtrig_led_func_ctrl(LED_FUNC_WIFI, LED_LIGHT_GREEN, 1);
 		if (check_fwstate(pmlmepriv, WIFI_MONITOR_STATE) == _TRUE) {
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 24))
 			rtw_monitor_xmit_entry((struct sk_buff *)pkt, pnetdev);
@@ -567,6 +569,7 @@ int rtw_xmit_entry(_pkt *pkt, _nic_hdl pnetdev)
 			rtw_mstat_update(MSTAT_TYPE_SKB, MSTAT_ALLOC_SUCCESS, pkt->truesize);
 			ret = _rtw_xmit_entry(pkt, pnetdev);
 		}
+		ledtrig_led_func_ctrl(LED_FUNC_WIFI, LED_LIGHT_GREEN, 0);
 
 	}
 
