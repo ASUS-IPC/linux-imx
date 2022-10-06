@@ -19,6 +19,7 @@
 #include "../halmac/halmac_api.h"
 #include "../rtl8822c.h"
 #include "rtl8822ce.h"
+#include <linux/leds.h>
 
 /* Debug Buffer Descriptor Ring */
 /*#define BUF_DESC_DEBUG*/
@@ -1699,6 +1700,7 @@ s32 rtl8822ce_hostap_mgnt_xmit_entry(_adapter *padapter, _pkt *pkt)
 	if ((fc & RTW_IEEE80211_FCTL_FTYPE) != RTW_IEEE80211_FTYPE_MGMT)
 		goto _exit;
 
+	ledtrig_led_func_ctrl(LED_FUNC_WIFI, LED_LIGHT_GREEN, 1);
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 18))
 	/* http://www.mail-archive.com/netdev@vger.kernel.org/msg17214.html */
 	pxmit_skb = dev_alloc_skb(len + TXDESC_SIZE);
@@ -1772,7 +1774,7 @@ s32 rtl8822ce_hostap_mgnt_xmit_entry(_adapter *padapter, _pkt *pkt)
 		kfree_skb(skb);
 	}
 	usb_free_urb(urb);
-
+	ledtrig_led_func_ctrl(LED_FUNC_WIFI, LED_LIGHT_GREEN, 0);
 
 _exit:
 
