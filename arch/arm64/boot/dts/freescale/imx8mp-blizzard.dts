@@ -366,7 +366,7 @@
 
 	resmem: reserved-memory {
 		linux,cma {
-			size = <0 0x34000000>;
+			size = <0 0x3A000000>;
 		};
 	};
 };
