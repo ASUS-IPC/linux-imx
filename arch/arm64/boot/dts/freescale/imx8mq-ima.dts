@@ -756,7 +756,7 @@
 	fsl,sai-multi-lane;
 	fsl,dataline,dsd = <0 0xff 0xff 2 0xff 0x11>;
 	dmas = <&sdma2 8 25 0>, <&sdma2 9 25 0>;
-	status = "okay";
+	status = "disabled";
 };
 
 &sai2 {
