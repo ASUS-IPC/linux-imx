@@ -176,6 +176,12 @@ config RESET_PISTACHIO
 	help
 	  This enables the reset driver for ImgTec Pistachio SoCs.
 
+config RESET_PLATFORM
+	bool "Platform Reset Driver"
+	default n
+	help
+	  This enables the reset driver to control platform reset gpio.
+
 config RESET_QCOM_AOSS
 	tristate "Qcom AOSS Reset Driver"
 	depends on ARCH_QCOM || COMPILE_TEST

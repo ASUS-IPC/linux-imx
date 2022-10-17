@@ -243,6 +243,11 @@
 			};
 		};
 	};
+	
+	platform-reset {
+		compatible = "platform-reset";
+		reset-gpio = <&gpio1 8 GPIO_ACTIVE_HIGH>;
+	};
 };
 
 &A53_0 {
@@ -671,7 +676,6 @@
 &pcie0 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pcie0>;
-	reset-gpio = <&gpio1 8 GPIO_ACTIVE_HIGH>;
 	clocks = <&clk IMX8MQ_CLK_PCIE1_ROOT>,
 		 <&clk IMX8MQ_CLK_PCIE1_AUX>,
 		 <&clk IMX8MQ_CLK_PCIE1_PHY>,
@@ -958,6 +962,7 @@
 			MX8MQ_IOMUXC_NAND_WE_B_GPIO3_IO17		0x19
 			MX8MQ_IOMUXC_NAND_WP_B_GPIO3_IO18		0x19
 			MX8MQ_IOMUXC_GPIO1_IO00_ANAMIX_REF_CLK_32K	0x16
+			MX8MQ_IOMUXC_GPIO1_IO08_GPIO1_IO8		0x19 /* S_PLTRST */
 		>;
 	};
 
@@ -1076,7 +1081,6 @@
 
 	pinctrl_pcie0: pcie0grp {
 		fsl,pins = <
-			MX8MQ_IOMUXC_GPIO1_IO08_GPIO1_IO8		0x16 /* S_PLTRST */
 			MX8MQ_IOMUXC_GPIO1_IO12_GPIO1_IO12		0x16 /* S_WAKE */
 		>;
 	};
