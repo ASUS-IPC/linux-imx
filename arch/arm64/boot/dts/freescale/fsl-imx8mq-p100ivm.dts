@@ -143,6 +143,18 @@
 		sku2-gpios = <&gpio4 31 GPIO_ACTIVE_HIGH>;
 	};
 
+	vimode: gpio-vimode {
+		compatible = "gpio-vimode";
+		soc_vi_mode0-gpios = <&gpio5 26 GPIO_ACTIVE_HIGH>;
+		soc_vi_mode1-gpios = <&gpio5 27 GPIO_ACTIVE_HIGH>;
+		soc_vi_mode2-gpios = <&gpio5 22 GPIO_ACTIVE_HIGH>;
+		soc_vi_mode3-gpios = <&gpio5 23 GPIO_ACTIVE_HIGH>;
+		soc_vi_mode4-gpios = <&gpio4 23 GPIO_ACTIVE_HIGH>;
+		soc_vi_mode5-gpios = <&gpio4 26 GPIO_ACTIVE_HIGH>;
+		soc_vi_mode6-gpios = <&gpio4 25 GPIO_ACTIVE_HIGH>;
+		soc_vi_mode7-gpios = <&gpio4 24 GPIO_ACTIVE_HIGH>;
+	};
+
 	gpio-leds {
 		compatible = "gpio-leds";
 

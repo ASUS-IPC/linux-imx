@@ -540,6 +540,13 @@ config TINKER_MCU_ILI9881C
 	help
 		Control the power of ASUS ili9881c panel on tinker board.
 
+
+config VI_MODE_INFO
+	tristate "VI mode boardinfo"
+	default y
+	help
+		show the VI mode information
+
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
 source "drivers/misc/cb710/Kconfig"
