@@ -105,7 +105,7 @@
 		compatible = "asus,pv100a-audio-card";
 		audio-cpu = <&sai2>;
 		audio-codec = <&rt5616>;
-		status = "okay";
+		status = "disabled";
 	};
 
 	sound-ak4458 {
@@ -624,7 +624,7 @@
 		reg = <0x1b>;
 		clocks = <&clk IMX8MQ_CLK_SAI2_ROOT>;
 		clock-names = "mclk1";
-		status = "okay";
+		status = "disabled";
 	};
 
 	pmic: bd71837@4b {
@@ -1052,7 +1052,7 @@
 		<&clk IMX8MQ_CLK_DUMMY>, <&clk IMX8MQ_AUDIO_PLL1_OUT>,
 		<&clk IMX8MQ_AUDIO_PLL2_OUT>;
 	clock-names = "bus", "mclk0", "mclk1", "mclk2", "mclk3", "pll8k", "pll11k";
-	status = "okay";
+	status = "disabled";
 };
 
 &sai4 {
