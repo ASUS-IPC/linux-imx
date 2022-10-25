@@ -409,9 +409,6 @@
 				regulator-boot-on;
 				regulator-always-on;
 				regulator-ramp-delay = <1250>;
-				rohm,dvs-run-voltage = <1000000>;
-				rohm,dvs-idle-voltage = <900000>;
-				rohm,dvs-suspend-voltage = <800000>;
 			};
 
 			buck2: BUCK2 {
@@ -420,8 +417,6 @@
 				regulator-max-microvolt = <1300000>;
 				regulator-boot-on;
 				regulator-always-on;
-				rohm,dvs-run-voltage = <1000000>;
-				rohm,dvs-idle-voltage = <900000>;
 			};
 
 			buck3: BUCK3 {
@@ -429,7 +424,6 @@
 				regulator-min-microvolt = <700000>;
 				regulator-max-microvolt = <1300000>;
 				regulator-boot-on;
-				rohm,dvs-run-voltage = <900000>;
 			};
 
 			buck4: BUCK4 {
@@ -438,7 +432,6 @@
 				regulator-max-microvolt = <1300000>;
 				regulator-boot-on;
 				regulator-always-on;
-				rohm,dvs-run-voltage = <900000>;
 			};
 
 			buck5: BUCK5 {
