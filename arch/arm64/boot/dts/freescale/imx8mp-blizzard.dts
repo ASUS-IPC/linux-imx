@@ -370,6 +370,17 @@
 		};
 	};
 
+	batteryp: battery_plus_input{
+		compatible = "hed,software-configurable-io";
+		status = "okay";
+		non-selectable-input = "true";
+		input-only;
+		io-channels = <&adc 7>;
+		io-channel-names = "batteryp";
+		default-input-mode = "VTD";
+		max-voltage = <25740>;
+	};
+
 	input1: sc_input_pin12 {
 		compatible = "hed,software-configurable-io";
 		status = "okay";
