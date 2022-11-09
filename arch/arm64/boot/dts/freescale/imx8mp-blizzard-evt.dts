@@ -348,7 +348,7 @@
 
 	gpio-hwid {
 		compatible = "gpio-hwid";
-		boardinfo = "BLIZZARD";
+		boardinfo = "BLIZZARD-EVT";
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_hwid>;
 		pcb0-gpios = <&gpio4 2 GPIO_ACTIVE_HIGH>;
