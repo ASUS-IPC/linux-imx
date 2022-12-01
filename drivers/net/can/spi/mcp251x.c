@@ -42,6 +42,8 @@
 #include <linux/slab.h>
 #include <linux/spi/spi.h>
 #include <linux/uaccess.h>
+#include <linux/of_gpio.h>
+#include <linux/string.h>
 
 /* SPI interface instruction set */
 #define INSTRUCTION_WRITE	0x02
@@ -922,12 +924,13 @@ static int mcp251x_hw_probe(struct spi_device *spi)
 	int ret;
 
 	ret = mcp251x_hw_reset(spi);
+	dev_info(&spi->dev, "mcp251x_hw_probe, ret = %d\n", ret);
 	if (ret)
 		return ret;
 
 	ctrl = mcp251x_read_reg(spi, CANCTRL);
 
-	dev_dbg(&spi->dev, "CANCTRL 0x%02x\n", ctrl);
+	dev_info(&spi->dev, "CANCTRL 0x%02x\n", ctrl);
 
 	/* Check for power up default value */
 	if ((ctrl & 0x17) != 0x07)
@@ -1298,6 +1301,8 @@ static int mcp251x_can_probe(struct spi_device *spi)
 	struct clk *clk;
 	u32 freq;
 	int ret;
+	struct device_node *np = spi->dev.of_node;
+	int standby_gpio;
 
 	clk = devm_clk_get_optional(&spi->dev, NULL);
 	if (IS_ERR(clk))
@@ -1319,6 +1324,15 @@ static int mcp251x_can_probe(struct spi_device *spi)
 	ret = clk_prepare_enable(clk);
 	if (ret)
 		goto out_free;
+
+	standby_gpio = of_get_named_gpio(np, "standby-gpios", 0);
+	dev_info(&spi->dev, "can bus standby gpio=%d, freq=%d\n", standby_gpio, freq);
+	if (gpio_is_valid(standby_gpio)) {
+		ret = devm_gpio_request_one(&spi->dev, standby_gpio, GPIOF_OUT_INIT_LOW, "CAN standby");
+		if (ret) {
+			dev_err(&spi->dev, "unable to get can standby gpio\n");
+		}
+	}
 
 	net->netdev_ops = &mcp251x_netdev_ops;
 	net->flags |= IFF_ECHO;

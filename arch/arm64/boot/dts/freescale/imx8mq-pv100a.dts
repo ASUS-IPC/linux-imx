@@ -29,6 +29,13 @@
 		clock-output-names = "pmic_osc";
 	};
 
+	can_osc: clock-can-20m {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <20000000>;
+		clock-output-names = "can_osc";
+	};
+
 	modem_reset: modem-reset {
 		compatible = "gpio-reset";
 		reset-gpios = <&gpio3 5 GPIO_ACTIVE_LOW>;
@@ -975,7 +982,7 @@
 			MX8MQ_IOMUXC_ECSPI1_SCLK_ECSPI1_SCLK		0x82
 			MX8MQ_IOMUXC_ECSPI1_MOSI_ECSPI1_MOSI		0x82
 			MX8MQ_IOMUXC_ECSPI1_MISO_ECSPI1_MISO		0x82
-			MX8MQ_IOMUXC_GPIO1_IO05_GPIO1_IO5		0x19
+			MX8MQ_IOMUXC_GPIO1_IO01_GPIO1_IO1		0x19
 		>;
 	};
 
@@ -1368,5 +1375,41 @@
 		hdmi_in: endpoint {
 			remote-endpoint = <&dcss_out>;
 		};
+	};
+};
+
+&ecspi1 {
+	fsl,spi-num-chipselects = <1>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_ecspi1 &pinctrl_ecspi1_cs>;
+	cs-gpios = <&gpio5 9 GPIO_ACTIVE_HIGH>;
+	status = "okay";
+
+	can0: mcp2515@0 {
+		compatible = "microchip,mcp2515";
+		reg = <0>;
+		spi-max-frequency = <5000000>;
+		clocks = <&can_osc>;
+		interrupt-parent = <&gpio1>;
+		interrupts = <1 0x2>;
+		status = "okay";
+	};
+};
+
+&ecspi2 {
+	fsl,spi-num-chipselects = <1>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_ecspi2>,<&pinctrl_ecspi2_cs>;
+	cs-gpios = <&gpio5 13 GPIO_ACTIVE_HIGH>;
+	status = "okay";
+
+	can1: mcp2515@0 {
+		compatible = "microchip,mcp2515";
+		reg = <0>;
+		spi-max-frequency = <5000000>;
+		clocks = <&can_osc>;
+		interrupt-parent = <&gpio1>;
+		interrupts = <3 0x2>;
+		status = "okay";
 	};
 };
