@@ -205,6 +205,9 @@ static long rtc_dev_ioctl(struct file *file,
 {
 	int err = 0;
 	struct rtc_device *rtc = file->private_data;
+#if CONFIG_RTC_ASUS_SYNC_TIME
+	struct rtc_device *rtcX;
+#endif
 	const struct rtc_class_ops *ops = rtc->ops;
 	struct rtc_time tm;
 	struct rtc_wkalrm alarm;
@@ -331,6 +334,26 @@ static long rtc_dev_ioctl(struct file *file,
 
 		if (copy_from_user(&tm, uarg, sizeof(tm)))
 			return -EFAULT;
+
+#ifdef CONFIG_RTC_ASUS_SYNC_TIME
+		if (!strcmp(dev_name(&rtc->dev), CONFIG_RTC_HCTOSYS_DEVICE)) {
+                	rtcX = rtc_class_open("rtc1");
+                	if (rtcX == NULL) {
+                        	pr_err("unable to open rtc device (rtc1)\n");
+                        	rtcX = rtc_class_open("rtc2");
+                        	if (rtcX == NULL) {
+                                	pr_err("unable to open rtc device (rtc2)\n");
+                                	return rtc_set_time(rtc, &tm);
+                        	}
+                	}
+
+	                err = rtc_set_time(rtcX, &tm);
+        	        if (err) {
+                	        pr_err("Second rtc rtc_set_time fail \n");
+                	}
+                	rtc_class_close(rtcX);
+		}
+#endif
 
 		return rtc_set_time(rtc, &tm);
 

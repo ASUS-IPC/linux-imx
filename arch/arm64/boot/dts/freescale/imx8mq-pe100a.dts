@@ -13,6 +13,12 @@
 	model = "ASUS PE100A";
 	compatible = "fsl,imx8mq-evk", "fsl,imx8mq";
 
+	aliases {
+		rtc0 = &snvs_rtc;
+                rtc1 = &bq32000;
+                rtc2 = &rtc_isl1208;
+	};
+
 	chosen {
 		stdout-path = &uart1;
 	};
@@ -583,6 +589,17 @@
 			};
 		};
 	};
+
+	rtc_isl1208: rtc@6f {
+		compatible = "isil,isl1208";
+		reg = <0x6f>;
+		status = "okay";
+	};
+
+         bq32000: rtc@68 {
+                 compatible = "ti,bq32000";
+                 reg = <0x68>;
+         };
 };
 
 &i2c3 {

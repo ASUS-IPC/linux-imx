@@ -13,6 +13,10 @@
 	model = "ASUS PV100A";
 	compatible = "fsl,imx8mq-evk", "fsl,imx8mq";
 
+        aliases {
+                rtc0 = &snvs_rtc;
+        };
+
 	chosen {
 		stdout-path = &uart1;
 	};
