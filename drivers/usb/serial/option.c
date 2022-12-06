@@ -238,6 +238,7 @@ static void option_instat_callback(struct urb *urb);
 /* These Quectel products use Qualcomm's vendor ID */
 #define QUECTEL_PRODUCT_UC20			0x9003
 #define QUECTEL_PRODUCT_UC15			0x9090
+#define QUECTEL_PRODUCT_EC20			0x9215
 /* These u-blox products use Qualcomm's vendor ID */
 #define UBLOX_PRODUCT_R410M			0x90b2
 #define UBLOX_PRODUCT_R6XX			0x90fa
@@ -253,7 +254,13 @@ static void option_instat_callback(struct urb *urb);
 #define QUECTEL_PRODUCT_BG96			0x0296
 #define QUECTEL_PRODUCT_EP06			0x0306
 #define QUECTEL_PRODUCT_EM05G			0x030a
+#define QUECTEL_PRODUCT_AG15			0x0415
+#define QUECTEL_PRODUCT_AG35			0x0435
+#define QUECTEL_PRODUCT_AG520R			0x0452
+#define QUECTEL_PRODUCT_AG550R			0x0455
 #define QUECTEL_PRODUCT_EM12			0x0512
+#define QUECTEL_PRODUCT_EG20			0x0620
+#define QUECTEL_PRODUCT_BG95			0x0700
 #define QUECTEL_PRODUCT_RM500Q			0x0800
 #define QUECTEL_PRODUCT_EC200S_CN		0x6002
 #define QUECTEL_PRODUCT_EC200T			0x6026
@@ -1110,6 +1117,7 @@ static const struct usb_device_id option_ids[] = {
 	{ USB_DEVICE(QUALCOMM_VENDOR_ID, QUECTEL_PRODUCT_UC15)},
 	{ USB_DEVICE(QUALCOMM_VENDOR_ID, QUECTEL_PRODUCT_UC20),
 	  .driver_info = RSVD(4) },
+	{ USB_DEVICE(QUALCOMM_VENDOR_ID, QUECTEL_PRODUCT_EC20) },
 	/* Yuga products use Qualcomm vendor ID */
 	{ USB_DEVICE(QUALCOMM_VENDOR_ID, YUGA_PRODUCT_CLM920_NC5),
 	  .driver_info = RSVD(1) | RSVD(4) },
@@ -1141,9 +1149,9 @@ static const struct usb_device_id option_ids[] = {
 	{ USB_DEVICE_AND_INTERFACE_INFO(QUECTEL_VENDOR_ID, QUECTEL_PRODUCT_EM12, 0xff, 0xff, 0xff),
 	  .driver_info = RSVD(1) | RSVD(2) | RSVD(3) | RSVD(4) | NUMEP2 },
 	{ USB_DEVICE_AND_INTERFACE_INFO(QUECTEL_VENDOR_ID, QUECTEL_PRODUCT_EM12, 0xff, 0, 0) },
-	{ USB_DEVICE_AND_INTERFACE_INFO(QUECTEL_VENDOR_ID, 0x0620, 0xff, 0xff, 0x30) },	/* EM160R-GL */
-	{ USB_DEVICE_AND_INTERFACE_INFO(QUECTEL_VENDOR_ID, 0x0620, 0xff, 0, 0) },
-	{ USB_DEVICE_INTERFACE_CLASS(QUECTEL_VENDOR_ID, 0x0700, 0xff), /* BG95 */
+	{ USB_DEVICE_AND_INTERFACE_INFO(QUECTEL_VENDOR_ID, QUECTEL_PRODUCT_EG20, 0xff, 0xff, 0x30) },	/* EM160R-GL */
+	{ USB_DEVICE_AND_INTERFACE_INFO(QUECTEL_VENDOR_ID, QUECTEL_PRODUCT_EG20, 0xff, 0, 0) },
+	{ USB_DEVICE_INTERFACE_CLASS(QUECTEL_VENDOR_ID, QUECTEL_PRODUCT_BG95, 0xff),
 	  .driver_info = RSVD(3) | ZLP },
 	{ USB_DEVICE_AND_INTERFACE_INFO(QUECTEL_VENDOR_ID, QUECTEL_PRODUCT_RM500Q, 0xff, 0xff, 0x30) },
 	{ USB_DEVICE_AND_INTERFACE_INFO(QUECTEL_VENDOR_ID, QUECTEL_PRODUCT_RM500Q, 0xff, 0, 0) },
@@ -1152,6 +1160,14 @@ static const struct usb_device_id option_ids[] = {
 	{ USB_DEVICE_AND_INTERFACE_INFO(QUECTEL_VENDOR_ID, QUECTEL_PRODUCT_EC200S_CN, 0xff, 0, 0) },
 	{ USB_DEVICE_AND_INTERFACE_INFO(QUECTEL_VENDOR_ID, QUECTEL_PRODUCT_EC200T, 0xff, 0, 0) },
 	{ USB_DEVICE_AND_INTERFACE_INFO(QUECTEL_VENDOR_ID, QUECTEL_PRODUCT_RM500K, 0xff, 0x00, 0x00) },
+	{ USB_DEVICE(QUECTEL_VENDOR_ID, QUECTEL_PRODUCT_AG35),
+	  .driver_info = RSVD(4) },
+	{ USB_DEVICE(QUECTEL_VENDOR_ID, QUECTEL_PRODUCT_AG15),
+	  .driver_info = RSVD(4) },
+	{ USB_DEVICE(QUECTEL_VENDOR_ID, QUECTEL_PRODUCT_AG520R),
+	  .driver_info = RSVD(4) },
+	{ USB_DEVICE(QUECTEL_VENDOR_ID, QUECTEL_PRODUCT_AG550R),
+	  .driver_info = RSVD(4) },
 
 	{ USB_DEVICE(CMOTECH_VENDOR_ID, CMOTECH_PRODUCT_6001) },
 	{ USB_DEVICE(CMOTECH_VENDOR_ID, CMOTECH_PRODUCT_CMU_300) },
@@ -2210,6 +2226,7 @@ static int option_probe(struct usb_serial *serial,
 {
 	struct usb_interface_descriptor *iface_desc =
 				&serial->interface->cur_altsetting->desc;
+	struct usb_device_descriptor *dev_desc = &serial->dev->descriptor;
 	unsigned long device_flags = id->driver_info;
 
 	/* Never bind to the CD-Rom emulation interface	*/
@@ -2232,6 +2249,35 @@ static int option_probe(struct usb_serial *serial,
 		return -ENODEV;
 
 	/* Store the device flags so we can use them during attach. */
+	u16 id_vendor = le16_to_cpu(dev_desc->idVendor);
+	u16 id_product = le16_to_cpu(dev_desc->idProduct);
+	//Quectel UC20's interface 4 can be used as USB network device
+	if (id_vendor == QUALCOMM_VENDOR_ID &&
+	    id_product == QUECTEL_PRODUCT_UC20 &&
+	    iface_desc->bInterfaceNumber >= 4)
+		return -ENODEV;
+
+	//Quectel EC20's interface 4 can be used as USB network device
+	if (id_vendor == QUALCOMM_VENDOR_ID &&
+	    id_product == QUECTEL_PRODUCT_EC20 &&
+	    iface_desc->bInterfaceNumber >= 4)
+		return -ENODEV;
+
+	if (id_vendor == QUECTEL_VENDOR_ID) {
+		if (iface_desc->bInterfaceClass != 0xFF || iface_desc->bInterfaceSubClass == 0x42) {
+			//ECM, RNDIS, NCM, MBIM, ACM, UAC, ADB
+			return -ENODEV;
+		}
+		if ((id_product & 0xF000) == 0) {
+			//MDM interface 4 is QMI
+			if (iface_desc->bInterfaceNumber == 4 &&
+			    iface_desc->bNumEndpoints == 3 &&
+			    iface_desc->bInterfaceSubClass == 0xFF &&
+			    iface_desc->bInterfaceProtocol == 0xFF)
+				return -ENODEV;
+		}
+	}
+
 	usb_set_serial_data(serial, (void *)device_flags);
 
 	return 0;
