@@ -368,7 +368,22 @@
 		linux,cma {
 			size = <0 0x3A000000>;
 		};
+
+		/delete-node/ dsp@92400000;
+		/delete-node/ dsp_reserved_heap;
+		/delete-node/ vdev0vring0@942f0000;
+		/delete-node/ vdev0vring1@942f8000;
+		/delete-node/ vdev0buffer@94300000;
+		/delete-node/ isp0@94400000;
 	};
+};
+
+&dsp {
+	/delete-property/ memory-region;
+};
+
+&isp_0 {
+	/delete-property/ memory-region;
 };
 
 &A53_0 {
