@@ -639,6 +639,11 @@
 
 		status = "disabled";
 	};
+
+	eeprom: eeprom@50 {
+		compatible = "atmel,24c08";
+		reg = <0x50>;
+	};
 };
 
 &i2c2 {
