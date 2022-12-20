@@ -945,9 +945,6 @@
 
 &usb_dwc3_0 {
 	dr_mode = "otg";
-	hnp-disable;
-	srp-disable;
-	adp-disable;
 	usb-role-switch;
 	role-switch-default-mode = "none";
 	snps,dis-u1-entry-quirk;
