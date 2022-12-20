@@ -189,7 +189,7 @@ static int tmu_get_trend(struct thermal_zone_device *tz,
 					     qsensor->temp_critical;
 
 	if (qsensor->tzd->temperature >=
-		(trip_temp - TMU_TEMP_PASSIVE_COOL_DELTA))
+		(trip_temp - trip->hysteresis))
 		*trend = THERMAL_TREND_RAISING;
 	else
 		*trend = THERMAL_TREND_DROPPING;
