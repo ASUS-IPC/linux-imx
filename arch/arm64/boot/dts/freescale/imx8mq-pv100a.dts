@@ -276,7 +276,7 @@
 &csi1_bridge {
 	fsl,mipi-mode;
 	fsl,two-8bit-sensor-mode;
-	status = "okay";
+	status = "disabled";
 
 	port {
 		csi1_ep: endpoint {
@@ -288,7 +288,7 @@
 &csi2_bridge {
 	fsl,mipi-mode;
 	fsl,two-8bit-sensor-mode;
-	status = "okay";
+	status = "disabled";
 
 	port {
 		csi2_ep: endpoint {
@@ -351,7 +351,7 @@
 &mipi_csi_1 {
 	#address-cells = <1>;
 	#size-cells = <0>;
-	status = "okay";
+	status = "disabled";
 	port {
 		mipi1_sensor_ep: endpoint@0 {
 			remote-endpoint = <&ov5640_mipi1_ep>;
@@ -368,7 +368,7 @@
 &mipi_csi_2 {
 	#address-cells = <1>;
 	#size-cells = <0>;
-	status = "okay";
+	status = "disabled";
 	port {
 		mipi2_sensor_ep: endpoint@0 {
 			remote-endpoint = <&ov5640_mipi2_ep>;
