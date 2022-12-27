@@ -127,6 +127,7 @@ dtb-$(CONFIG_ARCH_MXC) += imx8mp-evk.dtb imx8mp-evk-rm67191.dtb imx8mp-evk-it626
 dtb-$(CONFIG_ARCH_MXC) += imx8mp-phyboard-pollux-rdk.dtb
 dtb-$(CONFIG_ARCH_MXC) += imx8mq-evk.dtb imx8mq-evk-rpmsg.dtb imx8mp-ab2.dtb
 dtb-$(CONFIG_ARCH_MXC) += imx8mq-ima.dtb imx8mq-pe100a.dtb imx8mq-pv100a.dtb
+dtbo-$(CONFIG_ARCH_MXC) += imx8mq-pe100a-rs232.dtbo imx8mq-pe100a-rs485.dtbo imx8mq-pv100a-rs232.dtbo imx8mq-pv100a-rs485.dtbo
 dtb-$(CONFIG_ARCH_MXC) += imx8mp-ddr4-evk.dtb
 dtb-$(CONFIG_ARCH_MXC) += imx8mp-evk-ndm.dtb
 dtb-$(CONFIG_ARCH_MXC) += imx8mq-evk.dtb imx8mq-evk-rpmsg.dtb imx8mq-evk-pcie1-m2.dtb imx8mq-evk-usd-wifi.dtb \

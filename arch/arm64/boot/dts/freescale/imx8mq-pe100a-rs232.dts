@@ -1,0 +1,13 @@
+/dts-v1/;
+/plugin/;
+
+/ {
+    compatible = "fsl,imx8mq";
+
+    fragment@0 {
+        target = <&uart2>;
+        __overlay__ {
+            fsl,uart-has-rtscts;
+        };
+    };
+};
