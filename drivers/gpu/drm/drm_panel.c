@@ -105,6 +105,8 @@ EXPORT_SYMBOL(drm_panel_remove);
  */
 int drm_panel_prepare(struct drm_panel *panel)
 {
+	printk("drm_panel_prepare\n");
+
 	if (!panel)
 		return -EINVAL;
 
@@ -128,6 +130,8 @@ EXPORT_SYMBOL(drm_panel_prepare);
  */
 int drm_panel_unprepare(struct drm_panel *panel)
 {
+	printk("drm_panel_unprepare\n");
+
 	if (!panel)
 		return -EINVAL;
 
@@ -151,6 +155,7 @@ EXPORT_SYMBOL(drm_panel_unprepare);
 int drm_panel_enable(struct drm_panel *panel)
 {
 	int ret;
+	printk("drm_panel_enable\n");
 
 	if (!panel)
 		return -EINVAL;
@@ -183,6 +188,7 @@ EXPORT_SYMBOL(drm_panel_enable);
 int drm_panel_disable(struct drm_panel *panel)
 {
 	int ret;
+	printk("drm_panel_disable\n");
 
 	if (!panel)
 		return -EINVAL;

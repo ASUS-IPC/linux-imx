@@ -1204,7 +1204,7 @@ static int nwl_dsi_bridge_atomic_check(struct drm_bridge *bridge,
 
 	DRM_DEV_DEBUG_DRIVER(dsi->dev, "lanes=%u, data_rate=%lu\n",
 			     config->lanes, config->bitclock);
-	if (config->lanes < 2 || config->lanes > 4)
+	if (config->lanes < 1 || config->lanes > 4)
 		return -EINVAL;
 
 	/* Max data rate for this controller is 1.5Gbps */
@@ -2046,6 +2046,18 @@ static const struct component_ops nwl_dsi_component_ops = {
 	.bind	= nwl_dsi_bind,
 	.unbind	= nwl_dsi_unbind,
 };
+#ifdef CONFIG_DRM_PANEL_TOSHIBA_TC358762
+extern int tinker_mcu_is_connected(void);
+#else
+static int tinker_mcu_is_connected(void){ return 0; }
+#endif
+
+#ifdef CONFIG_DRM_PANEL_ASUS_ILI9881C
+extern int tinker_mcu_ili9881c_is_connected(void);
+#else
+static int tinker_mcu_ili9881c_is_connected(void){ return 0; }
+#endif
+
 
 static int nwl_dsi_probe(struct platform_device *pdev)
 {
@@ -2054,6 +2066,16 @@ static int nwl_dsi_probe(struct platform_device *pdev)
 	const struct soc_device_attribute *attr;
 	struct nwl_dsi *dsi;
 	int ret;
+
+	if(tinker_mcu_is_connected() == 2 && tinker_mcu_ili9881c_is_connected() == 2) {
+		printk("nwl_dsi_probe return EPROBE_DEFER\n");
+		return -EPROBE_DEFER;
+	}
+
+	if(!tinker_mcu_is_connected() && !tinker_mcu_ili9881c_is_connected()) {
+		printk("nwl_dsi_probe: tc358762/ili9881c panel  not connected, dsi driver probe stop\n");
+		return -ENODEV;
+	}
 
 	if (!of_id || !of_id->data)
 		return -ENODEV;
