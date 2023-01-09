@@ -5,7 +5,7 @@
     compatible = "fsl,imx8mq";
 
     fragment@0 {
-        target = <&pinctrl_uart1>;
+        target-path = "/soc@0/bus@30000000/pinctrl@30330000/uart1grp";
         __overlay__ {
             fsl,pins = <
 				0x234 0x49C 0x4F4 0x0 0x0   0x49
@@ -17,7 +17,7 @@
     };
 
     fragment@1 {
-        target = <&uart1>;
+        target-path = "/soc@0/bus@30800000/serial@30860000";
         __overlay__ {
             linux,rs485-enabled-at-boot-time;
             rts-gpios = <&gpio5 0x1B 0x1>;
