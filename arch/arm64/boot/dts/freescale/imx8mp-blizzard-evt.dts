@@ -358,7 +358,7 @@
 		sku2-gpios = <&gpio3 23 GPIO_ACTIVE_HIGH>;
 	};
 
-	platform-reset {
+        platform-reset {
 		compatible = "platform-reset";
 		pinctrl-0 = <&pinctrl_platform_reset>;
 		reset-gpio = <&gpio1 8 GPIO_ACTIVE_HIGH>;

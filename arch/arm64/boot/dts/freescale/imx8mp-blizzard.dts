@@ -38,30 +38,6 @@
 		stdout-path = &uart2;
 	};
 
-	gpio-leds {
-		compatible = "gpio-leds";
-		pinctrl-names = "default";
-		pinctrl-0 = <&pinctrl_gpio_led>;
-
-		led-r {
-			gpios = <&gpio2 16 GPIO_ACTIVE_HIGH>;
-			default-state = "off";
-			retain-state-suspended;
-		};
-
-		led-g {
-			gpios = <&gpio2 17 GPIO_ACTIVE_HIGH>;
-			default-state = "off";
-			retain-state-suspended;
-		};
-
-		led-b {
-			gpios = <&gpio2 18 GPIO_ACTIVE_HIGH>;
-			default-state = "off";
-			retain-state-suspended;
-		};
-	};
-
 	keyswitch {
 		compatible = "gpio-keys";
 		pinctrl-names = "default";
@@ -359,10 +335,13 @@
 		sku2-gpios = <&gpio3 23 GPIO_ACTIVE_HIGH>;
 	};
 
-	platform-reset {
+      platform-reset {
 		compatible = "platform-reset";
-		pinctrl-0 = <&pinctrl_platform_reset>;
+		pinctrl-0 = <&pinctrl_platform_reset>, <&pinctrl_pcie_detect>, <&pinctrl_pciehub_ctl>;
 		reset-gpio = <&gpio1 8 GPIO_ACTIVE_HIGH>;
+		detect-gpio = <&gpio3 16 GPIO_ACTIVE_HIGH>;
+		pciehub_rst-gpio = <&gpio2 17 GPIO_ACTIVE_HIGH>;
+		pciehub_en-gpio = <&gpio2 18 GPIO_ACTIVE_HIGH>;
 	};
 
 	resmem: reserved-memory {
@@ -1305,6 +1284,13 @@
 		>;
 	};
 
+	pinctrl_pciehub_ctl: pciehubctlgrp {
+		fsl,pins = <
+			MX8MP_IOMUXC_SD2_DATA2__GPIO2_IO17	0x19
+			MX8MP_IOMUXC_SD2_DATA3__GPIO2_IO18	0x19
+		>;
+	};
+
 	pinctrl_ilitek_touch: ilitektouchgrp {
 		fsl,pins = <
 			MX8MP_IOMUXC_GPIO1_IO14__GPIO1_IO14	0x19
@@ -1354,6 +1340,12 @@
 	pinctrl_platform_reset: platform_reset {
 		fsl,pins = <
 			MX8MP_IOMUXC_GPIO1_IO08__GPIO1_IO08	0x16
+		>;
+	};
+
+	pinctrl_pcie_detect: pcie_detect {
+		fsl,pins = <
+			MX8MP_IOMUXC_NAND_READY_B__GPIO3_IO16	0x19
 		>;
 	};
 
