@@ -781,7 +781,7 @@
 	assigned-clocks = <&clk IMX8MQ_CLK_SAI2>;
 	assigned-clock-parents = <&clk IMX8MQ_AUDIO_PLL1_OUT>;
 	assigned-clock-rates = <24576000>;
-	status = "disabled";
+	status = "okay";
 };
 
 &sai3 {
@@ -876,7 +876,7 @@
 	assigned-clocks = <&clk IMX8MQ_CLK_UART1>;
 	assigned-clock-parents = <&clk IMX8MQ_CLK_25M>;
 	fsl,uart-has-rtscts;
-	status = "okay";
+	status = "disabled";
 };
 
 &uart2 {
@@ -976,6 +976,8 @@
 			MX8MQ_IOMUXC_SAI3_TXFS_GPIO4_IO31		0x19
 			MX8MQ_IOMUXC_NAND_RE_B_GPIO3_IO15		0x19
 			MX8MQ_IOMUXC_GPIO1_IO08_GPIO1_IO8		0x19 /* S_PLTRST */
+			MX8MQ_IOMUXC_UART1_RXD_GPIO5_IO22		0x19
+			MX8MQ_IOMUXC_UART1_TXD_GPIO5_IO23		0x19
 		>;
 	};
 
@@ -1398,7 +1400,7 @@
 	pinctrl-0 = <&pinctrl_ecspi2>,<&pinctrl_ecspi2_cs>;
 	cs-gpios = <&gpio5 13 GPIO_ACTIVE_HIGH>,
 		   <&gpio3 4 GPIO_ACTIVE_HIGH>;
-	status = "disabled";
+	status = "okay";
 
 	spidev@0 {
 		#address-cells = <1>;
@@ -1422,13 +1424,13 @@
 &pwm3 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pwm3>;
-	status = "disabled";
+	status = "okay";
 };
 
 &pwm4 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pwm4>;
-	status = "disabled";
+	status = "okay";
 };
 
 &gpu3d {
