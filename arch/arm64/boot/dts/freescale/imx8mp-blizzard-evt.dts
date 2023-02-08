@@ -825,6 +825,13 @@
 		ilitek,name = "ilitek_i2c";
 		status = "okay";
 	};
+
+        tmp75@4f {
+                compatible = "ti,tmp75";
+                reg = <0x4f>;
+                status = "okay";
+        };
+
 };
 
 &irqsteer_hdmi {
