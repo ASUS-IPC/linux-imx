@@ -137,11 +137,31 @@ struct pwseq {
 	unsigned int t8;//Restart VCC time
 };
 
+static struct backlight_device *bl;
 static int id0_gpio, id1_gpio;
+static int panel_simple_enable_status = 0;
 static inline struct panel_simple *to_panel_simple(struct drm_panel *panel)
 {
 	return container_of(panel, struct panel_simple, base);
 }
+
+void update_thermal_max_brightness(int thermal_max_brightness)
+{
+	if(bl){
+		printk(KERN_INFO "%s brightness:%d thermal_max_brightness:%d\n", __func__,bl->props.brightness,thermal_max_brightness);
+		if(bl->props.brightness < thermal_max_brightness)
+			bl->props.brightness = thermal_max_brightness;
+		bl->props.thermal_max_brightness = thermal_max_brightness;
+		backlight_update_status(bl);
+	}
+}
+EXPORT_SYMBOL_GPL(update_thermal_max_brightness);
+
+int panel_simple_enstatus(void)
+{
+	return panel_simple_enable_status;
+}
+EXPORT_SYMBOL_GPL(panel_simple_enstatus);
 
 /*
 LVDS_ID
@@ -493,6 +513,7 @@ static int panel_simple_enable(struct drm_panel *panel)
 		p->backlight->props.power = FB_BLANK_POWERDOWN;
 		p->backlight->props.state |= BL_CORE_FBBLANK;
 		backlight_update_status(p->backlight);
+		panel_simple_enable_status = 1;
 	}
 
 	p->enabled = true;
@@ -658,6 +679,7 @@ static int panel_simple_probe(struct device *dev, const struct panel_desc *desc)
 	int err;
 
 	printk("panel_simple_probe");
+
 	panel = devm_kzalloc(dev, sizeof(*panel), GFP_KERNEL);
 	if (!panel)
 		return -ENOMEM;
@@ -805,7 +827,7 @@ static int panel_simple_probe(struct device *dev, const struct panel_desc *desc)
 	drm_panel_add(&panel->base);
 
 	dev_set_drvdata(dev, panel);
-
+	bl = panel->backlight;
 	return 0;
 
 free_ddc:
@@ -4628,7 +4650,6 @@ static int panel_simple_platform_probe(struct platform_device *pdev)
 	struct of_device_id *id;
 	struct proc_dir_entry* file;
 	int id0, id1, panelid, ret;
-
 	id = of_match_node(platform_of_asusmatch, pdev->dev.of_node);
 
 	if (!id)

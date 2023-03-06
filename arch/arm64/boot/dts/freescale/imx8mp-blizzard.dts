@@ -184,6 +184,13 @@
 		cpu-dai = <&xcvr>;
 	};
 
+	backlight_thermal: backlight-thermal {
+		compatible = "backlight-thermal";
+		#cooling-cells = <2>;
+		koe-cooling-levels = <1000 750 500>;
+		amp-cooling-levels = <1000 750 500>;
+	};
+
 	lvds_backlight: lvds_backlight {
 		compatible = "pwm-backlight";
 		pwms = <&pwm1 0 100000>;
@@ -927,11 +934,12 @@
 		status = "okay";
 	};
 
-	tmp75@4f {
-		compatible = "ti,tmp75";
-		reg = <0x4f>;
-		status = "okay";
-	};
+    tmp75: tmp75@4f {
+        compatible = "ti,tmp75";
+        reg = <0x4f>;
+		#thermal-sensor-cells = <0>;
+        status = "okay";
+    };
 
 	eeprom: eeprom@54 {
 		compatible = "atmel,24c08";
@@ -1839,15 +1847,46 @@
 		};
 	};
 
-        soc-thermal {
-                trips {
-                        soc_alert0: trip0 {
-                                temperature = <95000>;
-                        };
+	soc-thermal {
+		trips {
+			soc_alert0: trip0 {
+				temperature = <95000>;
+			};
 
-                        soc_crit0: trip1 {
-                                temperature = <105000>;
-                        };
+			soc_crit0: trip1 {
+				temperature = <105000>;
+			};
+		};
+	};
+
+	tmp75bk-thermal {
+		polling-delay-passive = <250>;
+		polling-delay = <2000>;
+		thermal-sensors = <&tmp75>;
+		trips {
+			tmp75_thresh: tmp75-thresh {
+				temperature = <60000>;
+				type = "passive";
+				hysteresis = <5000>;
+			};
+
+			tmp75_thresh1: tmp75-thresh1 {
+				temperature = <80000>;
+				type = "passive";
+				hysteresis = <5000>;
+			};
+		};
+
+		cooling-maps {
+			map0 {
+				trip = <&tmp75_thresh>;
+				cooling-device = <&backlight_thermal 0 1>;
+			};
+
+			map1 {
+				trip = <&tmp75_thresh1>;
+				cooling-device = <&backlight_thermal 1 2>;
+			};
 		};
 	};
 };

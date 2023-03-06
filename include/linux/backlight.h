@@ -202,6 +202,8 @@ struct backlight_properties {
 	 */
 	int max_brightness;
 
+	int thermal_max_brightness;
+
 	/**
 	 * @power: The current power mode.
 	 *

@@ -112,6 +112,12 @@ static int pwm_backlight_update_status(struct backlight_device *bl)
 	int brightness = backlight_get_brightness(bl);
 	struct pwm_state state;
 
+	if(bl->props.thermal_max_brightness < brightness) {
+		printk("%s update brightness:%d to thermal_max_brightness:%d\n",__func__, brightness, bl->props.thermal_max_brightness);
+		brightness = bl->props.thermal_max_brightness;
+		bl->props.brightness = bl->props.thermal_max_brightness;
+	}
+
 	if (pb->notify)
 		brightness = pb->notify(pb->dev, brightness);
 
