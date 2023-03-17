@@ -89,6 +89,16 @@
 		enable-active-high;
 	};
 
+	gpio-keys {
+		compatible = "gpio-keys";
+		wakeup {
+			label = "wakeup gpio";
+			gpio = <&gpio1 12 GPIO_ACTIVE_HIGH>;
+			linux,code = <KEY_WAKEUP>;
+			gpio-key,wakeup;
+		};
+	};
+
 	ir-receiver {
 		compatible = "gpio-ir-receiver";
 		gpios = <&gpio1 12 GPIO_ACTIVE_LOW>;
