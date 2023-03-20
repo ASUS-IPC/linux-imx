@@ -185,8 +185,13 @@ static void fts_report_value(struct tinker_ft5406_data *ts_data)
 	input_sync(ts_data->input_dev);
 }
 
+#ifdef CONFIG_TINKER_MCU
 extern int tinker_mcu_is_connected(void);
+#endif
+
+#ifdef CONFIG_TINKER_MCU_ILI9881C
 extern int tinker_mcu_ili9881c_is_connected(void);
+#endif
 
 static void fts_retry_clear(struct tinker_ft5406_data *ts_data)
 {
@@ -280,10 +285,12 @@ static int tinker_ft5406_probe(struct i2c_client *client,
 	ts_data->client = client;
 	i2c_set_clientdata(client, ts_data);
 
+#ifdef CONFIG_TINKER_MCU
 	while(!tinker_mcu_is_connected() && !tinker_mcu_ili9881c_is_connected() && timeout > 0) {
 		msleep(50);
 		timeout--;
 	}
+#endif
 
 	if (timeout == 0) {
 		LOG_ERR("wait connected timeout\n");
@@ -291,6 +298,7 @@ static int tinker_ft5406_probe(struct i2c_client *client,
 		goto timeout_failed;
 	}
 
+#ifdef CONFIG_TINKER_MCU
 	if (tinker_mcu_ili9881c_is_connected()) {
 		ts_data->screen_width = 720;
 		ts_data->screen_height = 1280;
@@ -300,6 +308,8 @@ static int tinker_ft5406_probe(struct i2c_client *client,
 		ts_data->screen_height = 480;
 		ts_data->xy_reverse = 1;
 	}
+#endif
+
 	LOG_INFO("width = %d, height = %d, reverse = %d\n",
 			ts_data->screen_width, ts_data->screen_height, ts_data->xy_reverse);
 

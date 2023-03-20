@@ -639,6 +639,16 @@ config DRM_PANEL_WKS_101WX001
 	  Say Y here if you want to enable support for the WKS
 	  101WX001 controller for 1280x800 LCD panel
 
+config DRM_PANEL_ASUS
+	tristate "support for panel asus"
+	depends on OF && I2C
+	depends on DRM_MIPI_DSI
+	select TINKER_MCU
+	select VIDEOMODE_HELPERS
+	help
+	  Say Y here if you want to enable support for panel asus.
+	  To compile this driver as a module, choose M here.
+
 config DRM_PANEL_TOSHIBA_TC358762
 	tristate "support for toshiba tc358762 panel"
 	depends on OF && I2C

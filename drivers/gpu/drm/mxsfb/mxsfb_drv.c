@@ -338,16 +338,12 @@ static const struct of_device_id mxsfb_dt_ids[] = {
 };
 MODULE_DEVICE_TABLE(of, mxsfb_dt_ids);
 
-#ifdef CONFIG_DRM_PANEL_TOSHIBA_TC358762
+#ifdef CONFIG_TINKER_MCU
 extern int tinker_mcu_is_connected(void);
-#else
-static int tinker_mcu_is_connected(void){ return 0; }
 #endif
 
-#ifdef CONFIG_DRM_PANEL_ASUS_ILI9881C
+#ifdef CONFIG_TINKER_MCU_ILI9881C
 extern int tinker_mcu_ili9881c_is_connected(void);
-#else
-static int tinker_mcu_ili9881c_is_connected(void){ return 0; }
 #endif
 
 static int mxsfb_probe(struct platform_device *pdev)
@@ -357,6 +353,7 @@ static int mxsfb_probe(struct platform_device *pdev)
 			of_match_device(mxsfb_dt_ids, &pdev->dev);
 	int ret;
 
+#ifdef CONFIG_TINKER_MCU
 	if(tinker_mcu_is_connected() == 2 && tinker_mcu_ili9881c_is_connected() == 2) {
 		printk("mxsfb_probe return EPROBE_DEFER\n");
 		return -EPROBE_DEFER;
@@ -366,6 +363,7 @@ static int mxsfb_probe(struct platform_device *pdev)
 		printk("mxsfb_probe: tc358762/ili9881c panel is not connected, lcdif probe stop\n");
 		return -ENODEV;
 	}
+#endif
 
 	if (!pdev->dev.of_node)
 		return -ENODEV;

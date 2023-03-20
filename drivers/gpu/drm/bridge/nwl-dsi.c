@@ -2046,18 +2046,14 @@ static const struct component_ops nwl_dsi_component_ops = {
 	.bind	= nwl_dsi_bind,
 	.unbind	= nwl_dsi_unbind,
 };
-#ifdef CONFIG_DRM_PANEL_TOSHIBA_TC358762
+
+#ifdef CONFIG_TINKER_MCU
 extern int tinker_mcu_is_connected(void);
-#else
-static int tinker_mcu_is_connected(void){ return 0; }
 #endif
 
-#ifdef CONFIG_DRM_PANEL_ASUS_ILI9881C
+#ifdef CONFIG_TINKER_MCU_ILI9881C
 extern int tinker_mcu_ili9881c_is_connected(void);
-#else
-static int tinker_mcu_ili9881c_is_connected(void){ return 0; }
 #endif
-
 
 static int nwl_dsi_probe(struct platform_device *pdev)
 {
@@ -2067,15 +2063,17 @@ static int nwl_dsi_probe(struct platform_device *pdev)
 	struct nwl_dsi *dsi;
 	int ret;
 
+#ifdef CONFIG_TINKER_MCU
 	if(tinker_mcu_is_connected() == 2 && tinker_mcu_ili9881c_is_connected() == 2) {
-		printk("nwl_dsi_probe return EPROBE_DEFER\n");
+		printk("mxsfb_probe return EPROBE_DEFER\n");
 		return -EPROBE_DEFER;
 	}
 
 	if(!tinker_mcu_is_connected() && !tinker_mcu_ili9881c_is_connected()) {
-		printk("nwl_dsi_probe: tc358762/ili9881c panel  not connected, dsi driver probe stop\n");
+		printk("mxsfb_probe: tc358762/ili9881c panel is not connected, lcdif probe stop\n");
 		return -ENODEV;
 	}
+#endif
 
 	if (!of_id || !of_id->data)
 		return -ENODEV;
