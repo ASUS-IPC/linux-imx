@@ -1,0 +1,97 @@
+* HED Software Configurable I/O driver.
+
+Required properties:
+  - compatible: "hed,software-configurable-io"
+  - One of the following types of I/O property is required:
+    - input-only: The I/O is input only
+    - output-only: The I/O is output only
+    - output-and-input: The I/O can do both output and input.  This is the case
+        with an output that has an output diagnostics software configurable
+        input.
+
+Required properties for output functionality:
+  - For GPIO output mode (default):
+    - output-gpio: The GPIO that controls the output.
+  - For PWM output mode:
+    - pwms: The PWM that controls the output.
+  - default-output-state: Can be either <0> for off or <1> for on;
+
+Required properties for input functionality:
+  - input-gpio: The GPIO that is the input that is measured. Optional if GPIO
+      and ADC are not the same pin.
+  - io-channels: The ADC IIO driver device reference and channel that the
+      input is measured from.
+  - io-channel-names: The ADC IIO channel name of the channels listed in
+      io-channels in the same order.
+  - selection-gpios: The GPIOs that are used to select the input mode.  The
+      order of these GPIOs must match the order of the selection-gpio-names.
+  - selection-gpio-names: The names of the GPIOs that are used to select the
+      input mode.  The order of these names in string form must match the
+      order of the selection-gpios.
+  - selection-mapping-names: A string representation of an input mode.  The
+      order of the strings must match the matching selection-mappings value.
+  - selection-mappings: The selection-gpio values to configure the input mode.
+      The order of the values must match the matching selection-mapping-names
+      string.  The value must also be the value for all GPIOs listed in
+      selection-gpios in the order they are listed.  If selection-gpios
+      contains two GPIOs, <gpio1 1>, <gpio1 2> , then a value of <1> means the
+      <gpio1 1> is set to 0 and <gpio1 2> is set to 1.  A value of <3> means
+      both gpios would be set to 1.
+  - default-input-mode: This is the default mode the input will be in at boot.
+      This value should be one of the selection-mapping-names strings.
+
+
+Optional properties:
+  - output-pwm: By default an output is in GPIO mode unless this property is
+      added.  With this property enable, the output is controlled as a PWM in
+      PWM mode.
+  - non-selectable-input: Makes pin mode static.
+
+Examples:
+- Input only:
+software_configurable_input {
+	compatible = "hed,software-configurable-io";
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_softcfgin-a12>;
+	input-only;
+	input-gpio = <&gpio1 1 GPIO_ACTIVE_HIGH>;
+	io-channels = <&adc 0>;
+	io-channel-names = "input1";
+	selection-gpio-names = "MPU_IN_SEL0", "MPU_IN_SEL1", "MPU_IN_SEL2";
+	selection-gpios = <&gpiom1 8 GPIO_ACTIVE_HIGH>, /* IO_A12_IN_SEL0 */
+				<&gpiom1 9 GPIO_ACTIVE_HIGH>, /* IO_A12_IN_SEL1 */
+				<&gpiom1 10 GPIO_ACTIVE_HIGH>; /* IO_A12_IN_SEL2 */
+	selection-mapping-names = "STG", "STB", "VTD";
+	selection-mappings = <0>, <5>, <3>;
+	default-input-mode = "VTD"
+};
+
+- Output only:
+software_configurable_output {
+	compatible = "hed,software-configurable-io";
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_softcfgout-a06>;
+	output-only;
+	output-gpio = <&gpio1 8 GPIO_ACTIVE_HIGH>;
+	default-output-status = <0>;
+};
+
+- Output and Input:
+software_configurable_io {
+	compatible = "hed,software-configurable-io";
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_softcfgio>;
+	output-and-input;
+	output-pwm;
+	pwms = <&pwm8 0 1000000>;
+	default-output-status = <0>;
+	input-gpio = <&gpio5 5 GPIO_ACTIVE_HIGH>;
+	io-channels = <&adc 0>;
+	io-channel-names = "input1";
+	selection-gpio-names = "SOM_A01_O_SEL";
+	selection-gpios = <&gpio5 3 GPIO_ACTIVE_HIGH>; /* SOM_A01_O_SEL */
+	selection-mapping-names = "STG", "STB";
+	selection-mappings = <0>, <1>;
+	default-input-mode = "STG";
+};
+

@@ -486,6 +486,20 @@ config HISI_HIKEY_USB
 	  switching between the dual-role USB-C port and the USB-A host ports
 	  using only one USB controller.
 
+config HED_SOFTWARE_CONFIGURABLE_IO
+        bool "HED Software Configurable I/O"
+        depends on OF_GPIO
+        depends on IIO
+        help
+	  This allows the selection of input modes (Voltage to Digital, Switch
+	  to Battery, Switch to Ground, Resistance to Digital) for inputs. This
+	  driver controls the mode selection.  This also allows the selection of
+	  of output modes (GPIO or PWM) for outputs.
+
+	  The driver is configured through device tree entries that define which
+	  GPIOs are used for mode selection, what the modes are, and what GPIO
+	  values result in the defined modes.
+
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
 source "drivers/misc/cb710/Kconfig"
