@@ -894,12 +894,6 @@
 			};
 		};
 	};
-
-	eeprom: eeprom@54 {
-		compatible = "atmel,24c08";
-		reg = <0x54>;
-		status = "okay";
-	};
 };
 
 &i2c4 {
@@ -941,6 +935,12 @@
 	tmp75@4f {
 		compatible = "ti,tmp75";
 		reg = <0x4f>;
+		status = "okay";
+	};
+
+	eeprom: eeprom@54 {
+		compatible = "atmel,24c08";
+		reg = <0x54>;
 		status = "okay";
 	};
 
