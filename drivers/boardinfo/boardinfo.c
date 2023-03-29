@@ -227,6 +227,13 @@ static int gpio_hwid_probe(struct platform_device *pdev)
 		}
 
 		id3 = gpio_get_value(sku3_gpio);
+
+		if (id3 == 1) {
+			if (strcmp(boardinfo, "PE100A") == 0)
+				boardinfo = "PE100A V3.0";
+			else if (strcmp(boardinfo, "IMX8P-IM-A") == 0)
+				boardinfo = "IMX8P-IM-A R2.0";
+		}
 	}
 
 	skuid = (id3 << 3) + (id2 << 2) + (id1 << 1) + id0;
