@@ -713,6 +713,14 @@ config LEDS_MENF21BMC
 	  This driver can also be built as a module. If so the module
 	  will be called leds-menf21bmc.
 
+config LEDS_KTD202x
+        tristate "LED support for KTD202x LED controller"
+        depends on LEDS_CLASS && I2C
+        help
+          This option enables support for KTD202x LED.
+
+          Say Y to enable this driver.
+
 config LEDS_IS31FL319X
 	tristate "LED Support for ISSI IS31FL319x I2C LED controller family"
 	depends on LEDS_CLASS && I2C && OF
