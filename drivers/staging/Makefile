@@ -45,4 +45,3 @@ obj-$(CONFIG_QLGE)		+= qlge/
 obj-$(CONFIG_WFX)		+= wfx/
 obj-$(CONFIG_FSL_PPFE)		+= fsl_ppfe/
 obj-$(CONFIG_ETHOSU)		+= ethosu/
-obj-$(CONFIG_STAGING_GASKET_FRAMEWORK)  += gasket/
