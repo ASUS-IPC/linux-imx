@@ -752,6 +752,14 @@ config LEDS_KTD2692
 
 	  Say Y to enable this driver.
 
+config LEDS_KTD202x
+        tristate "LED support for KTD202x LED controller"
+        depends on LEDS_CLASS && I2C
+        help
+          This option enables support for KTD202x LED.
+
+          Say Y to enable this driver.
+
 config LEDS_IS31FL319X
 	tristate "LED Support for ISSI IS31FL319x I2C LED controller family"
 	depends on LEDS_CLASS && I2C && OF

@@ -939,6 +939,11 @@
 		status = "okay";
 	};
 
+	leds_ktd202x: ktd202x@30 {
+		compatible = "ktd, ktd202x";
+		reg = <0x30>;
+		status = "okay";
+	};
 };
 
 &irqsteer_hdmi {
