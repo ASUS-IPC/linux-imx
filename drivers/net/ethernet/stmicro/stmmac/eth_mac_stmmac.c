@@ -32,7 +32,7 @@ int eth_mac_eeprom_stmmac(u8 *eth_mac_stmmac)
 	int i;
 	memset(eth_mac_stmmac, 0, 6);
 	printk("Read the Ethernet MAC address from EEPROM (STMMAC):");
-	at24_read_eeprom(eth_mac_stmmac, 7, 6);
+	at24_read_eeprom(eth_mac_stmmac, 6, 6);
 	for(i=0; i<5; i++)
 		printk("%2.2x:", eth_mac_stmmac[i]);
 	printk("%2.2x\n", eth_mac_stmmac[i]);
