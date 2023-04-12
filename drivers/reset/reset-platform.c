@@ -115,12 +115,8 @@ static int platform_reset_probe(struct platform_device *pdev)
 		gpio_set_value_cansleep(pciehub_en_gpio, 0); //disable
 		gpio_set_value_cansleep(pciehub_rst_gpio, 0); //to low
 		mdelay(10);
-              gpio_set_value_cansleep(pciehub_en_gpio, 1); //enable
-		 mdelay(100);
-              gpio_set_value_cansleep(pciehub_rst_gpio, 1); //to default
-              mdelay(25);
-		gpio_set_value_cansleep(pciehub_rst_gpio, 0); //active reset
-		mdelay(20);
+		gpio_set_value_cansleep(pciehub_en_gpio, 1); //enable
+		mdelay(100);
 		gpio_set_value_cansleep(pciehub_rst_gpio, 1); //to default
 	}
 
