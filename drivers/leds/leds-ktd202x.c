@@ -14,12 +14,13 @@
 
 #define KTD_DEBUG
 #ifdef KTD_DEBUG
-#define LOG_DBG(fmt, args...)   printk(KERN_ERR "[%s]:: " fmt, __func__, ## args);
+#define LOG_DBG(fmt, args...)   printk(KERN_ERR "[%s]: " fmt, __func__, ## args);
 #else
 #define LOG_DBG(fmt, args...)
 #endif
 
-#define KTD2027
+/* KTD2026 */
+//#define KTD2027
 #ifdef KTD2027
 #define  LED_COUNT  4
 #else
@@ -59,7 +60,8 @@ enum cust_led_id
 
 struct cust_led_data{
 	char *name;
-	enum cust_led_id  led_id;
+	enum cust_led_id led_id;
+	int max_level;
 };
 
 struct ktd_led_data {
@@ -83,11 +85,11 @@ u8 led_status = 0;
 
 struct cust_led_data cust_led_list[LED_COUNT] =
 {
-	{"ktd-ch1", CUST_LED_CH1},
-	{"ktd-ch2", CUST_LED_CH2},
-	{"ktd-ch3", CUST_LED_CH3},
+	{"ktd-ch1", CUST_LED_CH1, 0x9F},
+	{"ktd-ch2", CUST_LED_CH2, 0x4F},
+	{"ktd-ch3", CUST_LED_CH3, 0x4F},
 #ifdef KTD2027
-	{"ktd-ch4", CUST_LED_CH4},
+	{"ktd-ch4", CUST_LED_CH4, 0x4F},
 #endif
 };
 
@@ -441,8 +443,10 @@ void ktd202x_ch4_led_on(int level)
 
 void ktd_cust_led_set_cust(struct cust_led_data *cust, int level)
 {
+	if (level > cust->max_level)
+		level = cust->max_level;
 #ifdef KTD_DEBUG
-	pr_info("ktd_cust_led_set_cust level = %d  cust->led_id = %d  \n", level , cust->led_id);
+	pr_info("ktd_cust_led_set_cust: level = 0x%02x, cust->led_id = %d\n",level , cust->led_id);
 #endif
 	if(level > 0)
 	{
@@ -519,7 +523,7 @@ void ktd_led_blink_set(struct ktd_led_data *led_data)
 static int ktd_blink_set(struct led_classdev *led_cdev, unsigned long *delay_on, unsigned long *delay_off)
 {
 	struct ktd_led_data *led_data =
-			container_of(led_cdev, struct ktd_led_data, cdev);
+		container_of(led_cdev, struct ktd_led_data, cdev);
 
 	led_data->delay_on = *delay_on;
 	led_data->delay_off = *delay_off;
@@ -540,7 +544,7 @@ static void ktd_led_set(struct led_classdev *led_cdev, enum led_brightness level
 	}
 
 	if (level > led_data->cdev.max_brightness)
-			level = led_data->cdev.max_brightness;
+		level = led_data->cdev.max_brightness;
 
 	led_data->cdev.brightness = level;
 	schedule_work(&led_data->work);
@@ -549,7 +553,7 @@ static void ktd_led_set(struct led_classdev *led_cdev, enum led_brightness level
 void ktd_led_work(struct work_struct *work)
 {
 	struct ktd_led_data *led_data =
-			container_of(work, struct ktd_led_data, work);
+		container_of(work, struct ktd_led_data, work);
 
 	mutex_lock(&leds_mutex);
 	ktd_cust_led_set_cust(&led_data->cust_data, led_data->cdev.brightness);
@@ -710,6 +714,13 @@ static ssize_t ktd202x_reg678_iout_store(struct device *dev,
 	}
 
 	update= USING_8BIT(value);
+	if (update > led_data->cust_data.max_level)
+		update = led_data->cust_data.max_level;
+
+#ifdef KTD_DEBUG
+	LOG_DBG("update = 0x%02x\n", update);
+#endif
+
 	switch(led_data->cust_data.led_id){
 		case CUST_LED_CH1:
 			ktd202x_write(ktd202x_i2c, 0x06, update);
@@ -812,6 +823,7 @@ static int ktd202x_probe(struct i2c_client *client,
 
 		g_ktd_data[i]->cust_data.name = cust_led_list[i].name;
 		g_ktd_data[i]->cust_data.led_id = cust_led_list[i].led_id;
+		g_ktd_data[i]->cust_data.max_level = cust_led_list[i].max_level;
 		g_ktd_data[i]->cdev.name = cust_led_list[i].name;
 		g_ktd_data[i]->cdev.brightness_set = ktd_led_set;
 		g_ktd_data[i]->cdev.blink_set =ktd_blink_set;
