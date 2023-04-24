@@ -710,7 +710,7 @@ static int mcp251x_hw_reset(struct spi_device *spi)
 	while ((reg & CANCTRL_REQOP_MASK) != CANCTRL_REQOP_CONF) {
 		usleep_range(MCP251X_OST_DELAY_MS * 1000,
 			     MCP251X_OST_DELAY_MS * 1000 * 2);
-		dev_info(&spi->dev, "CANSTAT = 0x%02x\n", reg);
+		dev_dbg(&spi->dev, "CANSTAT = 0x%02x\n", reg);
 		if (time_after(jiffies, timeout)) {
 			dev_err(&spi->dev,
 				"MCP251x didn't enter in conf mode after reset\n");
