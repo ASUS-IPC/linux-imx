@@ -723,10 +723,6 @@
 };
 
 &pcie{
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_pcie>;
-	disable-gpio = <&gpio2 6 GPIO_ACTIVE_LOW>;
-	reset-gpio = <&gpio2 7 GPIO_ACTIVE_LOW>;
 	ext_osc = <1>;
 	clocks = <&clk IMX8MP_CLK_HSIO_ROOT>,
 		 <&clk IMX8MP_CLK_PCIE_AUX>,
@@ -740,18 +736,9 @@
 				 <&clk IMX8MP_SYS_PLL2_50M>;
 	l1ss-disabled;
 	status = "okay";
-
-	wifi_wake_host {
-		compatible = "nxp,wifi-wake-host";
-		interrupt-parent = <&gpio5>;
-		interrupts = <21 IRQ_TYPE_LEVEL_LOW>;
-		interrupt-names = "host-wake";
-	};
 };
 
 &pcie_ep{
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_pcie>;
 	ext_osc = <1>;
 	clocks = <&clk IMX8MP_CLK_HSIO_ROOT>,
 		 <&clk IMX8MP_CLK_PCIE_AUX>,
@@ -1070,15 +1057,6 @@
 	pinctrl_platform_reset: platform_reset {
 		fsl,pins = <
 			MX8MP_IOMUXC_GPIO1_IO08__GPIO1_IO08	0x16
-		>;
-	};
-
-	pinctrl_pcie: pciegrp {
-		fsl,pins = <
-			MX8MP_IOMUXC_I2C4_SCL__PCIE_CLKREQ_B		0x61 /* open drain, pull up */
-			MX8MP_IOMUXC_SD1_DATA4__GPIO2_IO06		0x41
-			MX8MP_IOMUXC_SD1_DATA5__GPIO2_IO07		0x41
-			MX8MP_IOMUXC_I2C4_SDA__GPIO5_IO21		0x1c4
 		>;
 	};
 
