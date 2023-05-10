@@ -269,11 +269,13 @@ int backlight_device_set_brightness(struct backlight_device *bd,
 
 	mutex_lock(&bd->ops_lock);
 	if (bd->ops) {
-		if (brightness > bd->props.max_brightness)
+		if (brightness > bd->props.max_brightness || brightness > bd->props.thermal_max_brightness) {
 			rc = -EINVAL;
+		}
 		else {
 			pr_debug("set brightness to %lu\n", brightness);
 			bd->props.brightness = brightness;
+			bd->props.init_brightness = brightness;
 			rc = backlight_update_status(bd);
 		}
 	}
@@ -300,7 +302,7 @@ static ssize_t brightness_store(struct device *dev,
 
 	return rc ? rc : count;
 }
-static DEVICE_ATTR_RO(brightness);
+static DEVICE_ATTR_RW(brightness);
 
 static ssize_t type_show(struct device *dev, struct device_attribute *attr,
 		char *buf)

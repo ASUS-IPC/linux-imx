@@ -149,8 +149,6 @@ void update_thermal_max_brightness(int thermal_max_brightness)
 {
 	if(bl){
 		printk(KERN_INFO "%s brightness:%d thermal_max_brightness:%d\n", __func__,bl->props.brightness,thermal_max_brightness);
-		if(bl->props.brightness < thermal_max_brightness)
-			bl->props.brightness = thermal_max_brightness;
 		bl->props.thermal_max_brightness = thermal_max_brightness;
 		backlight_update_status(bl);
 	}
