@@ -62,8 +62,9 @@
 #define PLL_BYPASS1			0x2
 #define PLL_BYPASS2			0x1
 
-#define SSCG_PLL_BYPASS1_MASK           BIT(5)
-#define SSCG_PLL_BYPASS2_MASK           BIT(4)
+#define SSCG_PLL_SSE_MASK			BIT(0)
+#define SSCG_PLL_BYPASS1_MASK		BIT(5)
+#define SSCG_PLL_BYPASS2_MASK		BIT(4)
 #define SSCG_PLL_BYPASS_MASK		GENMASK(5, 4)
 
 #define PLL_SCCG_LOCK_TIMEOUT		70
@@ -328,7 +329,7 @@ static unsigned long clk_sscg_pll_recalc_rate(struct clk_hw *hw,
 					 unsigned long parent_rate)
 {
 	struct clk_sscg_pll *pll = to_clk_sscg_pll(hw);
-	u32 val, divr1, divf1, divr2, divf2, divq;
+	u32 val, divr1, divf1, divr2, divf2, divq, cfg1;
 	u64 temp64;
 
 	val = readl_relaxed(pll->base + PLL_CFG2);
@@ -337,6 +338,7 @@ static unsigned long clk_sscg_pll_recalc_rate(struct clk_hw *hw,
 	divf1 = FIELD_GET(PLL_DIVF1_MASK, val);
 	divf2 = FIELD_GET(PLL_DIVF2_MASK, val);
 	divq = FIELD_GET(PLL_DIVQ_MASK, val);
+	cfg1 = readl(pll->base + PLL_CFG1);
 
 	temp64 = parent_rate;
 
@@ -347,7 +349,11 @@ static unsigned long clk_sscg_pll_recalc_rate(struct clk_hw *hw,
 		temp64 *= divf2;
 		do_div(temp64, (divr2 + 1) * (divq + 1));
 	} else {
-		temp64 *= 2;
+		if (cfg1 & SSCG_PLL_SSE_MASK) {
+			temp64 *= 8;
+		} else {
+			temp64 *= 2;
+		}
 		temp64 *= (divf1 + 1) * (divf2 + 1);
 		do_div(temp64, (divr1 + 1) * (divr2 + 1) * (divq + 1));
 	}
