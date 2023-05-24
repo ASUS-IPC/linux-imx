@@ -516,6 +516,15 @@ static int fsl_sai_set_bclk(struct snd_soc_dai *dai, bool tx, u32 freq)
 	return 0;
 }
 
+/* asus kengyen add for delay disable mclk tx*/
+static void asus_sai_disable_mclk_tx_work(struct work_struct *work)
+{
+	struct fsl_sai *sai = container_of(work, struct fsl_sai, disable_mclk_tx_work.work);
+        /* delay to disable playback mclk tx*/
+        clk_disable_unprepare(sai->mclk_clk[sai->mclk_id[1]]);
+	//printk("asus_sai_disable_mclk_tx_work done.\n");
+}
+
 static int fsl_sai_hw_params(struct snd_pcm_substream *substream,
 		struct snd_pcm_hw_params *params,
 		struct snd_soc_dai *cpu_dai)
@@ -588,6 +597,8 @@ static int fsl_sai_hw_params(struct snd_pcm_substream *substream,
 
 		/* Do not enable the clock if it is already enabled */
 		if (!(sai->mclk_streams & BIT(substream->stream))) {
+			ret = cancel_delayed_work_sync(&sai->disable_mclk_tx_work);
+			//printk("fsl_sai_hw_params cancel_delayed_work disable mclk: %d\n", ret);
 			ret = clk_prepare_enable(sai->mclk_clk[sai->mclk_id[tx]]);
 			if (ret)
 				return ret;
@@ -712,7 +723,8 @@ static int fsl_sai_hw_free(struct snd_pcm_substream *substream,
 
 	if (!sai->slave_mode[tx] &&
 			sai->mclk_streams & BIT(substream->stream)) {
-		clk_disable_unprepare(sai->mclk_clk[sai->mclk_id[tx]]);
+		schedule_delayed_work(&sai->disable_mclk_tx_work, msecs_to_jiffies(500)); //asus kengyen add for delay 500msec disable MCLK tx
+		//clk_disable_unprepare(sai->mclk_clk[sai->mclk_id[tx]]);
 		sai->mclk_streams &= ~BIT(substream->stream);
 	}
 
@@ -898,6 +910,9 @@ static int fsl_sai_dai_probe(struct snd_soc_dai *cpu_dai)
 {
 	struct fsl_sai *sai = dev_get_drvdata(cpu_dai->dev);
 	unsigned int ofs = sai->soc_data->reg_offset;
+
+	/* asus kengyen add for delay disable mclk tx*/
+	INIT_DELAYED_WORK(&sai->disable_mclk_tx_work, asus_sai_disable_mclk_tx_work);
 
 	regmap_update_bits(sai->regmap, FSL_SAI_TCR1(ofs),
 			   FSL_SAI_CR1_RFW_MASK(sai->soc_data->fifo_depth),
@@ -1708,6 +1723,8 @@ static int fsl_sai_runtime_resume(struct device *dev)
 	}
 
 	if (sai->mclk_streams & BIT(SNDRV_PCM_STREAM_PLAYBACK)) {
+		ret = cancel_delayed_work_sync(&sai->disable_mclk_tx_work);
+		//printk("fsl_sai_runtime_resume cancel_delayed_work for disable mclk: %d\n", ret);
 		ret = clk_prepare_enable(sai->mclk_clk[sai->mclk_id[1]]);
 		if (ret)
 			goto disable_bus_clk;

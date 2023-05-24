@@ -9,6 +9,7 @@
 #include <linux/pm_qos.h>
 #include <linux/platform_data/dma-imx.h>
 #include <sound/dmaengine_pcm.h>
+#include <linux/delay.h>
 
 #define FAL_SAI_NUM_RATES  20
 #define FSL_SAI_FORMATS (SNDRV_PCM_FMTBIT_S16_LE |\
@@ -315,6 +316,9 @@ struct fsl_sai {
 	struct pinctrl_state *pins_state;
 	struct snd_pcm_hw_constraint_list constraint_rates;
 	unsigned int constraint_rates_list[FAL_SAI_NUM_RATES];
+
+	/*asus kengyen added for disable mclk delay */
+	struct delayed_work disable_mclk_tx_work
 };
 
 const struct attribute_group *fsl_sai_get_dev_attribute_group(bool monitor_spdif);
