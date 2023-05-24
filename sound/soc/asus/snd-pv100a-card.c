@@ -171,7 +171,7 @@ static int snd_pv100a_mc_probe(struct platform_device *pdev)
 	codec_dev = of_find_i2c_device_by_node(pv100a_dailink.codecs->of_node); //update on 2021.05.28
 	if (!codec_dev) {
 		dev_err(dev, "Can't find codec device!\n");
-		return -EINVAL;
+		return -EPROBE_DEFER;
 	}
 
 	//platform_set_drvdata(pdev, card);
