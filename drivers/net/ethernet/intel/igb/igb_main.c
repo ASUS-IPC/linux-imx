@@ -3359,9 +3359,14 @@ static int igb_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	memcpy(netdev->dev_addr, hw->mac.addr, netdev->addr_len);
 
 	if (!is_valid_ether_addr(netdev->dev_addr)) {
-		dev_err(&pdev->dev, "Invalid MAC Address\n");
-		err = -EIO;
-		goto err_eeprom;
+		eth_hw_addr_random(netdev);
+		dev_info(&pdev->dev, "Assigning random MAC address = %pM\n", netdev->dev_addr);
+		memcpy(hw->mac.addr, netdev->dev_addr, netdev->addr_len);
+		if (!is_valid_ether_addr(netdev->dev_addr)) {
+			dev_err(&pdev->dev, "Invalid MAC Address\n");
+			err = -EIO;
+			goto err_eeprom;
+		}
 	}
 
 	igb_set_default_mac_filter(adapter);
