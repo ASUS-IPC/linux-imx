@@ -111,13 +111,6 @@
 		compatible = "linux,bt-sco";
 	};
 
-	wm8524: audio-codec {
-		#sound-dai-cells = <0>;
-		compatible = "wlf,wm8524";
-		wlf,mute-gpios = <&gpio1 8 GPIO_ACTIVE_LOW>;
-		status = "disabled";
-	};
-
 	sound-bt-sco {
 		compatible = "simple-audio-card";
 		simple-audio-card,name = "bt-sco-audio";
@@ -137,31 +130,6 @@
 		};
 	};
 
-	sound-wm8524 {
-		compatible = "simple-audio-card";
-		simple-audio-card,name = "wm8524-audio";
-		simple-audio-card,format = "i2s";
-		simple-audio-card,frame-master = <&cpudai>;
-		simple-audio-card,bitclock-master = <&cpudai>;
-		simple-audio-card,widgets =
-			"Line", "Left Line Out Jack",
-			"Line", "Right Line Out Jack";
-		simple-audio-card,routing =
-			"Left Line Out Jack", "LINEVOUTL",
-			"Right Line Out Jack", "LINEVOUTR";
-
-		cpudai: simple-audio-card,cpu {
-			sound-dai = <&sai2>;
-			dai-tdm-slot-num = <2>;
-			dai-tdm-slot-width = <32>;
-		};
-
-		link_codec: simple-audio-card,codec {
-			sound-dai = <&wm8524>;
-			clocks = <&clk IMX8MQ_CLK_SAI2_ROOT>;
-		};
-	};
-
 	sound-hdmi {
 		compatible = "fsl,imx-audio-hdmi";
 		model = "imx-audio-hdmi";
@@ -174,67 +142,6 @@
 				<48000>,
 				<96000>,
 				<192000>;
-	};
-
-	sound-spdif {
-		compatible = "fsl,imx-audio-spdif";
-		model = "imx-spdif";
-		spdif-controller = <&spdif1>;
-		spdif-out;
-		spdif-in;
-	};
-
-	sound-hdmi-arc {
-		compatible = "fsl,imx-audio-spdif";
-		model = "imx-hdmi-arc";
-		spdif-controller = <&spdif2>;
-		spdif-in;
-	};
-
-	sound-ak4458 {
-		compatible = "fsl,imx-audio-card";
-		model = "ak4458-audio";
-		pri-dai-link {
-			link-name = "akcodec";
-			format = "i2s";
-			cpu {
-				sound-dai = <&sai1>;
-			};
-			codec {
-				sound-dai = <&ak4458_1>, <&ak4458_2>;
-			};
-		};
-	};
-
-	sound-ak5558 {
-		compatible = "fsl,imx-audio-card";
-		model = "ak5558-audio";
-		pri-dai-link {
-			link-name = "akcodec";
-			format = "i2s";
-			cpu {
-				sound-dai = <&sai5>;
-			};
-			codec {
-				sound-dai = <&ak5558>;
-			};
-		};
-	};
-
-	sound-ak4497 {
-		compatible = "fsl,imx-audio-card";
-		model = "ak4497-audio";
-		status = "disabled";
-		pri-dai-link {
-			link-name = "akcodec";
-			format = "i2s";
-			cpu {
-				sound-dai = <&sai1>;
-			};
-			codec {
-				sound-dai = <&ak4497>;
-			};
-		};
 	};
 
 	hwid: gpio-hwid {
@@ -603,35 +510,6 @@
 		status = "disabled";
 	};
 
-	ak4458_1: ak4458@10 {
-		#sound-dai-cells = <0>;
-		sound-name-prefix = "0";
-		compatible = "asahi-kasei,ak4458";
-		reg = <0x10>;
-	};
-
-	ak4458_2: ak4458@12 {
-		#sound-dai-cells = <0>;
-		sound-name-prefix = "1";
-		compatible = "asahi-kasei,ak4458";
-		reg = <0x12>;
-	};
-
-	ak5558: ak5558@13 {
-		#sound-dai-cells = <0>;
-		compatible = "asahi-kasei,ak5558";
-		reg = <0x13>;
-		reset-gpios = <&gpio3 17 GPIO_ACTIVE_LOW>;
-	};
-
-	ak4497: ak4497@11 {
-		#sound-dai-cells = <0>;
-		compatible = "asahi-kasei,ak4497";
-		reg = <0x11>;
-		reset-gpios = <&gpio3 16 GPIO_ACTIVE_LOW>;
-		dsd-path = <1>;
-	};
-
 	adv_bridge: adv7535@3d {
 		compatible = "adi,adv7535";
 		reg = <0x3d>;
@@ -841,30 +719,6 @@
 };
 
 &snvs_pwrkey {
-	status = "okay";
-};
-
-&spdif1 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_spdif1>;
-	assigned-clocks = <&clk IMX8MQ_CLK_SPDIF1>;
-	assigned-clock-parents = <&clk IMX8MQ_AUDIO_PLL1_OUT>;
-	assigned-clock-rates = <24576000>;
-	clocks = <&clk IMX8MQ_CLK_IPG_ROOT>, <&clk IMX8MQ_CLK_25M>,
-		<&clk IMX8MQ_CLK_SPDIF1>, <&clk IMX8MQ_CLK_DUMMY>,
-		<&clk IMX8MQ_CLK_DUMMY>, <&clk IMX8MQ_CLK_DUMMY>,
-		<&clk IMX8MQ_CLK_IPG_ROOT>, <&clk IMX8MQ_CLK_DUMMY>,
-		<&clk IMX8MQ_CLK_DUMMY>, <&clk IMX8MQ_CLK_DUMMY>,
-		<&clk IMX8MQ_AUDIO_PLL1_OUT>, <&clk IMX8MQ_AUDIO_PLL2_OUT>;
-	clock-names = "core", "rxtx0", "rxtx1", "rxtx2", "rxtx3", "rxtx4",
-		      "rxtx5", "rxtx6", "rxtx7", "spba", "pll8k", "pll11k";
-	status = "okay";
-};
-
-&spdif2 {
-	assigned-clocks = <&clk IMX8MQ_CLK_SPDIF2>;
-	assigned-clock-parents = <&clk IMX8MQ_AUDIO_PLL1_OUT>;
-	assigned-clock-rates = <24576000>;
 	status = "okay";
 };
 
