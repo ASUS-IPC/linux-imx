@@ -3160,6 +3160,8 @@ static int igb_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	int err, pci_using_dac;
 	u8 part_str[E1000_PBANUM_LENGTH];
 
+	mdelay(500);
+
 	/* Catch broken hardware that put the wrong VF device ID in
 	 * the PCIe SR-IOV capability.
 	 */
