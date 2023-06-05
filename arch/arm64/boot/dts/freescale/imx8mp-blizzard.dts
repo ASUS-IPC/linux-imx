@@ -169,20 +169,6 @@
 		default-brightness-level = <80>;
 	};
 
-	cbtl04gp {
-		compatible = "nxp,cbtl04gp";
-		pinctrl-names = "default";
-		pinctrl-0 = <&pinctrl_typec_mux>;
-		switch-gpios = <&gpio4 20 GPIO_ACTIVE_LOW>;
-		orientation-switch;
-
-		port {
-			usb3_data_ss: endpoint {
-				remote-endpoint = <&typec_con_ss>;
-			};
-		};
-	};
-
 	blizzard-platform-reset {
 		compatible = "blizzard-platform-reset";
 		pinctrl-0 = <&pinctrl_platform_reset>, <&pinctrl_pcie_detect>, <&pinctrl_pciehub_ctl>;
@@ -599,42 +585,16 @@
 		};
 	};
 
-	ptn5110: tcpc@50 {
-		compatible = "nxp,ptn5110";
+	it5201: tcpc@67 {
+		compatible = "ite,it5201";
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_typec>;
-		reg = <0x50>;
-		interrupt-parent = <&gpio4>;
-		interrupts = <19 8>;
-
+		reg = <0x67>;
+		interrupt-parent = <&gpio1>;
+		interrupts = <11 IRQ_TYPE_EDGE_FALLING>;
 		port {
 			typec_dr_sw: endpoint {
 				remote-endpoint = <&usb3_drd_sw>;
-			};
-		};
-
-		usb_con: connector {
-			compatible = "usb-c-connector";
-			label = "USB-C";
-			power-role = "dual";
-			data-role = "dual";
-			try-power-role = "sink";
-			source-pdos = <PDO_FIXED(5000, 3000, PDO_FIXED_USB_COMM)>;
-			sink-pdos = <PDO_FIXED(5000, 3000, PDO_FIXED_USB_COMM)
-				     PDO_VAR(5000, 20000, 3000)>;
-			op-sink-microwatt = <15000000>;
-			self-powered;
-
-			ports {
-				#address-cells = <1>;
-				#size-cells = <0>;
-
-				port@1 {
-					reg = <1>;
-					typec_con_ss: endpoint {
-						remote-endpoint = <&usb3_data_ss>;
-					};
-				};
 			};
 		};
 	};
@@ -865,7 +825,6 @@
 };
 
 &usb3_phy0 {
-	vbus-power-supply = <&ptn5110>;
 	fsl,phy-tx-vref-tune = <0xe>;
 	fsl,phy-tx-preemp-amp-tune = <3>;
 	fsl,phy-tx-vboost-level = <5>;
@@ -884,8 +843,7 @@
 	hnp-disable;
 	srp-disable;
 	adp-disable;
-	usb-role-switch;
-	role-switch-default-mode = "none";
+	extcon = <&it5201>;
 	snps,dis-u1-entry-quirk;
 	snps,dis-u2-entry-quirk;
 	status = "okay";
@@ -909,7 +867,6 @@
 
 &usb_dwc3_1 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_usb1_vbus>;
 	dr_mode = "host";
 	status = "okay";
 };
@@ -976,7 +933,7 @@
 
 	pinctrl_pwm2: pwm2grp {
 		fsl,pins = <
-			MX8MP_IOMUXC_GPIO1_IO11__PWM2_OUT	0x116
+			MX8MP_IOMUXC_GPIO1_IO10__PWM3_OUT	0x116
 		>;
 	};
 
@@ -1214,13 +1171,7 @@
 
 	pinctrl_typec: typec1grp {
 		fsl,pins = <
-			MX8MP_IOMUXC_SAI1_TXD7__GPIO4_IO19	0x1c4
-		>;
-	};
-
-	pinctrl_typec_mux: typec1muxgrp {
-		fsl,pins = <
-			MX8MP_IOMUXC_SAI1_MCLK__GPIO4_IO20	0x16
+			MX8MP_IOMUXC_GPIO1_IO11__GPIO1_IO11	0x1c4
 		>;
 	};
 
@@ -1228,12 +1179,6 @@
 		fsl,pins = <
 			MX8MP_IOMUXC_UART2_RXD__UART2_DCE_RX	0x140
 			MX8MP_IOMUXC_UART2_TXD__UART2_DCE_TX	0x140
-		>;
-	};
-
-	pinctrl_usb1_vbus: usb1grp {
-		fsl,pins = <
-			MX8MP_IOMUXC_GPIO1_IO14__USB2_PWR		0x19
 		>;
 	};
 
