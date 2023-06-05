@@ -1,3 +1,23 @@
+/*
+*
+*  Realtek Bluetooth USB driver
+*
+*
+*  This program is free software; you can redistribute it and/or modify
+*  it under the terms of the GNU General Public License as published by
+*  the Free Software Foundation; either version 2 of the License, or
+*  (at your option) any later version.
+*
+*  This program is distributed in the hope that it will be useful,
+*  but WITHOUT ANY WARRANTY; without even the implied warranty of
+*  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+*  GNU General Public License for more details.
+*
+*  You should have received a copy of the GNU General Public License
+*  along with this program; if not, write to the Free Software
+*  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+*
+*/
 #include <net/bluetooth/hci_core.h>
 #include <linux/list.h>
 
@@ -27,10 +47,12 @@
 #define HCI_EV_LE_META			                        0x3e
 #define HCI_EV_LE_CONN_COMPLETE		                    0x01
 #define HCI_EV_LE_CONN_UPDATE_COMPLETE	                0x03
+#define HCI_EV_LE_ENHANCED_CONN_COMPLETE    0x0a
 
 //vendor cmd to fw
 #define HCI_VENDOR_ENABLE_PROFILE_REPORT_COMMAND        0xfc18
-#define HCI_VENDOR_SET_PROFILE_REPORT_COMMAND           0xfc19
+#define HCI_VENDOR_SET_PROFILE_REPORT_LEGACY_COMMAND    0xfc19
+#define HCI_VENDOR_SET_PROFILE_REPORT_COMMAND		0xfc1B
 #define HCI_VENDOR_MAILBOX_CMD                          0xfc8f
 #define HCI_VENDOR_SET_BITPOOL				0xfc51
 
@@ -117,7 +139,7 @@
 #define PSM_AVDTP   0x0019
 #define PSM_FTP     0x1001
 #define PSM_BIP     0x1003
-#define PSM_OPP     0x1015
+#define PSM_OPP     0x1005
 //--add more if needed--//
 
 enum {
@@ -149,8 +171,16 @@ typedef struct {
 typedef struct rtl_hci_conn {
 	struct list_head list;
 	uint16_t handle;
+	struct delayed_work a2dp_count_work;
+	struct delayed_work pan_count_work;
+	struct delayed_work hogp_count_work;
+	uint32_t a2dp_packet_count;
+	uint32_t pan_packet_count;
+	uint32_t hogp_packet_count;
+	uint32_t voice_packet_count;
 	uint8_t type;		// 0:l2cap, 1:sco/esco, 2:le
-	uint8_t profile_bitmap;
+	uint16_t profile_bitmap;
+	uint16_t profile_status;
 	int8_t profile_refcount[8];
 } rtk_conn_prof, *prtk_conn_prof;
 
@@ -212,14 +242,12 @@ struct rtl_coex_struct {
 	struct sockaddr_in wifi_addr;
 	struct timer_list polling_timer;
 #endif
-	struct timer_list a2dp_count_timer;
-	struct timer_list pan_count_timer;
-	struct timer_list hogp_count_timer;
 #ifdef RTB_SOFTWARE_MAILBOX
 	struct workqueue_struct *sock_wq;
 	struct delayed_work sock_work;
 #endif
 	struct workqueue_struct *fw_wq;
+	struct workqueue_struct *timer_wq;
 	struct delayed_work fw_work;
 	struct delayed_work l2_work;
 #ifdef RTB_SOFTWARE_MAILBOX
@@ -228,12 +256,8 @@ struct rtl_coex_struct {
 	struct urb *urb;
 	spinlock_t spin_lock_sock;
 	spinlock_t spin_lock_profile;
-	uint32_t a2dp_packet_count;
-	uint32_t pan_packet_count;
-	uint32_t hogp_packet_count;
-	uint32_t voice_packet_count;
-	uint8_t profile_bitmap;
-	uint8_t profile_status;
+	uint16_t profile_bitmap;
+	uint16_t profile_status;
 	int8_t profile_refcount[8];
 	uint8_t ispairing;
 	uint8_t isinquirying;
@@ -253,6 +277,7 @@ struct rtl_coex_struct {
 	uint8_t wifi_on;
 	uint8_t sock_open;
 #endif
+
 	unsigned long cmd_last_tx;
 
 	/* hci ev buff */
