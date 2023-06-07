@@ -19,6 +19,7 @@
 #include <linux/rcupdate.h>
 #include <linux/export.h>
 #include <linux/timekeeping.h>
+#include <linux/leds.h>
 #include <net/net_namespace.h>
 #include <net/ieee80211_radiotap.h>
 #include <net/cfg80211.h>
@@ -4375,6 +4376,9 @@ out:
 netdev_tx_t ieee80211_subif_start_xmit(struct sk_buff *skb,
 				       struct net_device *dev)
 {
+#if defined(CONFIG_LEDS_TRIGGER_PV100A)
+	ledtrig_led_func_ctrl(LED_FUNC_WIFI, LED_LIGHT_GREEN, 1);
+#endif
 	if (unlikely(ieee80211_multicast_to_unicast(skb, dev))) {
 		struct sk_buff_head queue;
 
@@ -4385,7 +4389,9 @@ netdev_tx_t ieee80211_subif_start_xmit(struct sk_buff *skb,
 	} else {
 		__ieee80211_subif_start_xmit(skb, dev, 0, 0, NULL);
 	}
-
+#if defined(CONFIG_LEDS_TRIGGER_PV100A)
+	ledtrig_led_func_ctrl(LED_FUNC_WIFI, LED_LIGHT_GREEN, 0);
+#endif
 	return NETDEV_TX_OK;
 }
 
