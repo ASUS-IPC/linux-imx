@@ -213,6 +213,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_flexcan1>;
 	xceiver-supply = <&reg_can1_stby>;
+	wakeup-source;
 	status = "okay";
 };
 
@@ -220,6 +221,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_flexcan2>;
 	xceiver-supply = <&reg_can2_stby>;
+	wakeup-source;
 	status = "okay";/* can2 pin conflict with pdm */
 };
 

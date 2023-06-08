@@ -17,6 +17,7 @@
 #include <linux/device.h>
 #include <linux/mod_devicetable.h>
 #include <linux/module.h>
+#include <linux/netdevice.h>
 #include <linux/pm_runtime.h>
 #include <linux/property.h>
 #include <linux/of_gpio.h>
@@ -2890,6 +2891,10 @@ static int mcp251xfd_probe(struct spi_device *spi)
 				spi->irq = irq;
 			}
 		}
+
+		device_set_wakeup_capable(&spi->dev, true);
+		if (of_property_read_bool(np, "wakeup-source"))
+			device_set_wakeup_enable(&spi->dev, true);
     }
 
 	rx_int = devm_gpiod_get_optional(&spi->dev, "microchip,rx-int",
@@ -3077,7 +3082,34 @@ static int __maybe_unused mcp251xfd_runtime_resume(struct device *device)
 	return mcp251xfd_clks_and_vdd_enable(priv);
 }
 
+static int __maybe_unused mcp251xfd_suspend(struct device *device)
+{
+	const struct mcp251xfd_priv *priv = dev_get_drvdata(device);
+	struct net_device *dev = priv->ndev;
+
+	dev_dbg(device, "%s\n", __func__);
+	if (netif_running(dev) && device_may_wakeup(device)) {
+		enable_irq_wake(dev->irq);
+		pr_debug("%s Suspend\n", dev->name);
+	}
+	return 0;
+}
+
+static int __maybe_unused mcp251xfd_resume(struct device *device)
+{
+	const struct mcp251xfd_priv *priv = dev_get_drvdata(device);
+	struct net_device *dev = priv->ndev;
+
+	dev_dbg(device, "%s\n", __func__);
+	if (netif_running(dev) && device_may_wakeup(device)) {
+		disable_irq_wake(dev->irq);
+		pr_debug("%s Resume\n", dev->name);
+	}
+	return 0;
+}
+
 static const struct dev_pm_ops mcp251xfd_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(mcp251xfd_suspend, mcp251xfd_resume)
 	SET_RUNTIME_PM_OPS(mcp251xfd_runtime_suspend,
 			   mcp251xfd_runtime_resume, NULL)
 };
