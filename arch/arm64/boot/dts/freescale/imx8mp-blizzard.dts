@@ -29,8 +29,7 @@
 		pinctrl-0 = <&pinctrl_flexcan1_reg>;
 		regulator-min-microvolt = <3300000>;
 		regulator-max-microvolt = <3300000>;
-		gpio = <&gpio5 5 GPIO_ACTIVE_HIGH>;
-		enable-active-high;
+		gpio = <&gpio4 24 GPIO_ACTIVE_LOW>;
 	};
 
 	reg_can2_stby: regulator-can2-stby {
@@ -40,8 +39,7 @@
 		pinctrl-0 = <&pinctrl_flexcan2_reg>;
 		regulator-min-microvolt = <3300000>;
 		regulator-max-microvolt = <3300000>;
-		gpio = <&gpio4 27 GPIO_ACTIVE_HIGH>;
-		enable-active-high;
+		gpio = <&gpio4 0 GPIO_ACTIVE_LOW>;
 	};
 
 	reg_usdhc2_vmmc: regulator-usdhc2 {
@@ -216,8 +214,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_flexcan2>;
 	xceiver-supply = <&reg_can2_stby>;
-	pinctrl-assert-gpios = <&pca6416 3 GPIO_ACTIVE_HIGH>;
-	status = "disabled";/* can2 pin conflict with pdm */
+	status = "okay";/* can2 pin conflict with pdm */
 };
 
 &A53_0 {
@@ -719,7 +716,7 @@
 	assigned-clocks = <&clk IMX8MP_CLK_PDM>;
 	assigned-clock-parents = <&clk IMX8MP_AUDIO_PLL1_OUT>;
 	assigned-clock-rates = <196608000>;
-	status = "okay";
+	status = "disabled";
 };
 
 &pcie{
@@ -765,7 +762,7 @@
 	assigned-clocks = <&clk IMX8MP_CLK_SAI2>;
 	assigned-clock-parents = <&clk IMX8MP_AUDIO_PLL1_OUT>;
 	assigned-clock-rates = <12288000>;
-	status = "okay";
+	status = "disabled";
 };
 
 &sai3 {
@@ -999,13 +996,13 @@
 
 	pinctrl_flexcan1_reg: flexcan1reggrp {
 		fsl,pins = <
-			MX8MP_IOMUXC_SPDIF_EXT_CLK__GPIO5_IO05  0x154   /* CAN1_STBY */
+			MX8MP_IOMUXC_SAI2_TXFS__GPIO4_IO24	0x19	/* CAN1_STBY */
 		>;
 	};
 
 	pinctrl_flexcan2_reg: flexcan2reggrp {
 		fsl,pins = <
-			MX8MP_IOMUXC_SAI2_MCLK__GPIO4_IO27      0x154   /* CAN2_STBY */
+			MX8MP_IOMUXC_SAI1_RXFS__GPIO4_IO00      0x19   /* CAN2_STBY */
 		>;
 	};
 
