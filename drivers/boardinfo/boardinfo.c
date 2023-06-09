@@ -9,7 +9,7 @@
 static const char *boardinfo;
 static int pcbid = -1, skuid = -1, iobd = -1;
 
-static int pcb0_gpio = 0, pcb1_gpio = 0;
+static int pcb0_gpio = 0, pcb1_gpio = 0, pcb2_gpio = 0;
 static int sku0_gpio = 0, sku1_gpio = 0, sku2_gpio = 0, sku3_gpio = 0;
 static int iobd0_gpio = 0, iobd1_gpio = 0;
 
@@ -169,8 +169,25 @@ static int gpio_hwid_probe(struct platform_device *pdev)
 
 	id0 = gpio_get_value(pcb0_gpio);
 	id1 = gpio_get_value(pcb1_gpio);
+	id2 = 0;
 
-	pcbid = (id1 << 1) + id0;
+	if (strcmp(boardinfo, "BLIZZARD") == 0) {
+		pcb2_gpio = of_get_named_gpio(dev->of_node, "pcb2-gpios", 0);
+		if (!gpio_is_valid(pcb2_gpio)) {
+			printk("No pcb2-gpio pin available in gpio-hwid\n");
+			return -ENODEV;
+		} else {
+			ret = devm_gpio_request_one(dev, pcb2_gpio, GPIOF_DIR_IN, "GPIO_PCB2");
+			if (ret < 0) {
+				printk("Failed to request PCB2 gpio: %d\n", ret);
+				return ret;
+			}
+		}
+
+		id2 = gpio_get_value(pcb2_gpio);
+	}
+
+	pcbid = (id2 << 2) + (id1 << 1) + id0;
 
 	sku0_gpio = of_get_named_gpio(dev->of_node, "sku0-gpios", 0);
 	if (!gpio_is_valid(sku0_gpio)) {
@@ -300,6 +317,9 @@ static int gpio_hwid_remove(struct platform_device *pdev)
 	gpio_free(sku1_gpio);
 	gpio_free(sku2_gpio);
 
+	if (strcmp(boardinfo, "BLIZZARD") == 0)
+		gpio_free(pcb2_gpio);
+
 	if (strcmp(boardinfo, "PE100A") == 0 || strcmp(boardinfo, "IMX8P-IM-A") == 0)
 		gpio_free(sku3_gpio);
 
@@ -319,7 +339,7 @@ int boardinfo_show(void) {
 		return 1;
 	else if (strcmp(boardinfo, "IMX8P-IM-A") == 0)
 		return 2;
-	else if (strcmp(boardinfo, "IMX8P-IM-B") == 0)
+	else if (strcmp(boardinfo, "BLIZZARD") == 0 || strcmp(boardinfo, "BLIZZARD-EVT") == 0)
 		return 3;
 	else
 		return -1;
