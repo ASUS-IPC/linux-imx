@@ -5,30 +5,15 @@
 #include <linux/of_gpio.h>
 #include <linux/delay.h>
 
-static int reset_gpio, detect_gpio;
+static int detect_gpio;
 static int  pciehub_en_gpio;
 static int  pciehub_rst_gpio;
-static int trigger_flag=0;
 
 static const struct of_device_id of_platform_reset_match[] = {
 	{ .compatible = "blizzard-platform-reset", },
 	{},
 };
 MODULE_DEVICE_TABLE(of, of_platform_reset_match);
-
-void platform_reset_trigger(void)
-{
-	if( trigger_flag == 0 ) {
-		trigger_flag=1;
-		printk("Trigger platform_reset\n");
-		gpio_set_value_cansleep(reset_gpio, 0);
-		mdelay(20);
-		gpio_set_value_cansleep(reset_gpio, 1);
-	} else {
-		printk("Bypass platform_reset\n");
-	}
-}
-EXPORT_SYMBOL_GPL(platform_reset_trigger);
 
 static int platform_reset_probe(struct platform_device *pdev)
 {
@@ -37,27 +22,6 @@ static int platform_reset_probe(struct platform_device *pdev)
 	int ret;
 
 	printk(KERN_INFO "platform_reset_probe\n");
-
-	reset_gpio = of_get_named_gpio(dev->of_node, "reset-gpio", 0);
-	if (!gpio_is_valid(reset_gpio) && (reset_gpio == ERR_PTR(-EPROBE_DEFER))) {
-		printk("platform_reset_probe reset_gpio EPROBE_DEFER\n");
-		return -EPROBE_DEFER;
-	} else if (!gpio_is_valid(reset_gpio)) {
-		printk("No reset-gpio pin available in gpio-rst=%d\n", reset_gpio);
-		return -ENODEV;
-	} else {
-		ret = devm_gpio_request_one(dev, reset_gpio, GPIOF_OUT_INIT_HIGH, "Platform reset");
-		if (ret < 0) {
-			printk("Failed to request reset gpio: %d\n", ret);
-			return ret;
-		}
-		/*
-		//the first reset is  trigger at uboot
-		printk("reset-gpio request success\n");
-		mdelay(100);
-		platform_reset_trigger();
-		*/
-	}
 
 	detect_gpio = of_get_named_gpio(dev->of_node, "detect-gpio", 0);
 	if (!gpio_is_valid(detect_gpio) && (detect_gpio == ERR_PTR(-EPROBE_DEFER))) {
@@ -131,7 +95,6 @@ static int platform_reset_probe(struct platform_device *pdev)
 
 static int platform_reset_remove(struct platform_device *pdev)
 {
-	gpio_free(reset_gpio);
 
 	return 0;
 }
@@ -140,7 +103,6 @@ static int platform_reset_remove(struct platform_device *pdev)
 static int platform_reset_suspend(struct device *dev)
 {
 	printk("platform_reset_suspend, clear flag\n");
-	trigger_flag=0;
 
 	return 0;
 }
@@ -150,7 +112,6 @@ static int platform_reset_resume(struct device *dev)
 	int detect_pin;
 
 	printk("platform_reset_resume\n");
-	platform_reset_trigger();
 
 	if (gpio_is_valid(detect_gpio)) {
 		detect_pin = gpio_get_value(detect_gpio);

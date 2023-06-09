@@ -196,8 +196,7 @@
 
 	blizzard-platform-reset {
 		compatible = "blizzard-platform-reset";
-		pinctrl-0 = <&pinctrl_platform_reset>, <&pinctrl_pcie_detect>, <&pinctrl_pciehub_ctl>;
-		reset-gpio = <&gpio1 8 GPIO_ACTIVE_HIGH>;
+		pinctrl-0 = <&pinctrl_pcie_detect>, <&pinctrl_pciehub_ctl>;
 		detect-gpio = <&gpio3 16 GPIO_ACTIVE_HIGH>;
 		pciehub_rst-gpio = <&gpio2 17 GPIO_ACTIVE_HIGH>;
 		pciehub_en-gpio = <&gpio2 18 GPIO_ACTIVE_HIGH>;
@@ -1194,12 +1193,6 @@
                         MX8MP_IOMUXC_I2C4_SDA__I2C4_SDA         0x400001c2
                 >;
         };
-
-	pinctrl_platform_reset: platform_reset {
-		fsl,pins = <
-			MX8MP_IOMUXC_GPIO1_IO08__GPIO1_IO08	0x16
-		>;
-	};
 
 	pinctrl_pmic: pmicgrp {
 		fsl,pins = <
