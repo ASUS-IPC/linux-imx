@@ -12,6 +12,11 @@
 	model = "NXP i.MX8MPlus EVK board";
 	compatible = "fsl,imx8mp-evk", "fsl,imx8mp";
 
+        aliases {
+		rtc0 = &rtc_isl1208;
+                rtc1 = &snvs_rtc;
+        };
+
 	chosen {
 		stdout-path = &uart2;
 	};
@@ -690,6 +695,16 @@
         pinctrl-0 = <&pinctrl_i2c4>;
         status = "okay";
 
+	rtc_isl1208: rtc@6f {
+		compatible = "isil,isl1208";
+		pinctrl-names = "default";
+                pinctrl-0 = <&pinctrl_externalrtc_reg>;
+                interrupt-parent = <&gpio4>;
+                interrupts = <27 IRQ_TYPE_LEVEL_LOW>;
+		reg = <0x6f>;
+		status = "okay";
+	};
+
 	tmp75: tmp75@4f {
 		compatible = "ti,tmp75";
 		reg = <0x4f>;
@@ -1097,6 +1112,12 @@
 	pinctrl_flexcan2_reg: flexcan2reggrp {
 		fsl,pins = <
 			MX8MP_IOMUXC_SAI1_RXFS__GPIO4_IO00      0x19   /* CAN2_STBY */
+		>;
+	};
+
+        pinctrl_externalrtc_reg: externalrtcreggrp {
+                fsl,pins = <
+                        MX8MP_IOMUXC_SAI2_MCLK__GPIO4_IO27      0x154   /* open drain, pull up */
 		>;
 	};
 

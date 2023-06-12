@@ -411,6 +411,13 @@ config RTC_DRV_ISL1208
 	  This driver can also be built as a module. If so, the module
 	  will be called rtc-isl1208.
 
+config ASUS_BLIZZARD_RTC
+        bool "config the isl1208 rtc for ASUS BLIZZARD platform"
+        default n
+        depends on RTC_DRV_ISL1208
+        help
+          If you say yes here, enable isl1208 rtc config for ASUS BLIZZARD platform
+
 config RTC_DRV_ISL12022
 	tristate "Intersil ISL12022"
 	help

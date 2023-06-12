@@ -247,9 +247,14 @@ isl1208_rtc_toggle_alarm(struct i2c_client *client, int enable)
 		return icr;
 	}
 
-	if (enable)
+	if (enable) {
+#ifdef CONFIG_ASUS_BLIZZARD_RTC
+		icr |= ISL1208_REG_INT_ALME;
+		icr &= ~(ISL1208_REG_INT_IM);
+#else
 		icr |= ISL1208_REG_INT_ALME | ISL1208_REG_INT_IM;
-	else
+#endif
+	} else
 		icr &= ~(ISL1208_REG_INT_ALME | ISL1208_REG_INT_IM);
 
 	icr = i2c_smbus_write_byte_data(client, ISL1208_REG_INT, icr);
@@ -648,8 +653,10 @@ static const struct rtc_class_ops isl1208_rtc_ops = {
 	.proc = isl1208_rtc_proc,
 	.read_time = isl1208_rtc_read_time,
 	.set_time = isl1208_rtc_set_time,
-//	.read_alarm = isl1208_rtc_read_alarm,
-//	.set_alarm = isl1208_rtc_set_alarm,
+#ifdef CONFIG_ASUS_BLIZZARD_RTC
+	.read_alarm = isl1208_rtc_read_alarm,
+	.set_alarm = isl1208_rtc_set_alarm,
+#endif
 };
 
 /* sysfs interface */
