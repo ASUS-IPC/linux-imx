@@ -121,12 +121,30 @@ static void thermal_zone_trip_update(struct thermal_zone_device *tz, int trip)
 	struct thermal_instance *instance;
 	bool throttle = false;
 	int old_target;
+#ifdef CONFIG_ASUS_HYST_STEPWISE
+	int hyst_temp;
+#endif
 
-	tz->ops->get_trip_temp(tz, trip, &trip_temp);
-	tz->ops->get_trip_type(tz, trip, &trip_type);
+#ifdef CONFIG_ASUS_HYST_STEPWISE
+        tz->ops->get_trip_temp(tz, trip, &trip_temp);
+        hyst_temp = trip_temp;
+        if (tz->ops->get_trip_hyst) {
+                tz->ops->get_trip_hyst(tz, trip, &hyst_temp);
+                hyst_temp = trip_temp - hyst_temp;
+        }
+        tz->ops->get_trip_type(tz, trip, &trip_type);
+#else
+        tz->ops->get_trip_temp(tz, trip, &trip_temp);
+        tz->ops->get_trip_type(tz, trip, &trip_type);
+#endif
 
 	trend = get_tz_trend(tz, trip);
 
+#ifdef CONFIG_ASUS_HYST_STEPWISE
+        dev_dbg(&tz->device,
+                "Trip%d[type=%d,temp=%d,hyst=%d]:trend=%d,throttle=%d\n",
+                trip, trip_type, trip_temp, hyst_temp, trend, throttle);
+#else
 	if (tz->temperature >= trip_temp) {
 		throttle = true;
 		trace_thermal_zone_trip(tz, trip, trip_type);
@@ -134,6 +152,7 @@ static void thermal_zone_trip_update(struct thermal_zone_device *tz, int trip)
 
 	dev_dbg(&tz->device, "Trip%d[type=%d,temp=%d]:trend=%d,throttle=%d\n",
 				trip, trip_type, trip_temp, trend, throttle);
+#endif
 
 	mutex_lock(&tz->lock);
 
@@ -142,6 +161,19 @@ static void thermal_zone_trip_update(struct thermal_zone_device *tz, int trip)
 			continue;
 
 		old_target = instance->target;
+#ifdef CONFIG_ASUS_HYST_STEPWISE
+		throttle = false;
+		/*
+		 * Lower the mitigation only if the temperature
+		 * goes below the hysteresis temperature.
+		 */
+		if (tz->temperature >= trip_temp ||
+		   (tz->temperature >= hyst_temp &&
+		   old_target != THERMAL_NO_TARGET)) {
+			throttle = true;
+			trace_thermal_zone_trip(tz, trip, trip_type);
+		}
+#endif
 		instance->target = get_target_state(instance, trend, throttle);
 		dev_dbg(&instance->cdev->device, "old_target=%d, target=%d\n",
 					old_target, (int)instance->target);

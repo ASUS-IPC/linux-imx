@@ -137,6 +137,13 @@ config THERMAL_GOV_STEP_WISE
 	  Enable this to manage platform thermals using a simple linear
 	  governor.
 
+config ASUS_HYST_STEPWISE
+        bool "enable hysteresis to gov_step_size"
+        default n
+        depends on THERMAL_GOV_STEP_WISE
+        help
+          If you say yes here, enable hysteresis to gov_step_size
+
 config THERMAL_GOV_BANG_BANG
 	bool "Bang Bang thermal governor"
 	default n
