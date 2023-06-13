@@ -196,6 +196,7 @@
 
 	blizzard-platform-reset {
 		compatible = "blizzard-platform-reset";
+		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_pcie_detect>, <&pinctrl_pciehub_ctl>;
 		detect-gpio = <&gpio3 16 GPIO_ACTIVE_HIGH>;
 		pciehub_rst-gpio = <&gpio2 17 GPIO_ACTIVE_HIGH>;
@@ -955,7 +956,7 @@
 	cd-gpios = <&gpio2 12 GPIO_ACTIVE_LOW>;
 	vmmc-supply = <&reg_usdhc2_vmmc>;
 	bus-width = <4>;
-	status = "okay";
+	status = "disabled";
 };
 
 &usdhc3 {
@@ -1156,8 +1157,8 @@
 
 	pinctrl_pciehub_ctl: pciehubctlgrp {
 		fsl,pins = <
-			MX8MP_IOMUXC_SD2_DATA2__GPIO2_IO17	0x19
-			MX8MP_IOMUXC_SD2_DATA3__GPIO2_IO18	0x19
+			MX8MP_IOMUXC_SD2_DATA2__GPIO2_IO17	0x41
+			MX8MP_IOMUXC_SD2_DATA3__GPIO2_IO18	0x41
 		>;
 	};
 
