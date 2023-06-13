@@ -710,6 +710,12 @@
                 #thermal-sensor-cells = <0>;
 		status = "okay";
 	};
+
+	eeprom: eeprom@54 {
+		compatible = "atmel,24c08";
+		reg = <0x54>;
+		status = "okay";
+	};
 };
 
 &irqsteer_hdmi {
