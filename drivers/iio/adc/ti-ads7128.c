@@ -87,7 +87,7 @@ static int ads7128_read_value(struct ads7128_data *data, int *val)
 	if (ret < 0)
 		return ret;
 
-	dev_info(&data->client->dev, "%s ret %d, rxbuf[0]: 0x%x, rxbuf[1]: 0x%x\n",
+	dev_dbg(&data->client->dev, "%s ret %d, rxbuf[0]: 0x%x, rxbuf[1]: 0x%x\n",
 		__FUNCTION__, ret, rxbuf[0], rxbuf[1]);
 
 	temp = (rxbuf[1] | rxbuf[0] << 8);
@@ -102,7 +102,7 @@ static int ads7128_read_value(struct ads7128_data *data, int *val)
 	*val = value;
 
 	dev_dbg(&data->client->dev, "%s val: %d\n", __FUNCTION__, *val);
-	dev_info(&data->client->dev, "%s voltage : %d mV\n",
+	dev_dbg(&data->client->dev, "%s voltage : %d mV\n",
 		__FUNCTION__, DIV_ROUND_CLOSEST(value * data->lsb, 1000));
 	return 0;
 }
@@ -114,7 +114,7 @@ static int ads7128_read_raw(struct iio_dev *indio_dev,
 	struct ads7128_data *data = iio_priv(indio_dev);
 	int ret;
 
-	dev_info(&data->client->dev, "%s select channel num: %d", __FUNCTION__, chan->channel);
+	dev_dbg(&data->client->dev, "%s select channel num: %d", __FUNCTION__, chan->channel);
 
 	switch (mask) {
 	case IIO_CHAN_INFO_RAW:
