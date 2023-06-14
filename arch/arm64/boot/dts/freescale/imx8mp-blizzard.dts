@@ -223,7 +223,7 @@
 		pciehub_en-gpio = <&gpio2 18 GPIO_ACTIVE_HIGH>;
 	};
 
-	input1: sc_input1 {
+	input1: sc_input_pin12 {
 		compatible = "hed,software-configurable-io";
 		status = "okay";
 		pinctrl-names = "default";
@@ -244,7 +244,7 @@
 		max-voltage = <5657>;
 	};
 
-	input2: sc_input2 {
+	input2: sc_input_pin15 {
 		compatible = "hed,software-configurable-io";
 		status = "okay";
 		pinctrl-names = "default";
@@ -265,7 +265,7 @@
 		max-voltage = <5657>;
 	};
 
-	input3: sc_input3 {
+	input3: sc_input_pin16 {
 		compatible = "hed,software-configurable-io";
 		status = "okay";
 		pinctrl-names = "default";
@@ -286,7 +286,7 @@
 		max-voltage = <5657>;
 	};
 
-	input4: sc_input4 {
+	input4: sc_input_pin17 {
 		compatible = "hed,software-configurable-io";
 		status = "okay";
 		pinctrl-names = "default";
@@ -307,7 +307,7 @@
 		max-voltage = <5657>;
 	};
 
-	input5: sc_input5 {
+	input5: sc_input_pin18 {
 		compatible = "hed,software-configurable-io";
 		status = "okay";
 		pinctrl-names = "default";
