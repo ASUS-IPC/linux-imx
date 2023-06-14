@@ -112,17 +112,19 @@ static int pwm_backlight_update_status(struct backlight_device *bl)
 	int brightness = backlight_get_brightness(bl);
 	struct pwm_state state;
 
-	if(bl->props.thermal_max_brightness < brightness) {
-		printk("%s update brightness:%d to thermal_max_brightness:%d\n",__func__, brightness, bl->props.thermal_max_brightness);
-		brightness = bl->props.thermal_max_brightness;
-		bl->props.brightness = bl->props.thermal_max_brightness;
-	} else {
-		if(bl->props.init_brightness < bl->props.thermal_max_brightness) {
-			brightness = bl->props.init_brightness;
-			bl->props.brightness = bl->props.init_brightness;
-		} else {
+	if (!backlight_is_blank(bl)) {
+		if(bl->props.thermal_max_brightness < brightness) {
+			printk("%s update brightness:%d to thermal_max_brightness:%d\n",__func__, brightness, bl->props.thermal_max_brightness);
 			brightness = bl->props.thermal_max_brightness;
 			bl->props.brightness = bl->props.thermal_max_brightness;
+		} else {
+			if(bl->props.init_brightness < bl->props.thermal_max_brightness) {
+				brightness = bl->props.init_brightness;
+				bl->props.brightness = bl->props.init_brightness;
+			} else {
+				brightness = bl->props.thermal_max_brightness;
+				bl->props.brightness = bl->props.thermal_max_brightness;
+			}
 		}
 	}
 
