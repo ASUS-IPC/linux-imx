@@ -34,6 +34,7 @@
 			linux,input-type = <EV_SW>;
 			linux,code = <SW_LID>;
 			wakeup-source;
+			debounce-interval = <50>;
 		};
 	};
 
