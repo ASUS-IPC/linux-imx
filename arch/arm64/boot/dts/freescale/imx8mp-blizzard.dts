@@ -21,7 +21,7 @@
 		stdout-path = &uart2;
 	};
 
-	gpio-keys {
+	keyswitch {
 		compatible = "gpio-keys";
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_gpio_keys>;
