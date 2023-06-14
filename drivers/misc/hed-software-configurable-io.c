@@ -20,9 +20,12 @@
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/gpio/consumer.h>
+#include <linux/iio/iio.h>
+#include <linux/iio/consumer.h>
 #include <linux/of.h>
 #include <linux/of_gpio.h>
 #include <linux/slab.h>
+#include <linux/math64.h>
 
 #define HED_SOFTWARE_CONFIGURABLE_IO_MODE_MAX_GPIOS 3
 
@@ -41,29 +44,34 @@ struct hed_software_configurable_io_gpio {
  * resume_mode - value to restore after resuming from suspend
  */
 struct hed_software_configurable_io_data {
-	enum hed_software_configurable_io_mode mode;
-	enum hed_software_configurable_io_mode default_mode;
+	enum hed_software_configurable_io_mode input_mode;
+	enum hed_software_configurable_io_mode default_input_mode;
 	enum hed_software_configurable_io_mode resume_mode;
 	struct gpio_desc *input_gpio;
 	struct hed_software_configurable_io_gpio *sel_gpios;
 	int num_gpios;
+	struct iio_channel *adc_channels;
+	s64 voltage_scale;
+	u8 adc_resolution;
 };
+
+static void hed_software_configurable_io_channel_release(void *data);
 
 static void set_mode_gpios(struct device *dev)
 {
 	struct hed_software_configurable_io_data *data = dev_get_drvdata(dev);
 
-	if (data->mode == HED_SOFTWARE_CONFIGURABLE_IO_MODE_VTD) {
+	if (data->input_mode == HED_SOFTWARE_CONFIGURABLE_IO_MODE_VTD) {
 		gpiod_direction_output(data->sel_gpios[0].gpio, 0);
 		gpiod_direction_output(data->sel_gpios[1].gpio, 1);
 		gpiod_direction_output(data->sel_gpios[2].gpio, 1);
 		dev_dbg(dev, "Switched gpios to VTD\n");
-	} else if (data->mode == HED_SOFTWARE_CONFIGURABLE_IO_MODE_STB) {
+	} else if (data->input_mode == HED_SOFTWARE_CONFIGURABLE_IO_MODE_STB) {
 		gpiod_direction_output(data->sel_gpios[0].gpio, 1);
 		gpiod_direction_output(data->sel_gpios[1].gpio, 0);
 		gpiod_direction_output(data->sel_gpios[2].gpio, 1);
 		dev_dbg(dev, "Switched gpios to STB\n");
-	} else if (data->mode == HED_SOFTWARE_CONFIGURABLE_IO_MODE_STG) {
+	} else if (data->input_mode == HED_SOFTWARE_CONFIGURABLE_IO_MODE_STG) {
 		gpiod_direction_output(data->sel_gpios[0].gpio, 0);
 		gpiod_direction_output(data->sel_gpios[1].gpio, 0);
 		gpiod_direction_output(data->sel_gpios[2].gpio, 0);
@@ -77,11 +85,11 @@ static ssize_t hed_software_configurable_io_show_mode(struct device *dev,
 	struct hed_software_configurable_io_data *data = dev_get_drvdata(dev);
 	int ret;
 
-	if (data->mode == HED_SOFTWARE_CONFIGURABLE_IO_MODE_VTD)
+	if (data->input_mode == HED_SOFTWARE_CONFIGURABLE_IO_MODE_VTD)
 		ret = sprintf(buf, "VTD\n");
-	else if (data->mode == HED_SOFTWARE_CONFIGURABLE_IO_MODE_STB)
+	else if (data->input_mode == HED_SOFTWARE_CONFIGURABLE_IO_MODE_STB)
 		ret = sprintf(buf, "STB\n");
-	else if (data->mode == HED_SOFTWARE_CONFIGURABLE_IO_MODE_STG)
+	else if (data->input_mode == HED_SOFTWARE_CONFIGURABLE_IO_MODE_STG)
 		ret = sprintf(buf, "STG\n");
 
 	return ret;
@@ -98,19 +106,69 @@ static ssize_t hed_software_configurable_io_set_mode(struct device *dev,
 	 * will be shared with show_state(), above.
 	 */
 	if (sysfs_streq(buf, "VTD\n") || sysfs_streq(buf, "vtd\n"))
-		data->mode = HED_SOFTWARE_CONFIGURABLE_IO_MODE_VTD;
+		data->input_mode = HED_SOFTWARE_CONFIGURABLE_IO_MODE_VTD;
 	else if (sysfs_streq(buf, "STB\n") || sysfs_streq(buf, "stb\n"))
-		data->mode = HED_SOFTWARE_CONFIGURABLE_IO_MODE_STB;
+		data->input_mode = HED_SOFTWARE_CONFIGURABLE_IO_MODE_STB;
 	else if (sysfs_streq(buf, "STG\n") || sysfs_streq(buf, "stg\n"))
-		data->mode = HED_SOFTWARE_CONFIGURABLE_IO_MODE_STG;
+		data->input_mode = HED_SOFTWARE_CONFIGURABLE_IO_MODE_STG;
 	else {
-		dev_err(dev, "Configuring invalid mode\n");
+		dev_err(dev, "Configuring invalid input_mode\n");
 		return count;
 	}
 
 	set_mode_gpios(dev);
 
 	return count;
+}
+
+static ssize_t hed_software_configurable_io_show_input_value(
+						struct device *dev,
+						struct device_attribute *attr,
+						char *buf)
+{
+	struct hed_software_configurable_io_data *data = dev_get_drvdata(dev);
+	int ret = 0;
+	int val_r = 0, val_p = 0;
+
+	ret = iio_read_channel_raw(&data->adc_channels[0], &val_r);
+	if (ret < 0) {
+		dev_err(dev, "error getting iiochan raw value: %d\n",
+			ret);
+		ret = sprintf(buf, "error read raw: %d\n", ret);
+		return ret;
+	}
+
+	if (data->input_mode == HED_SOFTWARE_CONFIGURABLE_IO_MODE_VTD) {
+		/* Calculate mV processed value */
+		val_p = div_s64((val_r * data->voltage_scale), 1000000000LL);
+		dev_dbg(dev, "%s: raw: %d, processed: %d mv\n",
+			__func__, val_r, val_p);
+	} else if (data->input_mode == HED_SOFTWARE_CONFIGURABLE_IO_MODE_STB ||
+			data->input_mode == HED_SOFTWARE_CONFIGURABLE_IO_MODE_STG) {
+		if (data->input_gpio) {
+			/* Use GPIO value if available */
+			ret = gpiod_get_value(data->input_gpio);
+			if (ret < 0) {
+				dev_err(dev, "error reading GPIO value\n");
+				return val_p;
+			} else {
+				val_p = ret;
+			}
+		} else {
+			/* Use ADC if GPIO value not available */
+			/* Check for < 50% of ADC range for a 0 value */
+			if (val_r < (1 << data->adc_resolution) / 2)
+				val_p = 0;
+			/* Check for >= 50% of ADC range for a 1 value */
+			else if (val_r >= (1 << data->adc_resolution) / 2)
+				val_p = 1;
+		}
+		dev_dbg(dev, "%s: raw: %d, processed: %d\n",
+			__func__, val_r, val_p);
+	}
+	ret = sprintf(buf, "%d\n", val_p);
+
+	return ret;
 }
 
 /*
@@ -128,8 +186,20 @@ static ssize_t hed_software_configurable_io_set_mode(struct device *dev,
 static DEVICE_ATTR(mode, 0644, hed_software_configurable_io_show_mode,
 					hed_software_configurable_io_set_mode);
 
+/*
+ * create dev_attr_input_value structure (device_attribute)
+ *    dev_attr_input_value
+ *       attr.name = input_value
+ *       attr.mode = 644
+ *       show  = hed_software_configurable_io_show_input_value
+ *       store = N/A
+ */
+static DEVICE_ATTR(input_value, 0644,
+			hed_software_configurable_io_show_input_value, NULL);
+
 static struct attribute *attributes[] = {
 	&dev_attr_mode.attr,
+	&dev_attr_input_value.attr,
 	NULL,
 };
 
@@ -137,11 +207,23 @@ static const struct attribute_group attr_group = {
 	.attrs	= attributes,
 };
 
+static void hed_software_configurable_io_channel_release(void *data)
+{
+	struct iio_channel *adc_channels = data;
+
+	iio_channel_release_all(adc_channels);
+}
+
 static int hed_software_configurable_io_probe(struct platform_device *pdev)
 {
 	struct hed_software_configurable_io_data *drvdata;
 	int gpio_count, gpio_name_count, ret, err, i;
-	const char *default_mode;
+	const char *default_input_mode;
+	int max_voltage = -1;
+	s64 processed_scale = -1;
+	struct iio_channel *adc_channels = NULL;
+	struct iio_chan_spec *adc_channel_spec;
+	struct property *prop;
 
 	drvdata = devm_kzalloc(&pdev->dev,
 			       sizeof(struct hed_software_configurable_io_data),
@@ -149,46 +231,91 @@ static int hed_software_configurable_io_probe(struct platform_device *pdev)
 	if (drvdata == NULL)
 		return -ENOMEM;
 
-	/* Setup default mode value */
+	/* Setup reading of ADC */
+	adc_channels = iio_channel_get_all(&pdev->dev);
+	if (IS_ERR(adc_channels)) {
+		ret = PTR_ERR(adc_channels);
+		if (ret == -ENODEV)
+			return -EPROBE_DEFER;
+		dev_err(&pdev->dev, "Failed to get all iio channels: %d", ret);
+		return ret;
+	}
+
+	err = devm_add_action(&pdev->dev,
+			hed_software_configurable_io_channel_release,
+			adc_channels);
+	if (err) {
+		iio_channel_release_all(adc_channels);
+		dev_err(&pdev->dev,
+			"Failed to register iio channel release action");
+		return err;
+	}
+
+	drvdata->adc_channels = adc_channels;
+
+	/* Setup default input mode value */
 	ret = of_property_read_string(pdev->dev.of_node,
-					"default-mode", &default_mode);
+					"default-input-mode", &default_input_mode);
 	if (ret)
 		return ret;
 
-	if (strncmp("VTD", default_mode, 3) ||
-			strncmp("vtd", default_mode, 3)) {
-		drvdata->default_mode = HED_SOFTWARE_CONFIGURABLE_IO_MODE_VTD;
-	} else if (strncmp("STB", default_mode, 3) ||
-			strncmp("stb", default_mode, 3)) {
-		drvdata->default_mode = HED_SOFTWARE_CONFIGURABLE_IO_MODE_STB;
-	} else if (strncmp("STG", default_mode, 3) ||
-			strncmp("stg", default_mode, 3)) {
-		drvdata->default_mode = HED_SOFTWARE_CONFIGURABLE_IO_MODE_STG;
+	if (strncmp("VTD", default_input_mode, 3) ||
+			strncmp("vtd", default_input_mode, 3)) {
+		drvdata->default_input_mode = HED_SOFTWARE_CONFIGURABLE_IO_MODE_VTD;
+	} else if (strncmp("STB", default_input_mode, 3) ||
+			strncmp("stb", default_input_mode, 3)) {
+		drvdata->default_input_mode = HED_SOFTWARE_CONFIGURABLE_IO_MODE_STB;
+	} else if (strncmp("STG", default_input_mode, 3) ||
+			strncmp("stg", default_input_mode, 3)) {
+		drvdata->default_input_mode = HED_SOFTWARE_CONFIGURABLE_IO_MODE_STG;
 	} else {
-		dev_err(&pdev->dev, "Invalid default mode\n");
+		dev_err(&pdev->dev, "Invalid default input mode\n");
 		return -EINVAL;
 	}
 
-	drvdata->mode = drvdata->default_mode;
+	drvdata->input_mode = drvdata->default_input_mode;
 
-	/* Setup input gpio */
-	drvdata->input_gpio =
-			devm_gpiod_get(&pdev->dev, "input", GPIOD_IN);
-	if (IS_ERR(drvdata->input_gpio)) {
-		err = PTR_ERR(drvdata->input_gpio);
-		if (err != -EPROBE_DEFER)
-			dev_err(&pdev->dev,
-				"Error getting input gpio: %d\n", err);
-		return err;
+	/* Figure out the voltage scale to convert raw ADC to mV */
+	ret = of_property_read_u32(pdev->dev.of_node,
+					"max-voltage",
+					&max_voltage);
+	if (ret)
+		return ret;
+
+	/* voltage_scale = (max_voltage / total ADC steps)
+	 * Example: 5657mV / 4095
+	 * Also multiply max_voltage by 1000000000 to eliminate
+	 * floating point math in kernel with dividing by the same when
+	 * calculating the current mV value later */
+	adc_channel_spec = (struct iio_chan_spec *)adc_channels[0].channel;
+	drvdata->adc_resolution = adc_channel_spec->scan_type.realbits;
+	processed_scale = max_voltage * 1000000000LL;
+	drvdata->voltage_scale = div_s64(processed_scale,
+				(1 << drvdata->adc_resolution) - 1);
+
+	/* Setup Input GPIO if used */
+	prop = of_find_property(pdev->dev.of_node, "input-gpio", NULL);
+        if (prop) {
+		drvdata->input_gpio =
+				devm_gpiod_get(&pdev->dev, "input", GPIOD_IN);
+		if (IS_ERR(drvdata->input_gpio)) {
+			err = PTR_ERR(drvdata->input_gpio);
+			if (err != -EPROBE_DEFER)
+				dev_err(&pdev->dev,
+					"Error getting input gpio: %d\n", err);
+			return err;
+		}
+
+		err = gpiod_export(drvdata->input_gpio, 0);
+		if (err)
+			return err;
+
+		err = gpiod_export_link(&pdev->dev, "MPU_IN_ADC", drvdata->input_gpio);
+		if (err)
+			return err;
+	} else {
+		drvdata->input_gpio = NULL;
 	}
-
-	err = gpiod_export(drvdata->input_gpio, 0);
-	if (err)
-		return err;
-
-	err = gpiod_export_link(&pdev->dev, "MPU_IN_ADC", drvdata->input_gpio);
-	if (err)
-		return err;
 
 	/* Setup selection gpios */
 	gpio_count = of_gpio_named_count(pdev->dev.of_node, "selection-gpios");
@@ -207,8 +334,9 @@ static int hed_software_configurable_io_probe(struct platform_device *pdev)
 		return -EINVAL;
 	}
 
-	drvdata->sel_gpios = devm_kzalloc(&pdev->dev, gpio_count *
-			sizeof(struct hed_software_configurable_io_gpio), GFP_KERNEL);
+	drvdata->sel_gpios = devm_kzalloc(&pdev->dev,
+		gpio_count * sizeof(struct hed_software_configurable_io_gpio),
+		GFP_KERNEL);
 	if (!drvdata->sel_gpios)
 		return -ENOMEM;
 
@@ -250,7 +378,7 @@ static int hed_software_configurable_io_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, drvdata);
 
-	/* Set initial mode */
+	/* Set initial input mode */
 	set_mode_gpios(&pdev->dev);
 
 	dev_info(&pdev->dev, "Initialized HED Input Controller");
@@ -285,9 +413,9 @@ static int hed_software_configurable_io_suspend(struct device *dev)
 	 */
 	struct hed_software_configurable_io_data *data = dev_get_drvdata(dev);
 
-	dev_dbg(dev, "%s : %d", __func__, data->mode);
-	data->resume_mode = data->mode;
-	data->mode        = HED_SOFTWARE_CONFIGURABLE_IO_MODE_VTD;
+	dev_dbg(dev, "%s : %d", __func__, data->input_mode);
+	data->resume_mode = data->input_mode;
+	data->input_mode = HED_SOFTWARE_CONFIGURABLE_IO_MODE_VTD;
 	set_mode_gpios(dev);
 	return 0;
 }
@@ -296,8 +424,8 @@ static int hed_software_configurable_io_resume(struct device *dev)
 {
 	struct hed_software_configurable_io_data *data = dev_get_drvdata(dev);
 
-	dev_dbg(dev, "%s : %d", __func__, data->mode);
-	data->mode = data->resume_mode;
+	dev_dbg(dev, "%s : %d", __func__, data->input_mode);
+	data->input_mode = data->resume_mode;
 	set_mode_gpios(dev);
 	return 0;
 }
@@ -332,5 +460,5 @@ static struct platform_driver hed_software_configurable_io_driver = {
 module_platform_driver(hed_software_configurable_io_driver);
 
 MODULE_AUTHOR("Matthew Starr <mstarr@hedonline.com>");
-MODULE_DESCRIPTION("HED input mode controller");
+MODULE_DESCRIPTION("HED software configurable I/O driver");
 MODULE_LICENSE("GPL");
