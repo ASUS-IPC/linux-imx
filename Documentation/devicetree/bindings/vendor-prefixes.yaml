@@ -475,6 +475,8 @@ patternProperties:
     description: Haoyu Microelectronic Co. Ltd.
   "^hardkernel,.*":
     description: Hardkernel Co., Ltd
+  "^hed,.*":
+    description: HED, Inc.
   "^hideep,.*":
     description: HiDeep Inc.
   "^himax,.*":
