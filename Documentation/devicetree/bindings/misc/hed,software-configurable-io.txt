@@ -45,6 +45,7 @@ Optional properties:
   - output-pwm: By default an output is in GPIO mode unless this property is
       added.  With this property enable, the output is controlled as a PWM in
       PWM mode.
+  - non-selectable-input: Makes pin mode static.
 
 Examples:
 - Input only:

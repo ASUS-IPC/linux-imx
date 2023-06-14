@@ -26,6 +26,7 @@
 #include <linux/of_gpio.h>
 #include <linux/slab.h>
 #include <linux/math64.h>
+#include <stdbool.h>
 
 #define HED_SOFTWARE_CONFIGURABLE_IO_MODE_MAX_GPIOS 3
 #define HED_SOFTWARE_CONFIGURABLE_IO_SCALE_MODIFIER 1000000000LL
@@ -62,6 +63,7 @@ struct hed_software_configurable_io_data {
 	struct iio_channel *adc_channels;
 	s64 voltage_scale;
 	u8 adc_resolution;
+	bool non_selectable_input;
 };
 
 static void hed_software_configurable_io_channel_release(void *data);
@@ -124,35 +126,36 @@ static int set_mode_gpios(struct device *dev)
 {
 	struct hed_software_configurable_io_data *data = dev_get_drvdata(dev);
 	int mapping = 0, ret = 0, i = 0;
+	if (data->non_selectable_input == false) {
+		mapping = get_mapping_from_mode(data->input_mode, dev);
+		if (mapping < 0) {
+			dev_err(dev, "%s: No matching mapping from mode\n", __func__);
+			return mapping;
+		}
 
-	mapping = get_mapping_from_mode(data->input_mode, dev);
-	if (mapping < 0) {
-		dev_err(dev, "%s: No matching mapping from mode\n", __func__);
-		return mapping;
-	}
-
-	ret = gpiod_direction_output(data->sel_gpios[i].gpio,
-						(mapping & 0x4) >> 2);
-	if (ret == 0) {
-		i = 1;
 		ret = gpiod_direction_output(data->sel_gpios[i].gpio,
-						(mapping & 0x2) >> 1);
-	}
-	if (ret == 0) {
-		i = 2;
-		ret = gpiod_direction_output(data->sel_gpios[i].gpio,
-						mapping & 0x1);
-	}
+							(mapping & 0x4) >> 2);
+		if (ret == 0) {
+			i = 1;
+			ret = gpiod_direction_output(data->sel_gpios[i].gpio,
+							(mapping & 0x2) >> 1);
+		}
+		if (ret == 0) {
+			i = 2;
+			ret = gpiod_direction_output(data->sel_gpios[i].gpio,
+							mapping & 0x1);
+		}
 
-	if (ret != 0) {
-		dev_err(dev, "Failed to set GPIO %s state\n",
-			data->sel_gpios[i].name);
+		if (ret != 0) {
+			dev_err(dev, "Failed to set GPIO %s state\n",
+				data->sel_gpios[i].name);
+			return ret;
+		}
+		dev_dbg(dev, "Switched gpios to %s\n",
+					get_string_from_mode(data->input_mode));
 		return ret;
 	}
-
-	dev_dbg(dev, "Switched gpios to %s\n",
-				get_string_from_mode(data->input_mode));
-	return ret;
+	return 0;
 }
 
 static ssize_t hed_software_configurable_io_show_mode(struct device *dev,
@@ -375,153 +378,163 @@ static int hed_software_configurable_io_probe(struct platform_device *pdev)
 	drvdata->voltage_scale =
 		div_s64(processed_scale, (1 << drvdata->adc_resolution) - 1);
 
-	/* Setup Input GPIO if used */
-	prop = of_find_property(pdev->dev.of_node, "input-gpio", NULL);
-        if (prop) {
-		drvdata->input_gpio =
-				devm_gpiod_get(&pdev->dev, "input", GPIOD_IN);
-		if (IS_ERR(drvdata->input_gpio)) {
-			err = PTR_ERR(drvdata->input_gpio);
-			if (err != -EPROBE_DEFER)
-				dev_err(&pdev->dev,
-					"Error getting input gpio: %d\n", err);
-			return err;
+	/* Determine if input mode is selectable */
+	drvdata->non_selectable_input =
+		of_property_read_bool(pdev->dev.of_node, "non-selectable-input");
+	if (drvdata->non_selectable_input != true) {
+		drvdata->non_selectable_input = false;
+	}
+
+	if (drvdata->non_selectable_input == false) {
+		/* Setup Input GPIO if used */
+		prop = of_find_property(pdev->dev.of_node, "input-gpio", NULL);
+		if (prop) {
+			drvdata->input_gpio =
+					devm_gpiod_get(&pdev->dev, "input", GPIOD_IN);
+			if (IS_ERR(drvdata->input_gpio)) {
+				err = PTR_ERR(drvdata->input_gpio);
+				if (err != -EPROBE_DEFER)
+					dev_err(&pdev->dev,
+						"Error getting input gpio: %d\n", err);
+				return err;
+			}
+
+			err = gpiod_export(drvdata->input_gpio, 0);
+			if (err)
+				return err;
+
+			err = gpiod_export_link(&pdev->dev,
+						"MPU_IN_ADC",
+						drvdata->input_gpio);
+			if (err)
+				return err;
+		} else {
+			drvdata->input_gpio = NULL;
+		}
+		
+
+		/* Setup selection gpios */
+		drvdata->sel_gpio_count =
+			of_gpio_named_count(pdev->dev.of_node, "selection-gpios");
+		if (drvdata->sel_gpio_count < 0) {
+			dev_err(&pdev->dev, "Missing selection-gpios: %d\n",
+							drvdata->sel_gpio_count);
+			return drvdata->sel_gpio_count;
 		}
 
-		err = gpiod_export(drvdata->input_gpio, 0);
-		if (err)
-			return err;
-
-		err = gpiod_export_link(&pdev->dev,
-					"MPU_IN_ADC",
-					drvdata->input_gpio);
-		if (err)
-			return err;
-	} else {
-		drvdata->input_gpio = NULL;
-	}
-
-	/* Setup selection gpios */
-	drvdata->sel_gpio_count =
-		of_gpio_named_count(pdev->dev.of_node, "selection-gpios");
-	if (drvdata->sel_gpio_count < 0) {
-		dev_err(&pdev->dev, "Missing selection-gpios: %d\n",
-						drvdata->sel_gpio_count);
-		return drvdata->sel_gpio_count;
-	}
-
-	gpio_name_count = of_property_count_strings(pdev->dev.of_node,
-							"selection-gpio-names");
-	if (gpio_name_count < 0) {
-		dev_err(&pdev->dev,
-			"Could not get selection-gpio-names %d\n", i);
-		return err;
-	}
-
-	if (drvdata->sel_gpio_count != gpio_name_count) {
-		dev_err(&pdev->dev,
-		       "selection-gpios count != selection-gpio-names count\n");
-		return -EINVAL;
-	}
-
-	drvdata->sel_gpios = devm_kzalloc(&pdev->dev,
-			drvdata->sel_gpio_count *
-			sizeof(struct hed_software_configurable_io_gpio),
-			GFP_KERNEL);
-	if (!drvdata->sel_gpios)
-		return -ENOMEM;
-
-	if (drvdata->sel_gpio_count >
-			HED_SOFTWARE_CONFIGURABLE_IO_MODE_MAX_GPIOS) {
-		dev_err(&pdev->dev, "Too many gpios defined\n");
-		return -EINVAL;
-	}
-
-	for (i = 0; i < drvdata->sel_gpio_count; i++) {
-		drvdata->sel_gpios[i].gpio =
-			devm_gpiod_get_index(&pdev->dev, "selection",
-						i, GPIOD_ASIS);
-		if (IS_ERR(drvdata->sel_gpios[i].gpio)) {
-			dev_err(&pdev->dev,
-				"Could not get selection-gpios %d\n", i);
-			return PTR_ERR(drvdata->sel_gpios[i].gpio);
-		}
-
-		err = of_property_read_string_index(pdev->dev.of_node,
-					"selection-gpio-names", i,
-					&(drvdata->sel_gpios[i].name));
-		if (err) {
+		gpio_name_count = of_property_count_strings(pdev->dev.of_node,
+								"selection-gpio-names");
+		if (gpio_name_count < 0) {
 			dev_err(&pdev->dev,
 				"Could not get selection-gpio-names %d\n", i);
 			return err;
 		}
 
-		err = gpiod_export(drvdata->sel_gpios[i].gpio, 0);
-		if (err)
-			return err;
-
-		err = gpiod_export_link(&pdev->dev, drvdata->sel_gpios[i].name,
-						drvdata->sel_gpios[i].gpio);
-		if (err)
-			return err;
-	}
-
-	/* Process selection mappings */
-	mode_name_count = of_property_count_strings(pdev->dev.of_node,
-						"selection-mapping-names");
-	if (mode_name_count < 0) {
-		dev_err(&pdev->dev, "Missing selection-mapping-names: %d\n",
-						mode_name_count);
-		return mode_name_count;
-	}
-
-	drvdata->mode_config_count = of_property_count_u32_elems(pdev->dev.of_node,
-						"selection-mappings");
-	if (drvdata->mode_config_count < 0) {
-		dev_err(&pdev->dev, "Missing selection-mapping-names: %d\n",
-						drvdata->mode_config_count);
-		return drvdata->mode_config_count;
-	}
-
-	if (drvdata->mode_config_count != mode_name_count) {
-		dev_err(&pdev->dev,
-		       "selection-mappings count != selection-mapping-names count\n");
-		return -EINVAL;
-	}
-
-	drvdata->mode_config = devm_kzalloc(&pdev->dev,
-		drvdata->mode_config_count *
-		sizeof(struct hed_software_configurable_io_mode_config),
-		GFP_KERNEL);
-	if (!drvdata->mode_config)
-		return -ENOMEM;
-
-	for (i = 0; i < drvdata->mode_config_count; i++) {
-		err = of_property_read_string_index(pdev->dev.of_node,
-					"selection-mapping-names", i,
-					(const char **)&temp_str);
-		if (err) {
+		if (drvdata->sel_gpio_count != gpio_name_count) {
 			dev_err(&pdev->dev,
-				"Could not get selection-mapping-names %d\n",
-				 i);
-			return err;
-		}
-		drvdata->mode_config[i].name = get_mode_from_string(temp_str);
-		if (drvdata->mode_config[i].name ==
-				HED_SOFTWARE_CONFIGURABLE_IO_MODE_INVALID) {
-			dev_err(&pdev->dev,
-				"Unsupported selection-mapping-names: %s\n",
-				temp_str);
+				"selection-gpios count != selection-gpio-names count\n");
 			return -EINVAL;
 		}
 
-		err = of_property_read_u32_index(pdev->dev.of_node,
-					"selection-mappings", i,
-					&(drvdata->mode_config[i].mapping));
-		if (err) {
+		drvdata->sel_gpios = devm_kzalloc(&pdev->dev,
+				drvdata->sel_gpio_count *
+				sizeof(struct hed_software_configurable_io_gpio),
+				GFP_KERNEL);
+		if (!drvdata->sel_gpios)
+			return -ENOMEM;
+
+		if (drvdata->sel_gpio_count >
+				HED_SOFTWARE_CONFIGURABLE_IO_MODE_MAX_GPIOS) {
+			dev_err(&pdev->dev, "Too many gpios defined\n");
+			return -EINVAL;
+		}
+
+		for (i = 0; i < drvdata->sel_gpio_count; i++) {
+			drvdata->sel_gpios[i].gpio =
+				devm_gpiod_get_index(&pdev->dev, "selection",
+							i, GPIOD_ASIS);
+			if (IS_ERR(drvdata->sel_gpios[i].gpio)) {
+				dev_err(&pdev->dev,
+					"Could not get selection-gpios %d\n", i);
+				return PTR_ERR(drvdata->sel_gpios[i].gpio);
+			}
+
+			err = of_property_read_string_index(pdev->dev.of_node,
+						"selection-gpio-names", i,
+						&(drvdata->sel_gpios[i].name));
+			if (err) {
+				dev_err(&pdev->dev,
+					"Could not get selection-gpio-names %d\n", i);
+				return err;
+			}
+
+			err = gpiod_export(drvdata->sel_gpios[i].gpio, 0);
+			if (err)
+				return err;
+
+			err = gpiod_export_link(&pdev->dev, drvdata->sel_gpios[i].name,
+							drvdata->sel_gpios[i].gpio);
+			if (err)
+				return err;
+		}
+
+		/* Process selection mappings */
+		mode_name_count = of_property_count_strings(pdev->dev.of_node,
+							"selection-mapping-names");
+		if (mode_name_count < 0) {
+			dev_err(&pdev->dev, "Missing selection-mapping-names: %d\n",
+							mode_name_count);
+			return mode_name_count;
+		}
+
+		drvdata->mode_config_count = of_property_count_u32_elems(pdev->dev.of_node,
+							"selection-mappings");
+		if (drvdata->mode_config_count < 0) {
+			dev_err(&pdev->dev, "Missing selection-mapping-names: %d\n",
+							drvdata->mode_config_count);
+			return drvdata->mode_config_count;
+		}
+
+		if (drvdata->mode_config_count != mode_name_count) {
 			dev_err(&pdev->dev,
-				"Could not get selection-mapping %d\n", i);
-			return err;
+				"selection-mappings count != selection-mapping-names count\n");
+			return -EINVAL;
+		}
+
+		drvdata->mode_config = devm_kzalloc(&pdev->dev,
+			drvdata->mode_config_count * 
+			sizeof(struct hed_software_configurable_io_mode_config),
+			GFP_KERNEL);
+		if (!drvdata->mode_config)
+			return -ENOMEM;
+
+		for (i = 0; i < drvdata->mode_config_count; i++) {
+			err = of_property_read_string_index(pdev->dev.of_node,
+						"selection-mapping-names", i,
+						(const char **)&temp_str);
+			if (err) {
+				dev_err(&pdev->dev,
+					"Could not get selection-mapping-names %d\n",
+					i);
+				return err;
+			}
+			drvdata->mode_config[i].name = get_mode_from_string(temp_str);
+			if (drvdata->mode_config[i].name ==
+					HED_SOFTWARE_CONFIGURABLE_IO_MODE_INVALID) {
+				dev_err(&pdev->dev,
+					"Unsupported selection-mapping-names: %s\n",
+					temp_str);
+				return -EINVAL;
+			}
+
+			err = of_property_read_u32_index(pdev->dev.of_node,
+						"selection-mappings", i,
+						&(drvdata->mode_config[i].mapping));
+			if (err) {
+				dev_err(&pdev->dev,
+					"Could not get selection-mapping %d\n", i);
+				return err;
+			}
 		}
 	}
 
