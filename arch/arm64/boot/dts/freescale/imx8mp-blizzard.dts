@@ -741,7 +741,7 @@
 		mclk = <24000000>;
 		mclk_source = <0>;
 		mipi_csi;
-		status = "disabled";
+		status = "okay";
 
 		port {
 			ov5640_mipi_0_ep: endpoint {
@@ -858,22 +858,6 @@
 	leds_ktd202x: ktd202x@30 {
 		compatible = "ktd, ktd202x";
 		reg = <0x30>;
-		status = "okay";
-	};
-
-	ilitek@41 {
-		compatible = "hid-over-i2c";
-		hid-descr-addr = <0x0000>;
-		reg = <0x41>;
-		pinctrl-names = "default";
-		pinctrl-0 = <&pinctrl_ilitek_touch>;
-		interrupt-parent = <&gpio1>;
-		interrupts = <14 0x0>;
-		ilitek,irq-gpio = <&gpio1 14 0x0>;
-		ilitek,reset-gpio = <&gpio1 15 0x0>;
-		ilitek,vbus = "vcc_i2c";
-		ilitek,vdd = "vdd";
-		ilitek,name = "ilitek_i2c";
 		status = "okay";
 	};
 };
@@ -1370,13 +1354,6 @@
 		fsl,pins = <
 			MX8MP_IOMUXC_SD2_DATA2__GPIO2_IO17	0x41
 			MX8MP_IOMUXC_SD2_DATA3__GPIO2_IO18	0x41
-		>;
-	};
-
-	pinctrl_ilitek_touch: ilitektouchgrp {
-		fsl,pins = <
-			MX8MP_IOMUXC_GPIO1_IO14__GPIO1_IO14	0x19
-			MX8MP_IOMUXC_GPIO1_IO15__GPIO1_IO15	0x19
 		>;
 	};
 
