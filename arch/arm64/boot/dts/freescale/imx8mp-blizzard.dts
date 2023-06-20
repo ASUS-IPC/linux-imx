@@ -856,6 +856,10 @@
                 interrupt-parent = <&gpio4>;
                 interrupts = <27 IRQ_TYPE_LEVEL_LOW>;
 		reg = <0x6f>;
+	};
+	cm32183: cm32183@29 {
+		compatible = "capella,cm32183";
+		reg = <0x29>;
 		status = "okay";
 	};
 
