@@ -12,6 +12,7 @@
 #include <linux/phy.h>
 #include <linux/module.h>
 #include <linux/delay.h>
+#include "rtl9010arg_va_sample_code_v04.h"
 
 #define RTL821x_PHYSR				0x11
 #define RTL821x_PHYSR_DUPLEX			BIT(13)
@@ -66,6 +67,10 @@
 
 #define RTL9000A_GINMR				0x14
 #define RTL9000A_GINMR_LINK_STATUS		BIT(4)
+
+#define RTL9010ARG_GINMR			0x14
+#define RTL9010ARG_GINMR_LINK_STATUS		BIT(4)
+#define RTL9010ARG_PAGE_SELECT			0x1f
 
 #define RTLGEN_SPEED_MASK			0x0630
 
@@ -853,6 +858,316 @@ static irqreturn_t rtl9000a_handle_interrupt(struct phy_device *phydev)
 	return IRQ_HANDLED;
 }
 
+static int RTL9010ARG_VA_PHY_ready(struct phy_device *phydev)
+{
+	u32 mdio_data = 0;
+	u32 timer = 2000; // set a 2ms timer
+
+	while (mdio_data!=0x0003){
+		phy_write(phydev, 0x1f, 0x0a42);
+		mdio_data = phy_read(phydev, 0x10);
+		mdio_data = mdio_data & 0x0007;
+		timer--;
+		if (timer == 0){
+			pr_info("RTL9010ARG : PHY Error : 0x%x\n", phy_read_paged(phydev, 0xa42, 0x10));
+			return ERROR;
+		}
+	}
+	pr_info("RTL9010ARG : PHY Ready : 0x%x\n", phy_read_paged(phydev, 0xa42, 0x10));
+	return SUCCESS;
+}
+
+static int RTL9010ARG_VA_Initial_with_NWAY_Configuration(struct phy_device *phydev)
+{
+
+	u32 mdio_data = 0;
+	u32 timer = 2000; // set a 2ms timer
+
+	pr_info("%s +++\n", __func__);
+
+	// PHY Parameter Start //
+	phy_write(phydev, 0x1f, 0x0A54);
+	phy_write(phydev, 0x15, 0xFA06);
+	phy_write(phydev, 0x1f, 0x0BC4);
+	phy_write(phydev, 0x15, 0x16FE);
+	phy_write(phydev, 0x1B, 0xB820);
+	phy_write(phydev, 0x1C, 0x0010);
+	phy_write(phydev, 0x1B, 0xB830);
+	phy_write(phydev, 0x1C, 0x8000);
+	phy_write(phydev, 0x1B, 0xB800);
+	mdio_data = ((u16) phy_read(phydev, 0x1C) & 0x0040);
+
+	while (mdio_data != 0x0040)
+	{
+		phy_write(phydev, 0x1B, 0xB800);
+		mdio_data = ((u16) phy_read(phydev, 0x1C) & 0x0040);
+		timer--;
+		if (timer == 0) {
+			return ERROR;
+		}
+	}
+
+	phy_write(phydev, 0x1B, 0x8020);
+	phy_write(phydev, 0x1C, 0x9100);
+	phy_write(phydev, 0x1B, 0xB82E);
+	phy_write(phydev, 0x1C, 0x0001);
+	phy_write(phydev, 0x1B, 0xB820);
+	phy_write(phydev, 0x1C, 0x0290);
+	phy_write(phydev, 0x1B, 0xA012);
+	phy_write(phydev, 0x1C, 0x0000);
+	phy_write(phydev, 0x1B, 0xA014);
+	phy_write(phydev, 0x1C, 0x2C03);
+	phy_write(phydev, 0x1C, 0x2C07);
+	phy_write(phydev, 0x1C, 0x2C0B);
+	phy_write(phydev, 0x1C, 0x6054);
+	phy_write(phydev, 0x1C, 0xA701);
+	phy_write(phydev, 0x1C, 0xD500);
+	phy_write(phydev, 0x1C, 0x2108);
+	phy_write(phydev, 0x1C, 0x4054);
+	phy_write(phydev, 0x1C, 0x8701);
+	phy_write(phydev, 0x1C, 0xA74A);
+	phy_write(phydev, 0x1C, 0x20DE);
+	phy_write(phydev, 0x1C, 0xD700);
+	phy_write(phydev, 0x1C, 0x880F);
+	phy_write(phydev, 0x1C, 0x262D);
+	phy_write(phydev, 0x1B, 0xA01A);
+	phy_write(phydev, 0x1C, 0x0000);
+	phy_write(phydev, 0x1B, 0xA004);
+	phy_write(phydev, 0x1C, 0x062C);
+	phy_write(phydev, 0x1B, 0xA002);
+	phy_write(phydev, 0x1C, 0x00DD);
+	phy_write(phydev, 0x1B, 0xA000);
+	phy_write(phydev, 0x1C, 0x7107);
+	phy_write(phydev, 0x1B, 0xB820);
+	phy_write(phydev, 0x1C, 0x0210);
+	phy_write(phydev, 0x1B, 0xB82E);
+	phy_write(phydev, 0x1C, 0x0000);
+	phy_write(phydev, 0x1B, 0x8020);
+	phy_write(phydev, 0x1C, 0x0000);
+	phy_write(phydev, 0x1B, 0xB820);
+	phy_write(phydev, 0x1C, 0x0000);
+	phy_write(phydev, 0x1B, 0xB800);
+	mdio_data = ((u16) phy_read(phydev, 0x1C) & 0x0040);
+	timer = 2000; // set a 2ms timer
+
+	while (mdio_data != 0x0000){
+		phy_write(phydev, 0x1B, 0xB800);
+		mdio_data = ((u16) phy_read(phydev, 0x1C) & 0x0040);
+		timer--;
+		if (timer == 0) {
+			return ERROR;
+		}
+	}
+	// End //
+
+	phy_write(phydev, 0x0, 0x8000); // PHY soft-reset
+	mdio_data = 0;
+
+	while (mdio_data != 0x0140){    // Check soft-reset complete
+		mdio_data = phy_read(phydev, 0x0);
+	}
+
+	pr_info("%s ---\n", __func__);
+	return SUCCESS;
+}
+
+static int RTL9010ARG_VA_ADD_TX_DELAY(struct phy_device *phydev)
+{
+	pr_info("RTL9010ARG : RGMII Timing Control : TXC latching TXD = 00 : Speed of adjusting TXC delay = 11\n");
+	phy_write(phydev, 0x1B, 0xD084);
+	pr_info("RTL9010ARG : RGTR2 : 0xD084(default) = 0x%x\n", phy_read(phydev, 0x1C));
+	phy_write(phydev, 0x1B, 0xD082);
+	pr_info("RTL9010ARG : RGTR3 : 0xD082(default) = 0x%x\n", phy_read(phydev, 0x1C));
+
+	phy_write(phydev, 0x1B, 0xD084);
+	phy_write(phydev, 0x1C, 0xC000);
+	phy_write(phydev, 0x1B, 0xD082);
+	phy_write(phydev, 0x1C, 0x8083);
+	phy_write(phydev, 0x1B, 0xD084);
+	phy_write(phydev, 0x1C, 0x0000);
+	phy_write(phydev, 0x1B, 0xD084);
+	phy_write(phydev, 0x1C, 0x0007);
+	phy_write(phydev, 0x1B, 0xD084);
+	phy_write(phydev, 0x1C, 0x0000);
+	phy_write(phydev, 0x1B, 0xD082);
+	phy_write(phydev, 0x1C, 0x8083);
+	phy_write(phydev, 0x1B, 0xD084);
+	phy_write(phydev, 0x1C, 0x0007);
+
+	return 0;
+}
+
+static int RTL9010ARG_VA_RGMII_driving_strength(struct phy_device *phydev)
+{
+	// Weak_RGMII_1V8
+	pr_info("%s : Weak_RGMII_1V8\n", __func__);
+	phy_write(phydev, 0x1B, 0xD414);
+	phy_write(phydev, 0x1C, 0x0201);
+	phy_write(phydev, 0x1B, 0xD416);
+	phy_write(phydev, 0x1C, 0x0101);
+	phy_write(phydev, 0x1B, 0xD418);
+	phy_write(phydev, 0x1C, 0x0200);
+	phy_write(phydev, 0x1B, 0xD41A);
+	phy_write(phydev, 0x1C, 0x0100);
+	phy_write(phydev, 0x1B, 0xD42E);
+	phy_write(phydev, 0x1C, 0xC8C8);
+
+        return 0;
+}
+
+static int RTL9010ARG_VA_Soft_Reset(struct phy_device *phydev)
+{
+	u32 mdio_data = 0;
+	u32 timer = 2000; // set a 2ms timer
+
+	pr_info("%s +++\n", __func__);
+
+	phy_write(phydev, 0x0, 0x8000); // PHY soft-reset
+
+	while (mdio_data != 0x0140){	// Check soft-reset complete
+		mdio_data = phy_read(phydev, 0x0);
+		if(mdio_data == 0xFFFF)
+			return ERROR;
+		timer--;
+		if (timer == 0){
+			return ERROR;
+		}
+	}
+
+	pr_info("%s ---\n", __func__);
+	return SUCCESS;
+}
+
+static int rtl9010arg_read_page(struct phy_device *phydev)
+{
+	return __phy_read(phydev, RTL9010ARG_PAGE_SELECT);
+}
+
+static int rtl9010arg_write_page(struct phy_device *phydev, int page)
+{
+	return __phy_write(phydev, RTL9010ARG_PAGE_SELECT, page);
+}
+
+static int rtl9010arg_config_init(struct phy_device *phydev)
+{
+	pr_info("%s\n", __func__);
+	RTL9010ARG_VA_PHY_ready(phydev);
+	RTL9010ARG_VA_Initial_with_NWAY_Configuration(phydev);
+	phy_write_paged(phydev, 0xa4c, 0x12, 0x20ff); // 1v8
+	pr_info("RTL9010ARG : io power select 1v8 = 0x%x\n", phy_read_paged(phydev, 0xa4c, 0x12));
+	RTL9010ARG_VA_ADD_TX_DELAY(phydev);
+	RTL9010ARG_VA_RGMII_driving_strength(phydev);
+	RTL9010ARG_VA_Soft_Reset(phydev);
+	return 0;
+}
+
+static int rtl9010arg_config_aneg(struct phy_device *phydev)
+{
+	int ret;
+	u16 ctl = 0;
+
+	switch (phydev->master_slave_set) {
+	case MASTER_SLAVE_CFG_MASTER_FORCE:
+		ctl |= CTL1000_AS_MASTER;
+		break;
+	case MASTER_SLAVE_CFG_SLAVE_FORCE:
+		break;
+	case MASTER_SLAVE_CFG_UNKNOWN:
+	case MASTER_SLAVE_CFG_UNSUPPORTED:
+		return 0;
+	default:
+		phydev_warn(phydev, "Unsupported Master/Slave mode\n");
+		return -EOPNOTSUPP;
+	}
+
+	ret = phy_modify_changed(phydev, MII_CTRL1000, CTL1000_AS_MASTER, ctl);
+	if (ret == 1)
+		ret = genphy_soft_reset(phydev);
+
+	return ret;
+}
+
+static int rtl9010arg_read_status(struct phy_device *phydev)
+{
+	int ret;
+
+	phydev->master_slave_get = MASTER_SLAVE_CFG_UNKNOWN;
+	phydev->master_slave_state = MASTER_SLAVE_STATE_UNKNOWN;
+
+	ret = genphy_update_link(phydev);
+	if (ret)
+		return ret;
+
+	ret = phy_read(phydev, MII_CTRL1000);
+	if (ret < 0)
+		return ret;
+	if (ret & CTL1000_AS_MASTER)
+		phydev->master_slave_get = MASTER_SLAVE_CFG_MASTER_FORCE;
+	else
+		phydev->master_slave_get = MASTER_SLAVE_CFG_SLAVE_FORCE;
+
+	ret = phy_read(phydev, MII_STAT1000);
+	if (ret < 0)
+		return ret;
+	if (ret & LPA_1000MSRES)
+		phydev->master_slave_state = MASTER_SLAVE_STATE_MASTER;
+	else
+		phydev->master_slave_state = MASTER_SLAVE_STATE_SLAVE;
+
+	return 0;
+}
+
+static int rtl9010arg_ack_interrupt(struct phy_device *phydev)
+{
+	int err;
+
+	err = phy_read_paged(phydev, 0xa43, RTL8211F_INSR);
+
+	return (err < 0) ? err : 0;
+}
+
+static int rtl9010arg_config_intr(struct phy_device *phydev)
+{
+	u16 val;
+	int err;
+
+	if (phydev->interrupts == PHY_INTERRUPT_ENABLED) {
+		err = rtl9010arg_ack_interrupt(phydev);
+		if (err)
+			return err;
+
+		val = (u16)~RTL9010ARG_GINMR_LINK_STATUS;
+		err = phy_write_paged(phydev, 0xa42, RTL9010ARG_GINMR, val);
+	} else {
+		val = ~0;
+		err = phy_write_paged(phydev, 0xa42, RTL9010ARG_GINMR, val);
+		if (err)
+			return err;
+
+		err = rtl9010arg_ack_interrupt(phydev);
+	}
+
+	return phy_write_paged(phydev, 0xa42, RTL9010ARG_GINMR, val);
+}
+
+static irqreturn_t rtl9010arg_handle_interrupt(struct phy_device *phydev)
+{
+	int irq_status;
+
+	irq_status = phy_read(phydev, RTL8211F_INSR);
+	if (irq_status < 0) {
+		phy_error(phydev);
+		return IRQ_NONE;
+	}
+
+	if (!(irq_status & RTL8211F_INER_LINK_STATUS))
+		return IRQ_NONE;
+
+	phy_trigger_machine(phydev);
+
+	return IRQ_HANDLED;
+}
+
 static struct phy_driver realtek_drvs[] = {
 	{
 		PHY_ID_MATCH_EXACT(0x00008201),
@@ -1047,6 +1362,19 @@ static struct phy_driver realtek_drvs[] = {
 		.resume		= genphy_resume,
 		.read_page	= rtl821x_read_page,
 		.write_page	= rtl821x_write_page,
+	}, {
+		PHY_ID_MATCH_EXACT(0x001ccb30),
+		.name		= "RTL9010ARG Gigabit Ethernet",
+		.features	= PHY_BASIC_T1_FEATURES,
+		.config_init	= rtl9010arg_config_init,
+		.config_aneg    = rtl9010arg_config_aneg,
+		.read_status	= rtl9010arg_read_status,
+		.config_intr	= rtl9010arg_config_intr,
+		.handle_interrupt = rtl9010arg_handle_interrupt,
+		.suspend	= genphy_suspend,
+		.resume		= genphy_resume,
+		.read_page	= rtl9010arg_read_page,
+		.write_page	= rtl9010arg_write_page,
 	}, {
 		PHY_ID_MATCH_EXACT(0x001cc942),
 		.name		= "RTL8365MB-VC Gigabit Ethernet",

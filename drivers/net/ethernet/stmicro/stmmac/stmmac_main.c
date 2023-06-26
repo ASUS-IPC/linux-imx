@@ -49,6 +49,7 @@
 #include "dwmac1000.h"
 #include "dwxgmac2.h"
 #include "hwif.h"
+#include "eth_mac_stmmac.h"
 
 /* As long as the interface is active, we keep the timestamping counter enabled
  * with fine resolution and binary rollover. This avoid non-monotonic behavior
@@ -964,9 +965,11 @@ static void stmmac_validate(struct phylink_config *config,
 	phylink_set(mac_supported, 10baseT_Full);
 	phylink_set(mac_supported, 100baseT_Half);
 	phylink_set(mac_supported, 100baseT_Full);
+	phylink_set(mac_supported, 100baseT1_Full);
 	phylink_set(mac_supported, 1000baseT_Half);
 	phylink_set(mac_supported, 1000baseT_Full);
 	phylink_set(mac_supported, 1000baseKX_Full);
+	phylink_set(mac_supported, 1000baseT1_Full);
 
 	phylink_set(mac_supported, Autoneg);
 	phylink_set(mac_supported, Pause);
@@ -2876,6 +2879,7 @@ static int stmmac_get_hw_features(struct stmmac_priv *priv)
  */
 static void stmmac_check_ether_addr(struct stmmac_priv *priv)
 {
+#if 0
 	if (!is_valid_ether_addr(priv->dev->dev_addr)) {
 		stmmac_get_umac_addr(priv, priv->hw, priv->dev->dev_addr, 0);
 		if (!is_valid_ether_addr(priv->dev->dev_addr))
@@ -2883,6 +2887,12 @@ static void stmmac_check_ether_addr(struct stmmac_priv *priv)
 		dev_info(priv->device, "device MAC address %pM\n",
 			 priv->dev->dev_addr);
 	}
+#endif
+	eth_mac_eeprom_stmmac(priv->dev->dev_addr);
+	if (!is_valid_ether_addr(priv->dev->dev_addr))
+		eth_hw_addr_random(priv->dev);
+	dev_info(priv->device, "device MAC address %pM\n",
+			priv->dev->dev_addr);
 }
 
 /**

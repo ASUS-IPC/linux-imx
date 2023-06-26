@@ -1,0 +1,82 @@
+//********** Version Information **********
+//Date: 20210714
+
+#define SUCCESS      0
+#define ERROR        -1
+
+#define STATUS_VALID	0
+#define STATUS_INVALID	-1
+
+#define LinkUp       1
+#define LinkDown     0
+
+#define MASTER    	 1
+#define SLAVE        0
+
+#define CABLE_NORMAL 1
+#define CABLE_OPEN 	 2
+#define CABLE_SHORT  3
+
+#define Speed_100BaseT1	1
+#define Speed_1000BaseT1	2
+
+#define Falling_edge_detection 1
+#define Rising_edge_detection 0
+
+#define OP_STATE_STANDBY	1
+#define OP_STATE_NORMAL		2
+#define OP_STATE_SAFETY		3
+
+#define OP_CMD_GOTO_STANDBY 1
+#define OP_CMD_GOTO_NORMAL 2
+#define OP_CMD_GOTO_SLEEP 3
+
+#define Lwake_to_rwake_is_enabled	1
+#define Lwake_to_rwake_is_disabled	2
+
+#define Wake_level_1 0 //VIH_WAKE1 and VIL_WAKE1
+#define Wake_level_2 1 //VIH_WAKE2 and VIL_WAKE2
+
+#define BIT_TST(x,n) (x&(1<<n))
+#define BIT_SET(x,n) (x|=(1<<n))
+#define BIT_CLR(x,n) (x&=(~(1<<n)))
+
+#define PARAM_RESET(x) (x=0)
+
+#define GENERAL_INTERRUPT_STATUS_PHY_STATUS_CHANGED 	0
+#define GENERAL_INTERRUPT_STATUS_GENERAL_PURPOSE 			1
+#define GENERAL_INTERRUPT_STATUS_LINK_STATUS_CHANGED 	2
+#define GENERAL_INTERRUPT_STATUS_PTP_EVENT 						3
+#define GENERAL_INTERRUPT_STATUS_PHY_FATAL_ERROR 			4
+
+#define GENERAL_INTERRUPT_SUB_STATUS_SLEEP_ACK		0
+#define GENERAL_INTERRUPT_SUB_STATUS_SLEEP_FAIL		1
+#define GENERAL_INTERRUPT_SUB_STATUS_LPS_WUR			2
+
+#define	OP_INTERRUPT_STATUS_TRANS_TO_SLEEP_BY_UV_DVDD_MII	0
+#define	OP_INTERRUPT_STATUS_TRANS_TO_SLEEP_BY_UV_DVDD09		1
+#define	OP_INTERRUPT_STATUS_TRANS_TO_SLEEP_BY_UV_AVDD09		2
+#define	OP_INTERRUPT_STATUS_TRANS_TO_SLEEP_BY_UV_DVDD33		3
+#define	OP_INTERRUPT_STATUS_TRANS_TO_SLEEP_BY_UV_AVDD33		4
+#define	OP_INTERRUPT_STATUS_TRANS_TO_SLEEP_BY_HOST_CMD		5
+#define	OP_INTERRUPT_STATUS_REC_UV_AVDD33									6
+#define	OP_INTERRUPT_STATUS_REC_UV_DVDD33									7
+#define	OP_INTERRUPT_STATUS_REC_UV_AVDD09									8
+#define	OP_INTERRUPT_STATUS_REC_UV_DVDD09									9
+#define	OP_INTERRUPT_STATUS_REC_UV_DVDD_MII								10
+#define	OP_INTERRUPT_STATUS_OT_EVENT											11
+#define	OP_INTERRUPT_STATUS_WOKEUP_BY_REM_WAKE						12
+#define	OP_INTERRUPT_STATUS_RECEIVE_WUR										13
+#define	OP_INTERRUPT_STATUS_WOKEUP_BY_LOC_WAKE						14
+#define	OP_INTERRUPT_STATUS_PHY_PWR_ON										15
+#define	OP_INTERRUPT_STATUS_RESET_PHYRSTB									16
+#define	OP_INTERRUPT_STATUS_RESET_MDIO										17
+
+#define PCS_STATE_DISABLE_TRANSMITTER	1
+#define PCS_STATE_SLAVE_SILENT				2
+#define PCS_STATE_TRAINING_STATE			3
+#define PCS_STATE_SEND_IDLE						4
+#define PCS_STATE_SEND_IDLE_OR_DATA		5
+#define PCS_STATE_LINK_SYNCHRONIZATION		6
+#define PCS_STATE_SILENT_WAIT		7
+#define PCS_STATE_LINK_UP		8
