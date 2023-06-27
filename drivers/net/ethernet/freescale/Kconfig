@@ -26,6 +26,7 @@ config FEC
 		   ARCH_MXC || ARCH_S32 || SOC_IMX28 || COMPILE_TEST)
 	default ARCH_MXC || SOC_IMX28 if ARM
 	depends on PTP_1588_CLOCK_OPTIONAL
+	depends on EEPROM_AT24
 	select CRC32
 	select PHYLIB
 	imply NET_SELFTESTS
