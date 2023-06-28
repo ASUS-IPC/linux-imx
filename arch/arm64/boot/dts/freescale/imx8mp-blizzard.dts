@@ -932,6 +932,7 @@
 		ilitek,vdd = "vdd";
 		ilitek,name = "ilitek_i2c";
 		status = "okay";
+		wakeup-source;
 	};
 
     tmp75: tmp75@4f {
