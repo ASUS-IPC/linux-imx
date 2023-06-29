@@ -140,23 +140,19 @@
 		status = "okay";
 	};
 
-	sound-wm8960 {
-		compatible = "fsl,imx-audio-wm8960";
-		model = "wm8960-audio";
+	sound-wm8904 {
+		compatible = "fsl,imx-audio-wm8904";
+		model = "wm8904-audio";
 		audio-cpu = <&sai3>;
 		audio-codec = <&codec>;
-		audio-asrc = <&easrc>;
-		hp-det-gpio = <&gpio4 28 0>;
 		audio-routing =
-			"Headphone Jack", "HP_L",
-			"Headphone Jack", "HP_R",
-			"Ext Spk", "SPK_LP",
-			"Ext Spk", "SPK_LN",
-			"Ext Spk", "SPK_RP",
-			"Ext Spk", "SPK_RN",
-			"LINPUT1", "Mic Jack",
-			"LINPUT3", "Mic Jack",
-			"Mic Jack", "MICB";
+			"Headphone Jack", "HPOUTL",
+			"Headphone Jack", "HPOUTR",
+			"IN2L", "Line In Jack",
+			"IN2R", "Line In Jack",
+			"IN1L", "Mic Jack",
+			"IN1R", "Mic Jack",
+			"Mic Jack", "MICBIAS";
 	};
 
 	sound-micfil {
@@ -804,15 +800,16 @@
 		#gpio-cells = <2>;
 	};
 
-	codec: wm8960@1a {
-		compatible = "wlf,wm8960";
+	codec: wm8904@1a {
+		compatible = "wlf,wm8904";
 		reg = <0x1a>;
 		clocks = <&audio_blk_ctrl IMX8MP_CLK_AUDIO_BLK_CTRL_SAI3_MCLK1>;
 		clock-names = "mclk";
-		wlf,shared-lrclk;
-		wlf,hp-cfg = <3 2 3>;
-		wlf,gpio-cfg = <1 3>;
-		SPKVDD1-supply = <&reg_audio_pwr>;
+		DCVDD-supply = <&reg_audio_pwr>;
+		DBVDD-supply = <&reg_audio_pwr>;
+		AVDD-supply = <&reg_audio_pwr>;
+		CPVDD-supply = <&reg_audio_pwr>;
+		MICVDD-supply = <&reg_audio_pwr>;
 	};
 
 	ov5640_1: ov5640_mipi@3c {
@@ -969,11 +966,6 @@
 };
 
 &snvs_pwrkey {
-	status = "okay";
-};
-
-&easrc {
-	fsl,asrc-rate  = <48000>;
 	status = "okay";
 };
 

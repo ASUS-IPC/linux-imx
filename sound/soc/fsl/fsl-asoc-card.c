@@ -27,6 +27,7 @@
 #include "../codecs/wm8962.h"
 #include "../codecs/wm8960.h"
 #include "../codecs/wm8994.h"
+#include "../codecs/wm8904.h"
 
 #define CS427x_SYSCLK_MCLK 0
 
@@ -38,6 +39,7 @@
 
 enum fsl_asoc_card_type {
 	CARD_CS42888 = 1,
+	CARD_WM8904,
 	CARD_WM8960,
 	CARD_WM8962,
 	CARD_SGTL5000,
@@ -367,7 +369,8 @@ static int fsl_asoc_card_startup(struct snd_pcm_substream *substream)
 				 priv->codec_priv.mclk_freq);
 	}
 
-	if ((priv->card_type == CARD_WM8960 ||
+	if ((priv->card_type == CARD_WM8904 ||
+	     priv->card_type == CARD_WM8960 ||
 	     priv->card_type == CARD_WM8962 ||
 	     priv->card_type == CARD_WM8958)
 	    && !priv->is_codec_master) {
@@ -806,6 +809,14 @@ static int fsl_asoc_card_probe(struct platform_device *pdev)
 		priv->codec_priv.pll_id = WM8960_SYSCLK_AUTO;
 		priv->dai_fmt |= SND_SOC_DAIFMT_CBM_CFM;
 		priv->card_type = CARD_WM8960;
+	} else if (of_device_is_compatible(np, "fsl,imx-audio-wm8904")) {
+		codec_dai_name = "wm8904-hifi";
+		//priv->card.set_bias_level = NULL;
+		priv->codec_priv.mclk_id = WM8904_CLK_FLL;
+		priv->codec_priv.fll_id = WM8904_CLK_FLL;
+		priv->codec_priv.pll_id = WM8904_FLL_LRCLK;
+		priv->dai_fmt |= SND_SOC_DAIFMT_CBS_CFS;
+		priv->card_type = CARD_WM8904;
 	} else if (of_device_is_compatible(np, "fsl,imx-audio-ac97")) {
 		codec_dai_name = "ac97-hifi";
 		priv->dai_fmt = SND_SOC_DAIFMT_AC97;
@@ -1160,6 +1171,7 @@ static const struct of_device_id fsl_asoc_card_dt_ids[] = {
 	{ .compatible = "fsl,imx-audio-sgtl5000", },
 	{ .compatible = "fsl,imx-audio-wm8962", },
 	{ .compatible = "fsl,imx-audio-wm8960", },
+	{ .compatible = "fsl,imx-audio-wm8904", },
 	{ .compatible = "fsl,imx-audio-mqs", },
 	{ .compatible = "fsl,imx-audio-wm8524", },
 	{ .compatible = "fsl,imx-audio-si476x", },
