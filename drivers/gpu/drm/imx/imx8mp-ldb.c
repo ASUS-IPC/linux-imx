@@ -78,6 +78,8 @@ static void imx8mp_ldb_encoder_enable(struct drm_encoder *encoder)
 	struct imx8mp_ldb *imx8mp_ldb = imx8mp_ldb_ch->imx8mp_ldb;
 	struct ldb *ldb = &imx8mp_ldb->base;
 
+	printk(KERN_INFO "%s \n", __func__);
+
 	clk_prepare_enable(imx8mp_ldb->clk_root);
 
 	if (imx8mp_ldb_ch == &imx8mp_ldb->channel[0] || ldb->dual) {
@@ -144,6 +146,8 @@ static void imx8mp_ldb_encoder_disable(struct drm_encoder *encoder)
 	struct imx8mp_ldb *imx8mp_ldb = imx8mp_ldb_ch->imx8mp_ldb;
 	struct ldb *ldb = &imx8mp_ldb->base;
 
+	printk(KERN_INFO "%s \n", __func__);
+
 	if (ldb->dual) {
 		phy_power_off(imx8mp_ldb->channel[0].phy);
 		phy_power_off(imx8mp_ldb->channel[1].phy);
@@ -198,11 +202,12 @@ imx8mp_ldb_encoder_atomic_check(struct drm_encoder *encoder,
 	 * Due to limited video PLL frequency points on i.MX8mp,
 	 * we do mode fixup here in case any mode is unsupported.
 	 */
+/*
 	if (ldb->dual)
 		mode->clock = mode->clock > 100000 ? 148500 : 74250;
 	else
 		mode->clock = 74250;
-
+*/
 	return 0;
 }
 
@@ -277,6 +282,8 @@ imx8mp_ldb_bind(struct device *dev, struct device *master, void *data)
 	ldb->dev = dev;
 	ldb->ctrl_reg = 0x5c,
 	ldb->output_port = 1;
+
+	printk("imx8mp_ldb_bind\n");
 
 	for (i = 0; i < LDB_CH_NUM; i++) {
 		imx8mp_ldb->channel[i].imx8mp_ldb = imx8mp_ldb;
@@ -399,6 +406,7 @@ static int imx8mp_ldb_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	struct imx8mp_ldb *imx8mp_ldb;
 
+	printk("imx8mp_ldb_probe\n");
 	imx8mp_ldb = devm_kzalloc(dev, sizeof(*imx8mp_ldb), GFP_KERNEL);
 	if (!imx8mp_ldb)
 		return -ENOMEM;

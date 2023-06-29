@@ -175,6 +175,7 @@ int ldb_bind(struct ldb *ldb, struct drm_encoder **encoder)
 	int ret = 0;
 	int i;
 
+	printk("ldb_bind\n");
 	ldb->regmap = syscon_regmap_lookup_by_phandle(np, "gpr");
 	if (IS_ERR(ldb->regmap)) {
 		dev_err(dev, "failed to get parent regmap\n");

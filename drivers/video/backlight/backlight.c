@@ -178,6 +178,40 @@ static void backlight_generate_event(struct backlight_device *bd,
 	sysfs_notify(&bd->dev.kobj, NULL, "actual_brightness");
 }
 
+static ssize_t bl_thermal_max_brightness_show(struct device *dev, struct device_attribute *attr,
+		char *buf)
+{
+	struct backlight_device *bd = to_backlight_device(dev);
+
+	return sprintf(buf, "%d\n", bd->props.thermal_max_brightness);
+}
+
+static ssize_t bl_thermal_max_brightness_store(struct device *dev, struct device_attribute *attr,
+		const char *buf, size_t count)
+{
+	int rc;
+	struct backlight_device *bd = to_backlight_device(dev);
+	unsigned long mthermal_max_brightness;
+
+	rc = kstrtoul(buf, 0, &mthermal_max_brightness);
+	if (rc)
+		return rc;
+	mutex_lock(&bd->ops_lock);
+	if (mthermal_max_brightness > bd->props.max_brightness)
+		rc = -EINVAL;
+	else {
+		bd->props.thermal_max_brightness = mthermal_max_brightness;
+		rc = backlight_update_status(bd);
+		if(!rc)
+			rc = count;
+	}
+	mutex_unlock(&bd->ops_lock);
+	backlight_generate_event(bd, BACKLIGHT_UPDATE_SYSFS);
+
+	return rc;
+}
+static DEVICE_ATTR_RW(bl_thermal_max_brightness);
+
 static ssize_t bl_power_show(struct device *dev, struct device_attribute *attr,
 		char *buf)
 {
@@ -234,11 +268,13 @@ int backlight_device_set_brightness(struct backlight_device *bd,
 
 	mutex_lock(&bd->ops_lock);
 	if (bd->ops) {
-		if (brightness > bd->props.max_brightness)
+		if (brightness > bd->props.max_brightness || brightness > bd->props.thermal_max_brightness) {
 			rc = -EINVAL;
+		}
 		else {
 			pr_debug("set brightness to %lu\n", brightness);
 			bd->props.brightness = brightness;
+			bd->props.init_brightness = brightness;
 			rc = backlight_update_status(bd);
 		}
 	}
@@ -356,6 +392,7 @@ static void bl_device_release(struct device *dev)
 }
 
 static struct attribute *bl_device_attrs[] = {
+	&dev_attr_bl_thermal_max_brightness.attr,
 	&dev_attr_bl_power.attr,
 	&dev_attr_brightness.attr,
 	&dev_attr_actual_brightness.attr,

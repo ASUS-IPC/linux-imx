@@ -193,6 +193,8 @@ struct backlight_properties {
 	 */
 	int brightness;
 
+	int init_brightness;
+
 	/**
 	 * @max_brightness: The maximum brightness value.
 	 *
@@ -201,6 +203,8 @@ struct backlight_properties {
 	 * driver after registration.
 	 */
 	int max_brightness;
+
+	int thermal_max_brightness;
 
 	/**
 	 * @power: The current power mode.
