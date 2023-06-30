@@ -1049,7 +1049,7 @@
 
 &xcvr {
 	#sound-dai-cells = <0>;
-	status = "okay";
+	status = "disabled";
 };
 
 &sdma2 {
