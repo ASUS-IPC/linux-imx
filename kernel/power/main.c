@@ -15,6 +15,7 @@
 #include <linux/workqueue.h>
 #include <linux/debugfs.h>
 #include <linux/seq_file.h>
+#include <linux/delay.h>
 
 #include "power.h"
 
@@ -508,6 +509,10 @@ static ssize_t state_store(struct kobject *kobj, struct kobj_attribute *attr,
 
  out:
 	pm_autosleep_unlock();
+	if (error) {
+		printk("state_store error, sleep 5S\n");
+		msleep(5000);
+	}
 	return error ? error : n;
 }
 
