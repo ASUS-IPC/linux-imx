@@ -20,6 +20,7 @@
         target-path = "/soc@0/bus@30800000/serial@30860000";
         __overlay__ {
             linux,rs485-enabled-at-boot-time;
+            rs485-rts-active-low;
             rts-gpios = <&gpio5 0x1B 0x1>;
         };
     };
