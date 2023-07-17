@@ -21,6 +21,30 @@
 		stdout-path = &uart2;
 	};
 
+	gpio-leds {
+		compatible = "gpio-leds";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_gpio_led>;
+
+		led-r {
+			gpios = <&gpio2 16 GPIO_ACTIVE_HIGH>;
+			default-state = "off";
+			retain-state-suspended;
+		};
+
+		led-g {
+			gpios = <&gpio2 17 GPIO_ACTIVE_HIGH>;
+			default-state = "off";
+			retain-state-suspended;
+		};
+
+		led-b {
+			gpios = <&gpio2 18 GPIO_ACTIVE_HIGH>;
+			default-state = "off";
+			retain-state-suspended;
+		};
+	};
+
 	keyswitch {
 		compatible = "gpio-keys";
 		pinctrl-names = "default";
@@ -195,13 +219,6 @@
 		};
 	};
 
-	backlight_thermal: backlight-thermal {
-		compatible = "backlight-thermal";
-		#cooling-cells = <2>;
-		koe-cooling-levels = <1000 750 500>;
-		amp-cooling-levels = <1000 750 500>;
-	};
-
 	lvds_backlight: lvds_backlight {
 		compatible = "pwm-backlight";
 		pwms = <&pwm1 0 100000>;
@@ -342,12 +359,11 @@
 
 	gpio-hwid {
 		compatible = "gpio-hwid";
-		boardinfo = "BLIZZARD";
+		boardinfo = "BLIZZARD-EVT";
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_hwid>;
 		pcb0-gpios = <&gpio4 2 GPIO_ACTIVE_HIGH>;
 		pcb1-gpios = <&gpio4 3 GPIO_ACTIVE_HIGH>;
-		pcb2-gpios = <&gpio4 1 GPIO_ACTIVE_HIGH>;
 		sku0-gpios = <&gpio3 21 GPIO_ACTIVE_HIGH>;
 		sku1-gpios = <&gpio3 22 GPIO_ACTIVE_HIGH>;
 		sku2-gpios = <&gpio3 23 GPIO_ACTIVE_HIGH>;
@@ -356,126 +372,8 @@
 	blizzard-platform-reset {
 		compatible = "blizzard-platform-reset";
 		pinctrl-names = "default";
-		pinctrl-0 = <&pinctrl_pcie_detect>, <&pinctrl_pciehub_ctl>;
-		detect-gpio = <&gpio3 16 GPIO_ACTIVE_HIGH>;
-		pciehub_rst-gpio = <&gpio2 17 GPIO_ACTIVE_HIGH>;
-		pciehub_en-gpio = <&gpio2 18 GPIO_ACTIVE_HIGH>;
-	};
-
-	batteryp: battery_plus_input{
-		compatible = "hed,software-configurable-io";
-		status = "okay";
-		non-selectable-input = "true";
-		input-only;
-		io-channels = <&adc 7>;
-		io-channel-names = "batteryp";
-		default-input-mode = "VTD";
-		max-voltage = <25740>;
-	};
-
-	input1: sc_input_pin12 {
-		compatible = "hed,software-configurable-io";
-		status = "okay";
-		pinctrl-names = "default";
-		pinctrl-0 = <&pinctrl_input1>;
-		input-only;
-		io-channels = <&adc 0>;
-		io-channel-names = "input1";
-		selection-gpio-names =	"SEL1_0",
-					"SEL1_1",
-					"SEL1_2";
-		selection-gpios =
-			<&gpio2 0 GPIO_ACTIVE_HIGH>, /* SEL1_0 */
-			<&gpio2 1 GPIO_ACTIVE_HIGH>, /* SEL1_1 */
-			<&gpio2 2 GPIO_ACTIVE_HIGH>; /* SEL1_2 */
-		selection-mapping-names = "STG", "STB", "VTD";
-		selection-mappings = <0>, <5>, <3>;
-		default-input-mode = "VTD";
-		max-voltage = <5657>;
-	};
-
-	input2: sc_input_pin15 {
-		compatible = "hed,software-configurable-io";
-		status = "okay";
-		pinctrl-names = "default";
-		pinctrl-0 = <&pinctrl_input2>;
-		input-only;
-		io-channels = <&adc 1>;
-		io-channel-names = "input2";
-		selection-gpio-names =	"SEL2_0",
-					"SEL2_1",
-					"SEL2_2";
-		selection-gpios =
-			<&gpio2 3 GPIO_ACTIVE_HIGH>, /* SEL2_0 */
-			<&gpio2 4 GPIO_ACTIVE_HIGH>, /* SEL2_1 */
-			<&gpio2 5 GPIO_ACTIVE_HIGH>; /* SEL2_2 */
-		selection-mapping-names = "STG", "STB", "VTD";
-		selection-mappings = <0>, <5>, <3>;
-		default-input-mode = "VTD";
-		max-voltage = <5657>;
-	};
-
-	input3: sc_input_pin16 {
-		compatible = "hed,software-configurable-io";
-		status = "okay";
-		pinctrl-names = "default";
-		pinctrl-0 = <&pinctrl_input3>;
-		input-only;
-		io-channels = <&adc 2>;
-		io-channel-names = "input3";
-		selection-gpio-names =	"SEL3_0",
-					"SEL3_1",
-					"SEL3_2";
-		selection-gpios =
-			<&gpio2 6 GPIO_ACTIVE_HIGH>, /* SEL3_0 */
-			<&gpio2 7 GPIO_ACTIVE_HIGH>, /* SEL3_1 */
-			<&gpio2 8 GPIO_ACTIVE_HIGH>; /* SEL3_2 */
-		selection-mapping-names = "STG", "STB", "VTD";
-		selection-mappings = <0>, <5>, <3>;
-		default-input-mode = "VTD";
-		max-voltage = <5657>;
-	};
-
-	input4: sc_input_pin17 {
-		compatible = "hed,software-configurable-io";
-		status = "okay";
-		pinctrl-names = "default";
-		pinctrl-0 = <&pinctrl_input4>;
-		input-only;
-		io-channels = <&adc 3>;
-		io-channel-names = "input4";
-		selection-gpio-names =	"SEL4_0",
-					"SEL4_1",
-					"SEL4_2";
-		selection-gpios =
-			<&gpio2 9 GPIO_ACTIVE_HIGH>, /* SEL4_0 */
-			<&gpio2 10 GPIO_ACTIVE_HIGH>, /* SEL4_1 */
-			<&gpio2 11 GPIO_ACTIVE_HIGH>; /* SEL4_2 */
-		selection-mapping-names = "STG", "STB", "VTD";
-		selection-mappings = <0>, <5>, <3>;
-		default-input-mode = "VTD";
-		max-voltage = <5657>;
-	};
-
-	input5: sc_input_pin18 {
-		compatible = "hed,software-configurable-io";
-		status = "okay";
-		pinctrl-names = "default";
-		pinctrl-0 = <&pinctrl_input5>;
-		input-only;
-		io-channels = <&adc 4>;
-		io-channel-names = "input5";
-		selection-gpio-names =	"SEL5_0",
-					"SEL5_1",
-					"SEL5_2";
-		selection-gpios =
-			<&gpio2 13 GPIO_ACTIVE_HIGH>, /* SEL5_0 */
-			<&gpio2 14 GPIO_ACTIVE_HIGH>, /* SEL5_1 */
-			<&gpio2 15 GPIO_ACTIVE_HIGH>; /* SEL5_2 */
-		selection-mapping-names = "STG", "STB", "VTD";
-		selection-mappings = <0>, <5>, <3>;
-		default-input-mode = "VTD";
-		max-voltage = <5657>;
+		pinctrl-0 = <&pinctrl_platform_reset>;
+		reset-gpio = <&gpio1 8 GPIO_ACTIVE_HIGH>;
 	};
 };
 
@@ -738,7 +636,6 @@
 			compatible = "ethernet-phy-ieee802.3-c22";
 			reg = <1>;
 			eee-broken-1000t;
-			reset-gpios = <&gpio1 8 GPIO_ACTIVE_LOW>;
 			reset-assert-us = <10000>;
 			reset-deassert-us = <80000>;
 			realtek,aldps-enable;
@@ -850,7 +747,7 @@
 };
 
 &i2c2 {
-	clock-frequency = <70000>;
+	clock-frequency = <100000>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c2>;
 	status = "okay";
@@ -867,13 +764,6 @@
 				remote-endpoint = <&dsim_to_adv7535>;
 			};
 		};
-	};
-
-    codec: wm8904@1a {
-		compatible = "wlf,wm8904";
-		reg = <0x1a>;
-		clocks = <&audio_blk_ctrl IMX8MP_CLK_AUDIO_BLK_CTRL_SAI3_MCLK1>;
-		clock-names = "mclk";
 	};
 
 	ov5640_0: ov5640_mipi@3c {
@@ -928,7 +818,6 @@
 		compatible = "ti,ads7128";
 		reg = <0x14>;
 		AVDD-supply = <&reg_vcc_3v3_sys>;
-		#io-channel-cells = <1>;
 	};
 
 	pca6416: gpio@20 {
@@ -936,6 +825,13 @@
 		reg = <0x20>;
 		gpio-controller;
 		#gpio-cells = <2>;
+	};
+
+    codec: wm8904@1a {
+		compatible = "wlf,wm8904";
+		reg = <0x1a>;
+		clocks = <&audio_blk_ctrl IMX8MP_CLK_AUDIO_BLK_CTRL_SAI3_MCLK1>;
+		clock-names = "mclk";
 	};
 
 	ov5640_1: ov5640_mipi@3c {
@@ -964,6 +860,12 @@
 			};
 		};
 	};
+
+	eeprom: eeprom@54 {
+		compatible = "atmel,24c08";
+		reg = <0x54>;
+		status = "okay";
+	};
 };
 
 &i2c4 {
@@ -989,19 +891,6 @@
 	tmp75: tmp75@4f {
 		compatible = "ti,tmp75";
 		reg = <0x4f>;
-                #thermal-sensor-cells = <0>;
-		status = "okay";
-	};
-
-	eeprom: eeprom@54 {
-		compatible = "atmel,24c08";
-		reg = <0x54>;
-		status = "okay";
-	};
-
-	leds_ktd202x: ktd202x@30 {
-		compatible = "ktd, ktd202x";
-		reg = <0x30>;
 		status = "okay";
 	};
 
@@ -1019,7 +908,6 @@
 		ilitek,vdd = "vdd";
 		ilitek,name = "ilitek_i2c";
 		status = "okay";
-		wakeup-source;
 	};
 };
 
@@ -1297,6 +1185,9 @@
 
 	pinctrl_gpio_init: gpio_init {
 		fsl,pins = <
+                        MX8MP_IOMUXC_SD1_CLK__GPIO2_IO00	0x16
+			MX8MP_IOMUXC_SD1_CMD__GPIO2_IO01	0x16
+			MX8MP_IOMUXC_SD1_DATA0__GPIO2_IO02	0x16
 			MX8MP_IOMUXC_UART1_RXD__GPIO5_IO22	0x16
 			MX8MP_IOMUXC_UART1_TXD__GPIO5_IO23	0x16
 			MX8MP_IOMUXC_SD2_RESET_B__GPIO2_IO19	0x1c4
@@ -1414,7 +1305,6 @@
 			MX8MP_IOMUXC_SAI1_TXD3__ENET1_RGMII_TD3		0x85
 			MX8MP_IOMUXC_SAI1_TXD4__ENET1_RGMII_TX_CTL	0x85
 			MX8MP_IOMUXC_SAI1_TXD5__ENET1_RGMII_TXC		0x85
-			MX8MP_IOMUXC_GPIO1_IO08__GPIO1_IO08		0x19
 		>;
 	};
 
@@ -1441,46 +1331,6 @@
 	pinctrl_flexcan2_reg: flexcan2reggrp {
 		fsl,pins = <
 			MX8MP_IOMUXC_SAI1_RXFS__GPIO4_IO00      0x19   /* CAN2_STBY */
-		>;
-	};
-
-	pinctrl_input1: input1grp {
-		fsl,pins = <
-			MX8MP_IOMUXC_SD1_CLK__GPIO2_IO00	0x16 /* SEL1_0 */
-			MX8MP_IOMUXC_SD1_CMD__GPIO2_IO01	0x16 /* SEL1_1 */
-			MX8MP_IOMUXC_SD1_DATA0__GPIO2_IO02	0x16 /* SEL1_2 */
-		>;
-	};
-
-	pinctrl_input2: input2grp {
-		fsl,pins = <
-			MX8MP_IOMUXC_SD1_DATA1__GPIO2_IO03	0x16 /* SEL2_0 */
-			MX8MP_IOMUXC_SD1_DATA2__GPIO2_IO04	0x16 /* SEL2_1 */
-			MX8MP_IOMUXC_SD1_DATA3__GPIO2_IO05	0x16 /* SEL2_2 */
-		>;
-	};
-
-	pinctrl_input3: input3grp {
-		fsl,pins = <
-			MX8MP_IOMUXC_SD1_DATA4__GPIO2_IO06	0x16 /* SEL3_0 */
-			MX8MP_IOMUXC_SD1_DATA5__GPIO2_IO07	0x16 /* SEL3_1 */
-			MX8MP_IOMUXC_SD1_DATA6__GPIO2_IO08	0x16 /* SEL3_2 */
-		>;
-	};
-
-	pinctrl_input4: input4grp {
-		fsl,pins = <
-			MX8MP_IOMUXC_SD1_DATA7__GPIO2_IO09	0x16 /* SEL4_0 */
-			MX8MP_IOMUXC_SD1_RESET_B__GPIO2_IO10	0x16 /* SEL4_1 */
-			MX8MP_IOMUXC_SD1_STROBE__GPIO2_IO11	0x16 /* SEL4_2 */
-		>;
-	};
-
-	pinctrl_input5: input5grp {
-		fsl,pins = <
-			MX8MP_IOMUXC_SD2_CLK__GPIO2_IO13	0x16 /* SEL5_0 */
-			MX8MP_IOMUXC_SD2_CMD__GPIO2_IO14	0x16 /* SEL5_1 */
-			MX8MP_IOMUXC_SD2_DATA0__GPIO2_IO15	0x16 /* SEL5_2 */
 		>;
 	};
 
@@ -1512,16 +1362,11 @@
 		>;
 	};
 
-	pinctrl_pcie_detect: pcie_detect {
+	pinctrl_gpio_led: gpioledgrp {
 		fsl,pins = <
-			MX8MP_IOMUXC_NAND_READY_B__GPIO3_IO16	0x19
-		>;
-	};
-
-	pinctrl_pciehub_ctl: pciehubctlgrp {
-		fsl,pins = <
-			MX8MP_IOMUXC_SD2_DATA2__GPIO2_IO17	0x41
-			MX8MP_IOMUXC_SD2_DATA3__GPIO2_IO18	0x41
+			MX8MP_IOMUXC_SD2_DATA1__GPIO2_IO16	0x19
+			MX8MP_IOMUXC_SD2_DATA2__GPIO2_IO17	0x19
+			MX8MP_IOMUXC_SD2_DATA3__GPIO2_IO18	0x19
 		>;
 	};
 
@@ -1557,10 +1402,15 @@
 		fsl,pins = <
 			MX8MP_IOMUXC_SAI1_RXD0__GPIO4_IO02	0x19
 			MX8MP_IOMUXC_SAI1_RXD1__GPIO4_IO03	0x19
-			MX8MP_IOMUXC_SAI1_RXC__GPIO4_IO01	0x19
 			MX8MP_IOMUXC_SAI5_RXD0__GPIO3_IO21	0x19
 			MX8MP_IOMUXC_SAI5_RXD1__GPIO3_IO22	0x19
 			MX8MP_IOMUXC_SAI5_RXD2__GPIO3_IO23	0x19
+		>;
+	};
+
+        pinctrl_platform_reset: platform_reset {
+		fsl,pins = <
+			MX8MP_IOMUXC_GPIO1_IO08__GPIO1_IO08	0x16
 		>;
 	};
 
@@ -1920,37 +1770,6 @@
                         soc_crit0: trip1 {
                                 temperature = <105000>;
                         };
-		};
-	};
-
-	tmp75bk-thermal {
-		polling-delay-passive = <250>;
-		polling-delay = <2000>;
-		thermal-sensors = <&tmp75>;
-		trips {
-			tmp75_thresh: tmp75-thresh {
-				temperature = <60000>;
-				type = "passive";
-				hysteresis = <5000>;
-			};
-
-			tmp75_thresh1: tmp75-thresh1 {
-				temperature = <80000>;
-				type = "passive";
-				hysteresis = <5000>;
-			};
-		};
-
-		cooling-maps {
-			map0 {
-				trip = <&tmp75_thresh>;
-				cooling-device = <&backlight_thermal 0 1>;
-			};
-
-			map1 {
-				trip = <&tmp75_thresh1>;
-				cooling-device = <&backlight_thermal 1 2>;
-			};
 		};
 	};
 };
