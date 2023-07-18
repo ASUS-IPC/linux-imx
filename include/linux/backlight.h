@@ -342,6 +342,8 @@ struct backlight_device {
 	 * @use_count: The number of uses of fb_bl_on.
 	 */
 	int use_count;
+
+	bool first_set_brightness;
 };
 
 /**
