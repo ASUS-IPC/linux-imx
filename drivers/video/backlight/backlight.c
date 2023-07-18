@@ -275,9 +275,11 @@ int backlight_device_set_brightness(struct backlight_device *bd,
 		else {
 			pr_debug("set brightness to %lu\n", brightness);
 			bd->props.brightness = brightness;
-			bd->props.init_brightness = brightness;
+			if(!bd->first_set_brightness)
+				bd->props.init_brightness = brightness;
 			rc = backlight_update_status(bd);
 		}
+		bd->first_set_brightness = false;
 	}
 	mutex_unlock(&bd->ops_lock);
 
@@ -444,6 +446,7 @@ struct backlight_device *backlight_device_register(const char *name,
 	mutex_init(&new_bd->update_lock);
 	mutex_init(&new_bd->ops_lock);
 
+	new_bd->first_set_brightness = true;
 	new_bd->dev.class = backlight_class;
 	new_bd->dev.parent = parent;
 	new_bd->dev.release = bl_device_release;
