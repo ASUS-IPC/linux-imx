@@ -177,7 +177,7 @@ static void backlight_generate_event(struct backlight_device *bd,
 	kobject_uevent_env(&bd->dev.kobj, KOBJ_CHANGE, envp);
 	sysfs_notify(&bd->dev.kobj, NULL, "actual_brightness");
 }
-
+#if defined(CONFIG_SENSORS_BACKLIGHT_THERMAL)
 static ssize_t bl_thermal_max_brightness_show(struct device *dev, struct device_attribute *attr,
 		char *buf)
 {
@@ -211,7 +211,7 @@ static ssize_t bl_thermal_max_brightness_store(struct device *dev, struct device
 	return rc;
 }
 static DEVICE_ATTR_RW(bl_thermal_max_brightness);
-
+#endif
 static ssize_t bl_power_show(struct device *dev, struct device_attribute *attr,
 		char *buf)
 {
@@ -268,17 +268,27 @@ int backlight_device_set_brightness(struct backlight_device *bd,
 
 	mutex_lock(&bd->ops_lock);
 	if (bd->ops) {
-		if (brightness > bd->props.max_brightness || brightness > bd->props.thermal_max_brightness) {
-			rc = -EINVAL;
-		}
-		else {
-			pr_debug("set brightness to %lu\n", brightness);
-			bd->props.brightness = brightness;
-			if(!bd->first_set_brightness)
-				bd->props.init_brightness = brightness;
-			rc = backlight_update_status(bd);
-		}
-		bd->first_set_brightness = false;
+#if defined(CONFIG_SENSORS_BACKLIGHT_THERMAL)
+			if (brightness > bd->props.max_brightness || brightness > bd->props.thermal_max_brightness)
+				rc = -EINVAL;
+			else {
+				pr_debug("set brightness to %lu\n", brightness);
+				bd->props.brightness = brightness;
+				if(!bd->first_set_brightness)
+					bd->props.init_brightness = brightness;
+				rc = backlight_update_status(bd);
+			}
+			bd->first_set_brightness = false;		
+#else
+			if (brightness > bd->props.max_brightness)
+				rc = -EINVAL;
+			else {
+				pr_debug("set brightness to %lu\n", brightness);
+				bd->props.brightness = brightness;
+				rc = backlight_update_status(bd);
+			}
+#endif
+
 	}
 	mutex_unlock(&bd->ops_lock);
 
@@ -394,7 +404,9 @@ static void bl_device_release(struct device *dev)
 }
 
 static struct attribute *bl_device_attrs[] = {
+#if defined(CONFIG_SENSORS_BACKLIGHT_THERMAL)
 	&dev_attr_bl_thermal_max_brightness.attr,
+#endif
 	&dev_attr_bl_power.attr,
 	&dev_attr_brightness.attr,
 	&dev_attr_actual_brightness.attr,
@@ -444,8 +456,9 @@ struct backlight_device *backlight_device_register(const char *name,
 
 	mutex_init(&new_bd->update_lock);
 	mutex_init(&new_bd->ops_lock);
-
+#if defined(CONFIG_SENSORS_BACKLIGHT_THERMAL)
 	new_bd->first_set_brightness = true;
+#endif
 	new_bd->dev.class = backlight_class;
 	new_bd->dev.parent = parent;
 	new_bd->dev.release = bl_device_release;

@@ -56,8 +56,9 @@ struct panel_desc {
 	 * then you cannot override the mode in the device tree.
 	 */
 	const struct drm_display_mode *modes;
+#if defined(CONFIG_SENSORS_BACKLIGHT_THERMAL)
 	struct pwseq *pwseq_delay;
-
+#endif
 	/** @num_modes: Number of elements in modes array. */
 	unsigned int num_modes;
 
@@ -188,9 +189,9 @@ struct panel_simple {
 	ktime_t unprepared_time;
 
 	const struct panel_desc *desc;
-
+#if defined(CONFIG_SENSORS_BACKLIGHT_THERMAL)
 	struct backlight_device *backlight;
-
+#endif
 	struct regulator *supply;
 	struct i2c_adapter *ddc;
 	struct drm_dp_aux *aux;
@@ -199,15 +200,16 @@ struct panel_simple {
 	struct gpio_desc *hpd_gpio;
 
 	struct edid *edid;
-
+#if defined(CONFIG_SENSORS_BACKLIGHT_THERMAL)
 	struct gpio_desc *am_stbyb_gpio;
 	struct gpio_desc *am_rstb_gpio;
-
+#endif
 	struct drm_display_mode override_mode;
 
 	enum drm_panel_orientation orientation;
 };
 
+#if defined(CONFIG_SENSORS_BACKLIGHT_THERMAL)
 struct pwseq {
 	unsigned int t1;//VCC on to start lvds signal
 	unsigned int t2;//VCC or lvds signal to RSTB
@@ -222,11 +224,12 @@ struct pwseq {
 static struct backlight_device *bl;
 static int id0_gpio, id1_gpio;
 static int panel_simple_enable_status = 0;
+#endif
 static inline struct panel_simple *to_panel_simple(struct drm_panel *panel)
 {
 	return container_of(panel, struct panel_simple, base);
 }
-
+#if defined(CONFIG_SENSORS_BACKLIGHT_THERMAL)
 void update_thermal_max_brightness(int thermal_max_brightness)
 {
 	if(bl){
@@ -270,6 +273,7 @@ static const struct proc_ops panelid_ops = {
 	.proc_open = info_open,
 	.proc_read = seq_read,
 };
+#endif
 
 static unsigned int panel_simple_get_timings_modes(struct panel_simple *panel,
 						   struct drm_connector *connector)
@@ -397,13 +401,16 @@ static void panel_simple_wait(ktime_t start_ktime, unsigned int min_ms)
 static int panel_simple_disable(struct drm_panel *panel)
 {
 	struct panel_simple *p = to_panel_simple(panel);
+#if defined(CONFIG_SENSORS_BACKLIGHT_THERMAL)
 	int panelid;
+#endif
 
 	printk(KERN_INFO "%s enabled=%d \n", __func__, p->enabled);
 
 	if (!p->enabled)
 		return 0;
 
+#if defined(CONFIG_SENSORS_BACKLIGHT_THERMAL)
 	if (p->backlight) {
 		p->backlight->props.power = FB_BLANK_POWERDOWN;
 		p->backlight->props.state |= BL_CORE_FBBLANK;
@@ -435,6 +442,7 @@ static int panel_simple_disable(struct drm_panel *panel)
 			msleep(p->desc->pwseq_delay->t5);
 		}
 	}
+#endif
 
 	if (p->desc->delay.disable)
 		msleep(p->desc->delay.disable);
@@ -449,10 +457,15 @@ static int panel_simple_suspend(struct device *dev)
 	struct panel_simple *p = dev_get_drvdata(dev);
 	printk(KERN_INFO "%s \n", __func__);
 
+#if defined(CONFIG_SENSORS_BACKLIGHT_THERMAL)
 	p->unprepared_time = ktime_get();
-
 	//gpiod_set_value_cansleep(p->enable_gpio, 0);
 	regulator_disable(p->supply);
+#else
+	gpiod_set_value_cansleep(p->enable_gpio, 0);
+	regulator_disable(p->supply);
+	p->unprepared_time = ktime_get();
+#endif
 
 	kfree(p->edid);
 	p->edid = NULL;
@@ -471,6 +484,7 @@ static int panel_simple_unprepare(struct drm_panel *panel)
 	if (!p->prepared)
 		return 0;
 
+#if defined(CONFIG_SENSORS_BACKLIGHT_THERMAL)
 	/* RSTB or lvds Singal to turn VCC off */
 	if (p->desc->pwseq_delay->t7) {
 		printk("%s - RSTB or lvds Singal to turn VCC off time: %u\n", __func__, p->desc->pwseq_delay->t7);
@@ -490,6 +504,8 @@ static int panel_simple_unprepare(struct drm_panel *panel)
 
 	if (p->desc->delay.unprepare)
 		msleep(p->desc->delay.unprepare);
+
+#endif
 
 	pm_runtime_mark_last_busy(panel->dev);
 	ret = pm_runtime_put_autosuspend(panel->dev);
@@ -532,8 +548,11 @@ static int panel_simple_prepare_once(struct panel_simple *p)
 		dev_err(dev, "failed to enable supply: %d\n", err);
 		return err;
 	}
-
+#if defined(CONFIG_SENSORS_BACKLIGHT_THERMAL)
 	//gpiod_set_value_cansleep(p->enable_gpio, 1);
+#else
+	gpiod_set_value_cansleep(p->enable_gpio, 1);
+#endif
 
 	delay = p->desc->delay.prepare;
 	if (p->no_hpd)
@@ -610,7 +629,7 @@ static int panel_simple_prepare(struct drm_panel *panel)
 	/* Preparing when already prepared is a no-op */
 	if (p->prepared)
 		return 0;
-
+#if defined(CONFIG_SENSORS_BACKLIGHT_THERMAL)
 	if (p->enable_gpio)
 		gpiod_set_value_cansleep(p->enable_gpio, 1);
 
@@ -619,7 +638,7 @@ static int panel_simple_prepare(struct drm_panel *panel)
 		printk("%s - VCC on to start lvds signal time: %u\n", __func__, p->desc->pwseq_delay->t1);
 		msleep(p->desc->pwseq_delay->t1);
 	}
-
+#endif
 	ret = pm_runtime_get_sync(panel->dev);
 	if (ret < 0) {
 		pm_runtime_put_autosuspend(panel->dev);
@@ -634,16 +653,17 @@ static int panel_simple_prepare(struct drm_panel *panel)
 static int panel_simple_enable(struct drm_panel *panel)
 {
 	struct panel_simple *p = to_panel_simple(panel);
+#if defined(CONFIG_SENSORS_BACKLIGHT_THERMAL)
 	int panelid;
-
+#endif
 	printk(KERN_INFO "%s enabled=%d \n", __func__, p->enabled);
-	//dump_stack();
+
 	if (p->enabled)
 		return 0;
 
 	if (p->desc->delay.enable)
 		msleep(p->desc->delay.enable);
-
+#if defined(CONFIG_SENSORS_BACKLIGHT_THERMAL)
 	panelid = get_panelid();
 	if (panelid == 1)
 	{
@@ -683,7 +703,7 @@ static int panel_simple_enable(struct drm_panel *panel)
 		backlight_update_status(p->backlight);
 		panel_simple_enable_status = 1;
 	}
-
+#endif
 	panel_simple_wait(p->prepared_time, p->desc->delay.prepare_to_enable);
 
 	p->enabled = true;
@@ -846,7 +866,9 @@ static int panel_simple_probe(struct device *dev, const struct panel_desc *desc,
 {
 	struct panel_simple *panel;
 	struct display_timing dt;
+#if defined(CONFIG_SENSORS_BACKLIGHT_THERMAL)
 	struct device_node *backlight;
+#endif
 	struct device_node *ddc;
 	int connector_type;
 	u32 bus_flags;
@@ -881,7 +903,7 @@ static int panel_simple_probe(struct device *dev, const struct panel_desc *desc,
 			dev_err(dev, "failed to request GPIO: %d\n", err);
 		return err;
 	}
-
+#if defined(CONFIG_SENSORS_BACKLIGHT_THERMAL)
 	panel->am_stbyb_gpio = devm_gpiod_get_optional(dev, "am-stbyb",
 						     GPIOD_OUT_LOW);
 	if (IS_ERR(panel->am_stbyb_gpio)) {
@@ -899,13 +921,13 @@ static int panel_simple_probe(struct device *dev, const struct panel_desc *desc,
 			dev_err(dev, "am-rstb failed to request GPIO: %d\n", err);
 		return err;
 	}
-
+#endif
 	err = of_drm_get_panel_orientation(dev->of_node, &panel->orientation);
 	if (err) {
 		dev_err(dev, "%pOF: failed to get orientation %d\n", dev->of_node, err);
 		return err;
 	}
-
+#if defined(CONFIG_SENSORS_BACKLIGHT_THERMAL)
 	backlight = of_parse_phandle(dev->of_node, "backlight", 0);
 	if (backlight) {
 		panel->backlight = of_find_backlight_by_node(backlight);
@@ -916,7 +938,7 @@ static int panel_simple_probe(struct device *dev, const struct panel_desc *desc,
 			return -EPROBE_DEFER;
 		}
 	}
-
+#endif
 	ddc = of_parse_phandle(dev->of_node, "ddc-i2c-bus", 0);
 	if (ddc) {
 		panel->ddc = of_find_i2c_adapter_by_node(ddc);
@@ -994,8 +1016,9 @@ static int panel_simple_probe(struct device *dev, const struct panel_desc *desc,
 	}
 
 	dev_set_drvdata(dev, panel);
+#if defined(CONFIG_SENSORS_BACKLIGHT_THERMAL)
 	bl = panel->backlight;
-
+#endif
 	/*
 	 * We use runtime PM for prepare / unprepare since those power the panel
 	 * on and off and those can be very slow operations. This is important
@@ -1045,14 +1068,16 @@ static int panel_simple_remove(struct device *dev)
 
 	pm_runtime_dont_use_autosuspend(dev);
 	pm_runtime_disable(dev);
+#if defined(CONFIG_SENSORS_BACKLIGHT_THERMAL)
 	gpio_free(id0_gpio);
 	gpio_free(id1_gpio);
+#endif
 	if (panel->ddc && (!panel->aux || panel->ddc != &panel->aux->ddc))
 		put_device(&panel->ddc->dev);
-
+#if defined(CONFIG_SENSORS_BACKLIGHT_THERMAL)
 	if (panel->backlight)
 		put_device(&panel->backlight->dev);
-
+#endif
 	return 0;
 }
 
@@ -1063,7 +1088,7 @@ static void panel_simple_shutdown(struct device *dev)
 	drm_panel_disable(&panel->base);
 	drm_panel_unprepare(&panel->base);
 }
-
+#if defined(CONFIG_SENSORS_BACKLIGHT_THERMAL)
 static const struct display_timing koe_tx38d204vm0baa_timing = {
 	.pixelclock = { 86400000, 88622000, 96400000},
 	.hactive = { 1920, 1920, 1920 },//typ. total-active (998-960)*2=76
@@ -1137,7 +1162,7 @@ static const struct panel_desc am_1920720etzqw_00h = {
 	.bus_format = MEDIA_BUS_FMT_RGB888_1X7X4_SPWG,
 	.connector_type = DRM_MODE_CONNECTOR_LVDS,
 };
-
+#endif
 static const struct drm_display_mode ampire_am_1280800n3tzqw_t00h_mode = {
 	.clock = 71100,
 	.hdisplay = 1280,
@@ -4827,13 +4852,16 @@ static const struct panel_desc arm_rtsm = {
 };
 
 static const struct of_device_id platform_of_match[] = {
+#if defined(CONFIG_SENSORS_BACKLIGHT_THERMAL)
 	{
 		.compatible = "koe,koe-tx38d204vm0baa",
 		.data = &koe_tx38d204vm0baa,
 	}, {
 		.compatible = "ampire,am1920720etzqw-t00h",
 		.data = &am_1920720etzqw_00h,
-	}, {
+	},
+#endif
+	{
 		.compatible = "ampire,am-1280800n3tzqw-t00h",
 		.data = &ampire_am_1280800n3tzqw_t00h,
 	}, {
@@ -5283,7 +5311,7 @@ static const struct of_device_id platform_of_match[] = {
 	}
 };
 MODULE_DEVICE_TABLE(of, platform_of_match);
-
+#if defined(CONFIG_SENSORS_BACKLIGHT_THERMAL)
 static const struct of_device_id platform_of_asusmatch[] = {
 	{
 		.compatible = "asus-panel",
@@ -5293,20 +5321,25 @@ static const struct of_device_id platform_of_asusmatch[] = {
 	}
 };
 MODULE_DEVICE_TABLE(of, platform_of_asusmatch);
+#endif
 
 static int panel_simple_platform_probe(struct platform_device *pdev)
 {
 	struct of_device_id *id;
+
+#if defined(CONFIG_SENSORS_BACKLIGHT_THERMAL)
 	struct proc_dir_entry* file;
 	int id0, id1, panelid, ret;
-
 	id = of_match_node(platform_of_asusmatch, pdev->dev.of_node);
+#else
+	id = of_match_node(platform_of_match, pdev->dev.of_node);
+#endif
 
 	if (!id)
 		return -ENODEV;
 
 	printk("panel_simple_platform_probe");
-
+#if defined(CONFIG_SENSORS_BACKLIGHT_THERMAL)
 	id0_gpio = of_get_named_gpio(pdev->dev.of_node, "id0-gpios", 0);
 
 	if (!gpio_is_valid(id0_gpio)) {
@@ -5350,7 +5383,7 @@ static int panel_simple_platform_probe(struct platform_device *pdev)
 	file = proc_create("panelid", 0444, NULL, &panelid_ops);
 	if (!file)
 		return -ENOMEM;
-
+#endif
 	return panel_simple_probe(&pdev->dev, id->data, NULL);
 }
 
@@ -5368,12 +5401,16 @@ static const struct dev_pm_ops panel_simple_pm_ops = {
 	SET_RUNTIME_PM_OPS(panel_simple_suspend, panel_simple_resume, NULL)
 	SET_SYSTEM_SLEEP_PM_OPS(pm_runtime_force_suspend,
 				pm_runtime_force_resume)
-};
+}; 
 
 static struct platform_driver panel_simple_platform_driver = {
 	.driver = {
 		.name = "panel-simple",
+#if defined(CONFIG_SENSORS_BACKLIGHT_THERMAL)
 		.of_match_table = platform_of_asusmatch,
+#else
+		.of_match_table = platform_of_match,
+#endif
 		.pm = &panel_simple_pm_ops,
 	},
 	.probe = panel_simple_platform_probe,

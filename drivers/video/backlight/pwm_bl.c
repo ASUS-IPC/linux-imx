@@ -111,7 +111,7 @@ static int pwm_backlight_update_status(struct backlight_device *bl)
 	struct pwm_bl_data *pb = bl_get_data(bl);
 	int brightness = backlight_get_brightness(bl);
 	struct pwm_state state;
-
+#if defined(CONFIG_SENSORS_BACKLIGHT_THERMAL)
 	if (!backlight_is_blank(bl)) {
 		if(bl->props.thermal_max_brightness < brightness) {
 			printk("%s update brightness:%d to thermal_max_brightness:%d\n",__func__, brightness, bl->props.thermal_max_brightness);
@@ -127,7 +127,7 @@ static int pwm_backlight_update_status(struct backlight_device *bl)
 			}
 		}
 	}
-
+#endif
 	if (pb->notify)
 		brightness = pb->notify(pb->dev, brightness);
 
@@ -652,7 +652,9 @@ static int pwm_backlight_probe(struct platform_device *pdev)
 	}
 
 	bl->props.brightness = data->dft_brightness;
+#if defined(CONFIG_SENSORS_BACKLIGHT_THERMAL)
 	bl->props.init_brightness = bl->props.brightness;
+#endif
 	bl->props.power = pwm_backlight_initial_power_state(pb);
 	backlight_update_status(bl);
 
