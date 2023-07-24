@@ -2706,7 +2706,8 @@ static void imx6_pcie_shutdown(struct platform_device *pdev)
 	struct imx6_pcie *imx6_pcie = platform_get_drvdata(pdev);
 
 	/* bring down link, so bootloader gets clean state in case of reboot */
-	imx6_pcie_assert_core_reset(imx6_pcie);
+	//imx6_pcie_assert_core_reset(imx6_pcie);
+	printk("skip PCIE shutdown function");
 }
 
 static const struct imx6_pcie_drvdata drvdata[] = {
