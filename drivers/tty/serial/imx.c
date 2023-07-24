@@ -242,9 +242,10 @@ struct imx_port {
 	enum imx_tx_state	tx_state;
 	struct hrtimer		trigger_start_tx;
 	struct hrtimer		trigger_stop_tx;
+#ifdef CONFIG_SERIAL_LEDS
 	struct led_trigger	led_trigger_rx;
 	struct led_trigger	led_trigger_tx;
-
+#endif
 	struct pm_qos_request   pm_qos_req;
 };
 
@@ -361,10 +362,10 @@ static inline int imx_uart_is_imx6q(struct imx_port *sport)
 {
 	return sport->devdata->devtype == IMX6Q_UART;
 }
-
+#ifdef CONFIG_SERIAL_LEDS
 static unsigned long led_delay = 50;
 module_param(led_delay, ulong, 0644);
-
+#endif
 /*
  * Save and restore functions for UCR1, UCR2 and UCR3 registers
  */
@@ -548,10 +549,10 @@ static inline void imx_uart_transmit_buffer(struct imx_port *sport)
 		imx_uart_stop_tx(&sport->port);
 		return;
 	}
-
+#ifdef CONFIG_SERIAL_LEDS
 	led_trigger_blink_oneshot(&sport->led_trigger_tx,
 				  &led_delay, &led_delay, 1);
-
+#endif
 	if (sport->dma_is_enabled) {
 		u32 ucr1;
 		/*
@@ -806,10 +807,10 @@ static irqreturn_t __imx_uart_rxint(int irq, void *dev_id)
 	struct imx_port *sport = dev_id;
 	unsigned int rx, flg, ignored = 0;
 	struct tty_port *port = &sport->port.state->port;
-
+#ifdef CONFIG_SERIAL_LEDS
 	led_trigger_blink_oneshot(&sport->led_trigger_rx,
 				  &led_delay, &led_delay, 1);
-
+#endif
 	while (imx_uart_readl(sport, USR2) & USR2_RDR) {
 		u32 usr2;
 
@@ -2195,7 +2196,7 @@ static struct uart_driver imx_uart_uart_driver = {
 
 static void imx_register_led_trigger(struct device *dev, struct imx_port *sport)
 {
-#ifdef CONFIG_LEDS_TRIGGERS
+#ifdef CONFIG_SERIAL_LEDS
 	int ret;
 	char *name;
 
@@ -2495,7 +2496,7 @@ static int imx_uart_probe(struct platform_device *pdev)
 static int imx_uart_remove(struct platform_device *pdev)
 {
 	struct imx_port *sport = platform_get_drvdata(pdev);
-#ifdef CONFIG_LEDS_TRIGGERS
+#ifdef CONFIG_SERIAL_LEDS
 	led_trigger_unregister(&sport->led_trigger_rx);
 #endif
 	return uart_remove_one_port(&imx_uart_uart_driver, &sport->port);

@@ -2964,12 +2964,12 @@ int uart_add_one_port(struct uart_driver *drv, struct uart_port *uport)
 	 * Ensure UPF_DEAD is not set.
 	 */
 	uport->flags &= ~UPF_DEAD;
-
+#ifdef CONFIG_SERIAL_LEDS
 	/* Register LED triggers for port */
 	if(!strcmp(drv->dev_name, "ttymxc") && (drv->tty_driver->name_base + uport->line) == 3) {
 	    uart_led_register(drv, uport);
 	}
-
+#endif
  out:
 	mutex_unlock(&port->mutex);
 	mutex_unlock(&port_mutex);
@@ -3032,12 +3032,12 @@ int uart_remove_one_port(struct uart_driver *drv, struct uart_port *uport)
 	 */
 	if (uart_console(uport))
 		unregister_console(uport->cons);
-
+#ifdef CONFIG_SERIAL_LEDS
 	/* Unregister LED triggers for port */
 	if(!strcmp(drv->dev_name, "ttymxc") && (drv->tty_driver->name_base + uport->line) == 3) {
 	    uart_led_unregister(uport);
 	}
-
+#endif
 	/*
 	 * Free the port IO and memory resources, if any.
 	 */

@@ -29,7 +29,6 @@ void uart_led_event(struct uart_port *port, enum uart_led_event event)
 		break;
 	case UART_LED_EVENT_RX:
 		if (led_delay) {
-		    
 			led_trigger_blink_oneshot(port->rx_led_trig,
 						  &led_delay, &led_delay, 0);
 		}
