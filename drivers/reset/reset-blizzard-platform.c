@@ -18,7 +18,7 @@ MODULE_DEVICE_TABLE(of, of_platform_reset_match);
 
 void platform_reset_trigger(void)
 {
-	if( trigger_flag == 0 ) {
+	if( trigger_flag == 0  && gpio_is_valid(reset_gpio)) {
 		trigger_flag=1;
 		printk("Trigger platform_reset\n");
 		gpio_set_value_cansleep(reset_gpio, 0);
@@ -43,8 +43,7 @@ static int platform_reset_probe(struct platform_device *pdev)
 		printk("platform_reset_probe reset_gpio EPROBE_DEFER\n");
 		return -EPROBE_DEFER;
 	} else if (!gpio_is_valid(reset_gpio)) {
-		printk("No reset-gpio pin available in gpio-rst=%d\n", reset_gpio);
-		return -ENODEV;
+		printk("No reset-gpio pin available in gpio-rst=%d, , suppose the device is DVT\n", reset_gpio);
 	} else {
 		ret = devm_gpio_request_one(dev, reset_gpio, GPIOF_OUT_INIT_HIGH, "Platform reset");
 		if (ret < 0) {
@@ -52,7 +51,7 @@ static int platform_reset_probe(struct platform_device *pdev)
 			return ret;
 		}
 		/*
-		//the first reset is  trigger at uboot
+		//the first reset is  trigger by Ethernet driver at uboot
 		printk("reset-gpio request success\n");
 		mdelay(100);
 		platform_reset_trigger();
@@ -150,7 +149,8 @@ static int platform_reset_resume(struct device *dev)
 	int detect_pin;
 
 	printk("platform_reset_resume\n");
-	platform_reset_trigger();
+	if (gpio_is_valid(reset_gpio))
+		platform_reset_trigger();
 
 	if (gpio_is_valid(detect_gpio)) {
 		detect_pin = gpio_get_value(detect_gpio);
