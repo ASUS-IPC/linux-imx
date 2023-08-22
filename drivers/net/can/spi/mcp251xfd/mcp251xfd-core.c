@@ -2869,7 +2869,7 @@ static int mcp251xfd_probe(struct spi_device *spi)
 	u32 freq = 0;
 	int err;
 	struct device_node *np;
-	int standby_gpio, irq_gpio;
+	int irq_gpio;
 	int ret;
 	int irq;
 
@@ -2945,19 +2945,6 @@ static int mcp251xfd_probe(struct spi_device *spi)
 			"Oscillator frequency (%u Hz) is too low and PLL is not supported.\n",
 			freq);
 		return -ERANGE;
-	}
-
-	/* Add Standy pin control */
-	np = spi->dev.of_node;
-	if (np) {
-		standby_gpio = of_get_named_gpio(np, "standby-gpios", 0);
-		dev_info(&spi->dev, "can bus standby gpio=%d, freq=%d\n", standby_gpio, freq);
-		if (gpio_is_valid(standby_gpio)) {
-			ret = devm_gpio_request_one(&spi->dev, standby_gpio, GPIOF_OUT_INIT_LOW, "CAN standby");
-			if (ret) {
-				dev_err(&spi->dev, "unable to get can standby gpio\n");
-			}
-		}
 	}
 
 	ndev = alloc_candev(sizeof(struct mcp251xfd_priv),
