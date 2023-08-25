@@ -40,7 +40,7 @@ static int ver_show(struct seq_file *m, void *v)
 			boardver = "1.02";
 			break;
 		case 3:
-			boardver = "2.00";
+			boardver = "1.03";
 			break;
 		default:
 			boardver = "unknown";
