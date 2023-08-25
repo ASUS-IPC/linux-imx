@@ -2167,6 +2167,9 @@ static irqreturn_t mcp251xfd_irq(int irq, void *dev_id)
 	irqreturn_t handled = IRQ_NONE;
 	int err;
 
+	while (priv->resume_from_sleep)
+		usleep_range(10000, 20000);
+
 	if (priv->rx_int)
 		do {
 			int rx_pending;
@@ -2975,6 +2978,7 @@ static int mcp251xfd_probe(struct spi_device *spi)
 	priv->clk = clk;
 	priv->reg_vdd = reg_vdd;
 	priv->reg_xceiver = reg_xceiver;
+	priv->resume_from_sleep = false;
 
 	match = device_get_match_data(&spi->dev);
 	if (match)
@@ -3071,9 +3075,10 @@ static int __maybe_unused mcp251xfd_runtime_resume(struct device *device)
 
 static int __maybe_unused mcp251xfd_suspend(struct device *device)
 {
-	const struct mcp251xfd_priv *priv = dev_get_drvdata(device);
+	struct mcp251xfd_priv *priv = dev_get_drvdata(device);
 	struct net_device *dev = priv->ndev;
 
+	priv->resume_from_sleep = true;
 	dev_dbg(device, "%s\n", __func__);
 	if (netif_running(dev) && device_may_wakeup(device)) {
 		enable_irq_wake(dev->irq);
@@ -3084,9 +3089,10 @@ static int __maybe_unused mcp251xfd_suspend(struct device *device)
 
 static int __maybe_unused mcp251xfd_resume(struct device *device)
 {
-	const struct mcp251xfd_priv *priv = dev_get_drvdata(device);
+	struct mcp251xfd_priv *priv = dev_get_drvdata(device);
 	struct net_device *dev = priv->ndev;
 
+	priv->resume_from_sleep = false;
 	dev_dbg(device, "%s\n", __func__);
 	if (netif_running(dev) && device_may_wakeup(device)) {
 		disable_irq_wake(dev->irq);

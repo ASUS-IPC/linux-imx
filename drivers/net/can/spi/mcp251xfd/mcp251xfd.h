@@ -612,6 +612,7 @@ struct mcp251xfd_priv {
 
 	struct mcp251xfd_devtype_data devtype_data;
 	struct can_berr_counter bec;
+	bool resume_from_sleep;
 };
 
 #define MCP251XFD_IS(_model) \
