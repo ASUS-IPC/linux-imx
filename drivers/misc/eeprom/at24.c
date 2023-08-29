@@ -473,7 +473,6 @@ void at24_read_eeprom(char *buf, unsigned int off, size_t count)
 	if (eeprom_kobj != NULL) {
 		at24 = dev_get_drvdata(container_of(eeprom_kobj, struct device, kobj));
 		at24_read(at24, off, buf, count);
-		pr_info("at24 read eeprom : success\n");
 	}
 }
 EXPORT_SYMBOL(at24_read_eeprom);
