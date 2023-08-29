@@ -1762,6 +1762,7 @@ static int fec_enet_rx_napi(struct napi_struct *napi, int budget)
 }
 
 /* ------------------------------------------------------------------------- */
+extern int boardinfo_show(void);
 static int fec_get_mac(struct net_device *ndev)
 {
 	struct fec_enet_private *fep = netdev_priv(ndev);
@@ -1776,7 +1777,10 @@ static int fec_get_mac(struct net_device *ndev)
 	 */
 	iap = macaddr;
 
-	eth_mac_eeprom(iap);
+	pr_info("fec: boardinfo_show: = %d\n", boardinfo_show());
+	if (boardinfo_show() != 3)
+		eth_mac_eeprom(iap);
+
 	/*
 	 * 2) from device tree data
 	 */

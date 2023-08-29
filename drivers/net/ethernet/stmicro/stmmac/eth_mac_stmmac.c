@@ -31,8 +31,14 @@ int eth_mac_eeprom_stmmac(u8 *eth_mac_stmmac)
 {
 	int i;
 	memset(eth_mac_stmmac, 0, 6);
-	printk("Read the Ethernet MAC address from EEPROM (STMMAC):");
+
+#ifdef CONFIG_EEPROM_AT24
 	at24_read_eeprom(eth_mac_stmmac, 6, 6);
+#else
+	printk("EEPROM_AT24 is not set (STMMAC)\n");
+#endif
+
+	printk("Read the Ethernet MAC address from EEPROM (STMMAC):");
 	for(i=0; i<5; i++)
 		printk("%2.2x:", eth_mac_stmmac[i]);
 	printk("%2.2x\n", eth_mac_stmmac[i]);

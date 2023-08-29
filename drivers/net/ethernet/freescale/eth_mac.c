@@ -32,8 +32,14 @@ int eth_mac_eeprom(u8 *eth_mac)
 {
 	int i;
 	memset(eth_mac, 0, 6);
-	printk("Read the Ethernet MAC address from EEPROM:");
+
+#ifdef CONFIG_EEPROM_AT24
 	at24_read_eeprom(eth_mac, 0, 6);
+#else
+	printk("EEPROM_AT24 is not set\n");
+#endif
+
+	printk("Read the Ethernet MAC address from EEPROM:");
 	for(i=0; i<5; i++)
 		printk("%2.2x:", eth_mac[i]);
 	printk("%2.2x\n", eth_mac[i]);
