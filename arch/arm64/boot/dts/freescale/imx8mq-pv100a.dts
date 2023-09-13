@@ -758,6 +758,8 @@
 	pinctrl-0 = <&pinctrl_uart1>;
 	assigned-clocks = <&clk IMX8MQ_CLK_UART1>;
 	assigned-clock-parents = <&clk IMX8MQ_CLK_25M>;
+	dmas = <&sdma1 22 4 0>, <&sdma1 23 4 0>;
+	dma-names = "rx", "tx";
 	status = "okay";
 };
 
