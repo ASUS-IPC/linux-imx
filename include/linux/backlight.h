@@ -194,7 +194,7 @@ struct backlight_properties {
 	int brightness;
 
 #if defined(CONFIG_SENSORS_BACKLIGHT_THERMAL)
-	int init_brightness;
+	int actual_brightness;
 	int thermal_max_brightness;
 #endif
 
@@ -343,9 +343,6 @@ struct backlight_device {
 	 * @use_count: The number of uses of fb_bl_on.
 	 */
 	int use_count;
-#if defined(CONFIG_SENSORS_BACKLIGHT_THERMAL)
-	bool first_set_brightness;
-#endif
 };
 
 /**
