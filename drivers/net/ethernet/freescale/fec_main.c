@@ -90,6 +90,9 @@ static const u16 fec_enet_vlan_pri_to_queue[8] = {0, 0, 1, 1, 1, 2, 2, 2};
 #define FEC_ENET_OPD_V	0xFFF0
 #define FEC_MDIO_PM_TIMEOUT  100 /* ms */
 
+int fec_ready = -1;
+EXPORT_SYMBOL(fec_ready);
+
 struct fec_devinfo {
 	u32 quirks;
 };
@@ -4149,6 +4152,8 @@ fec_probe(struct platform_device *pdev)
 
 	pm_runtime_mark_last_busy(&pdev->dev);
 	pm_runtime_put_autosuspend(&pdev->dev);
+
+	fec_ready = 1;
 
 	return 0;
 

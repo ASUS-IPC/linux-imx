@@ -142,6 +142,9 @@ static void stmmac_init_fs(struct net_device *dev);
 static void stmmac_exit_fs(struct net_device *dev);
 #endif
 
+extern int fec_ready;
+int stmmac_retry_times = 0;
+
 #define STMMAC_COAL_TIMER(x) (ns_to_ktime((x) * NSEC_PER_USEC))
 
 int stmmac_bus_clks_config(struct stmmac_priv *priv, bool enabled)
@@ -6997,6 +7000,12 @@ int stmmac_dvr_probe(struct device *device,
 				       MTL_MAX_TX_QUEUES, MTL_MAX_RX_QUEUES);
 	if (!ndev)
 		return -ENOMEM;
+
+	if (fec_ready != 1 && stmmac_retry_times < 4) {
+		stmmac_retry_times++;
+		pr_info("stmmac: fec driver not ready: retry = %d\n", stmmac_retry_times);
+		return -EPROBE_DEFER;
+	}
 
 	SET_NETDEV_DEV(ndev, device);
 
