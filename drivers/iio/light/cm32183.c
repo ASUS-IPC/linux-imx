@@ -37,6 +37,8 @@ struct cm32183_chip {
 	int als_enable;
 };
 
+struct cm32183_chip g_cm32183;
+
 static int cm32183_get_lux(struct cm32183_chip *cm32183, uint16_t reg);
 
 /**
@@ -113,6 +115,20 @@ static int cm32183_get_lux(struct cm32183_chip *cm32183, uint16_t reg)
 	mutex_unlock(&cm32183->als_get_adc_mutex);
 	return ret;
 }
+
+int asus_cm32183_get_lux_data(void)
+{
+	int ret;
+
+	ret = cm32183_get_lux(&g_cm32183, CM32183_ALS_DATA);
+	if (ret < 0) {
+		pr_err("%s: get lux for GREEN fail\n", __func__);
+		return -EIO;
+	}
+
+	return ret;
+}
+EXPORT_SYMBOL(asus_cm32183_get_lux_data);
 
 static int cm32183_read_raw(struct iio_dev *indio_dev,
 			    struct iio_chan_spec const *chan,
@@ -289,6 +305,7 @@ static int cm32183_probe(struct i2c_client *client)
 	}
 
 	mutex_init(&cm32183->als_get_adc_mutex);
+	g_cm32183 = *cm32183;
 	return 0;
 }
 

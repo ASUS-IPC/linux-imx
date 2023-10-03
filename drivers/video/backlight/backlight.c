@@ -17,6 +17,8 @@
 #include <linux/err.h>
 #include <linux/fb.h>
 #include <linux/slab.h>
+#include <linux/workqueue.h>
+#include <linux/cm32183.h>
 
 #ifdef CONFIG_PMAC_BACKLIGHT
 #include <asm/backlight.h>
@@ -66,6 +68,13 @@
 static struct list_head backlight_dev_list;
 static struct mutex backlight_dev_list_mutex;
 static struct blocking_notifier_head backlight_notifier;
+
+#if defined(CONFIG_IIO_CAPELLA_CM32183)
+static struct backlight_device *als_bd;
+static struct delayed_work als_work;
+
+static unsigned long als_polling_delay = 1 * HZ;// 1 sec
+#endif
 
 static const char *const backlight_types[] = {
 	[BACKLIGHT_RAW] = "raw",
@@ -253,6 +262,96 @@ static ssize_t bl_power_store(struct device *dev, struct device_attribute *attr,
 }
 static DEVICE_ATTR_RW(bl_power);
 
+#if defined(CONFIG_IIO_CAPELLA_CM32183)
+static unsigned long als_cal_brightness(struct backlight_device *bd)
+{
+	int lux_value;
+
+	lux_value = asus_cm32183_get_lux_data();
+
+	if(lux_value && lux_value <= 65535) {
+		if(lux_value >= 60000) {
+			bd->props.als_brightness = 1000;
+			//pr_info("%s: set brightness to 1000\n", __func__);
+		}
+		else if(lux_value >= 30000 && lux_value < 60000) {
+			bd->props.als_brightness = 500;
+			//pr_info("%s: set brightness to 500\n", __func__);
+		}
+		else if(lux_value < 30000) {
+			bd->props.als_brightness = 200;
+			//pr_info("%s: set brightness to 200\n", __func__);
+		}
+	}
+	//pr_info("%s: lux_value = %d\n", __func__, lux_value);
+
+	return lux_value;
+}
+
+static void als_work_handler(struct work_struct *data)
+{
+	if(als_bd->ops) {
+		als_cal_brightness(als_bd);
+		backlight_device_set_brightness(als_bd, als_bd->props.als_brightness);
+		schedule_delayed_work(&als_work, als_polling_delay);
+	}
+}
+
+static ssize_t als_enable_show(struct device *dev, struct device_attribute *attr,
+		char *buf)
+{
+	struct backlight_device *bd = to_backlight_device(dev);
+
+	return sprintf(buf, "%d\n", bd->props.als_enable);
+}
+
+static ssize_t als_enable_store(struct device *dev, struct device_attribute *attr,
+		const char *buf, size_t count)
+{
+	int rc;
+	struct backlight_device *bd = to_backlight_device(dev);
+	unsigned long als_enable, als_enable_old;
+
+	rc = kstrtoul(buf, 0, &als_enable);
+	if (rc)
+		return rc;
+
+	rc = -ENXIO;
+	mutex_lock(&bd->ops_lock);
+	if (bd->ops) {
+		if (bd->props.als_enable != als_enable) {
+			als_enable_old = bd->props.als_enable;
+			bd->props.als_enable = als_enable;
+
+			if(bd->props.als_enable) {
+				pr_info("%s: start adaptive brightness\n", __func__);
+				als_bd = bd;
+				rc = schedule_delayed_work(&als_work, als_polling_delay);
+			}
+			else {
+				pr_info("%s: stop adaptive brightness\n", __func__);
+				rc = cancel_delayed_work(&als_work);
+			}
+
+			if (!rc) {
+				pr_info("%s: failed to %s adaptive brightness\n", __func__, bd->props.als_enable ? "start" : "stop");
+				bd->props.als_enable = als_enable_old;
+			}
+			else {
+				rc = count;
+			}
+		}
+		else {
+			rc = count;
+		}
+	}
+	mutex_unlock(&bd->ops_lock);
+
+	return rc;
+}
+static DEVICE_ATTR_RW(als_enable);
+#endif
+
 static ssize_t brightness_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
@@ -305,6 +404,17 @@ static ssize_t brightness_store(struct device *dev,
 	rc = kstrtoul(buf, 0, &brightness);
 	if (rc)
 		return rc;
+
+#if defined(CONFIG_IIO_CAPELLA_CM32183)
+	//stop apative brightness when set brightness manually
+	mutex_lock(&bd->ops_lock);
+	if(bd->props.als_enable) {
+		cancel_delayed_work_sync(&als_work);
+		bd->props.als_enable = 0;
+		pr_info("%s: stop adaptive brightness\n", __func__);
+	}
+	mutex_unlock(&bd->ops_lock);
+#endif
 
 	rc = backlight_device_set_brightness(bd, brightness);
 
@@ -410,6 +520,9 @@ static struct attribute *bl_device_attrs[] = {
 	&dev_attr_max_brightness.attr,
 	&dev_attr_scale.attr,
 	&dev_attr_type.attr,
+#if defined(CONFIG_IIO_CAPELLA_CM32183)
+	&dev_attr_als_enable.attr,
+#endif
 	NULL,
 };
 ATTRIBUTE_GROUPS(bl_device);
@@ -800,6 +913,9 @@ static int __init backlight_class_init(void)
 	INIT_LIST_HEAD(&backlight_dev_list);
 	mutex_init(&backlight_dev_list_mutex);
 	BLOCKING_INIT_NOTIFIER_HEAD(&backlight_notifier);
+#if defined(CONFIG_IIO_CAPELLA_CM32183)
+	INIT_DELAYED_WORK(&als_work, als_work_handler);
+#endif
 
 	return 0;
 }

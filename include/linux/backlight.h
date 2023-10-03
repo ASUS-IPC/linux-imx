@@ -275,6 +275,10 @@ struct backlight_properties {
 	 * @scale: The type of the brightness scale.
 	 */
 	enum backlight_scale scale;
+#if defined(CONFIG_IIO_CAPELLA_CM32183)
+	bool als_enable;
+	int als_brightness;
+#endif
 };
 
 /**

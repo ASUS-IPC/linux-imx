@@ -47,4 +47,6 @@ struct cm32183_platform_data {
 	uint16_t ls_cmd;
 };
 
+int asus_cm32183_get_lux_data(void);
+
 #endif
