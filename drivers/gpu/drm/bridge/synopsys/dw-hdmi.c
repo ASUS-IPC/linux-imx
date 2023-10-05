@@ -2485,11 +2485,13 @@ static struct edid *dw_hdmi_get_edid(struct dw_hdmi *hdmi,
 	edid = drm_get_edid(connector, hdmi->ddc);
 	if (!edid) {
 		dev_dbg(hdmi->dev, "failed to get edid\n");
+		pr_err("%s: failed to get edid\n", __func__);
 		return NULL;
 	}
 
 	dev_dbg(hdmi->dev, "got edid: width[%d] x height[%d]\n",
 		edid->width_cm, edid->height_cm);
+	pr_err("%s: got edid: width[%d] x height[%d]\n",__func__, edid->width_cm, edid->height_cm);
 
 	hdmi->sink_is_hdmi = drm_detect_hdmi_monitor(edid);
 	hdmi->sink_has_audio = drm_detect_monitor_audio(edid);
@@ -3150,6 +3152,7 @@ static irqreturn_t dw_hdmi_irq(int irq, void *dev_id)
 		dev_dbg(hdmi->dev, "EVENT=%s\n",
 			status == connector_status_connected ?
 			"plugin" : "plugout");
+		pr_err("%s: EVENT=%s\n", __func__, status == connector_status_connected ? "plugin" : "plugout");
 
 		if (hdmi->bridge.dev) {
 			drm_helper_hpd_irq_event(hdmi->bridge.dev);
