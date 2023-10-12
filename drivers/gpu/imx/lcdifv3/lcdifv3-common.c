@@ -387,8 +387,7 @@ void lcdifv3_set_mode(struct lcdifv3_soc *lcdifv3, struct videomode *vmode)
 	clk_disable_unprepare(lcdifv3->clk_pix);
 	clk_set_rate(lcdifv3->clk_pix, vmode->pixelclock);
 	clk_prepare_enable(lcdifv3->clk_pix);
-	pr_err("%s: vmode->pixelclock = %u, vmode->hactive = %u, vmode->vactive = %u\n",
-			__func__, vmode->pixelclock, vmode->hactive, vmode->vactive);
+
 	/* config display timings */
 	disp_size = DISP_SIZE_DELTA_Y(vmode->vactive) |
 		    DISP_SIZE_DELTA_X(vmode->hactive);
