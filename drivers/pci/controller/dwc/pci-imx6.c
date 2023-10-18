@@ -1582,8 +1582,8 @@ static void imx6_pcie_init_phy(struct imx6_pcie *imx6_pcie)
 		 * to be 1.8V. If the PCIE_VPH is supplied by 3.3V, the
 		 * VREG_BYPASS should be cleared to zero.
 		 */
-		if (imx6_pcie->vph &&
-		    regulator_get_voltage(imx6_pcie->vph) > 3000000)
+		//if (imx6_pcie->vph &&
+		 //   regulator_get_voltage(imx6_pcie->vph) > 3000000)
 			regmap_update_bits(imx6_pcie->iomuxc_gpr,
 					   imx6_pcie_grp_offset(imx6_pcie),
 					   IMX8MQ_GPR_PCIE_VREG_BYPASS,
