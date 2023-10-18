@@ -295,6 +295,7 @@ struct imx_pcie {
 #define IMX8MQ_GPR_PCIE_REF_USE_PAD		BIT(9)
 #define IMX8MQ_GPR_PCIE_CLK_REQ_OVERRIDE_EN	BIT(10)
 #define IMX8MQ_GPR_PCIE_CLK_REQ_OVERRIDE	BIT(11)
+#define IMX8MQ_GPR_PCIE_VREG_BYPASS 	BIT(12)
 #define IMX8MQ_ANA_PLLOUT_REG			0x74
 #define IMX8MQ_ANA_PLLOUT_CKE			BIT(4)
 #define IMX8MQ_ANA_PLLOUT_SEL_MASK		0xF
@@ -1198,6 +1199,15 @@ static void imx_pcie_init_phy(struct imx_pcie *imx_pcie)
 			regmap_update_bits(imx_pcie->iomuxc_gpr, val,
 					IMX8MQ_GPR_PCIE_REF_USE_PAD,
 					IMX8MQ_GPR_PCIE_REF_USE_PAD);
+
+			/*
+			* Regarding the datasheet, the PCIE_VPH is suggested
+			* to be 1.8V. If the PCIE_VPH is supplied by 3.3V, the
+			* VREG_BYPASS should be cleared to zero.
+			*/
+			regmap_update_bits(imx_pcie->iomuxc_gpr, val,
+					   IMX8MQ_GPR_PCIE_VREG_BYPASS,
+					   0);
 			if (imx_pcie->variant == IMX8MM) {
 				dev_info(imx_pcie->pci->dev,
 					"Initialize PHY with EXT REfCLK!.\n");
