@@ -116,8 +116,12 @@ void can_setup(struct net_device *dev);
 
 struct net_device *alloc_candev_mqs(int sizeof_priv, unsigned int echo_skb_max,
 				    unsigned int txqs, unsigned int rxqs);
+struct net_device *alloc_candev_mqs_name(int sizeof_priv, unsigned int echo_skb_max,
+                    unsigned int txqs, unsigned int rxqs, const char *name);
 #define alloc_candev(sizeof_priv, echo_skb_max) \
 	alloc_candev_mqs(sizeof_priv, echo_skb_max, 1, 1)
+#define alloc_candev_name(sizeof_priv, echo_skb_max, name) \
+    alloc_candev_mqs_name(sizeof_priv, echo_skb_max, 1, 1, name)
 #define alloc_candev_mq(sizeof_priv, echo_skb_max, count) \
 	alloc_candev_mqs(sizeof_priv, echo_skb_max, count, count)
 void free_candev(struct net_device *dev);

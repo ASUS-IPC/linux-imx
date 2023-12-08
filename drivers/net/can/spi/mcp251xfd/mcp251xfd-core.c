@@ -2875,6 +2875,7 @@ static int mcp251xfd_probe(struct spi_device *spi)
 	int irq_gpio;
 	int ret;
 	int irq;
+	const char *interface;
 
 	if (!spi->irq)
 		return dev_err_probe(&spi->dev, -ENXIO,
@@ -2898,6 +2899,13 @@ static int mcp251xfd_probe(struct spi_device *spi)
 		device_set_wakeup_capable(&spi->dev, true);
 		if (of_property_read_bool(np, "wakeup-source"))
 			device_set_wakeup_enable(&spi->dev, true);
+
+		ret = of_property_read_string(np,
+				      "os,interface", &interface);
+		if (ret)
+			interface = NULL;
+		else
+			pr_info("## Get interface name:%s\n", interface);
     }
 
 	rx_int = devm_gpiod_get_optional(&spi->dev, "microchip,rx-int",
@@ -2950,7 +2958,11 @@ static int mcp251xfd_probe(struct spi_device *spi)
 		return -ERANGE;
 	}
 
-	ndev = alloc_candev(sizeof(struct mcp251xfd_priv),
+	if (interface != NULL)
+		ndev = alloc_candev_name(sizeof(struct mcp251xfd_priv),
+                MCP251XFD_TX_OBJ_NUM_MAX, interface);
+	else
+		ndev = alloc_candev(sizeof(struct mcp251xfd_priv),
 			    MCP251XFD_TX_OBJ_NUM_MAX);
 	if (!ndev)
 		return -ENOMEM;

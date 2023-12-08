@@ -2140,6 +2140,7 @@ static int flexcan_probe(struct platform_device *pdev)
 	int err, irq;
 	u8 clk_src = 1;
 	u32 clock_freq = 0;
+	const char *interface = NULL;
 
 	reg_xceiver = devm_regulator_get_optional(&pdev->dev, "xceiver");
 	if (PTR_ERR(reg_xceiver) == -EPROBE_DEFER)
@@ -2154,6 +2155,8 @@ static int flexcan_probe(struct platform_device *pdev)
 				     "clock-frequency", &clock_freq);
 		of_property_read_u8(pdev->dev.of_node,
 				    "fsl,clk-source", &clk_src);
+		of_property_read_string(pdev->dev.of_node,
+					"os,interface", &interface);
 	} else {
 		pdata = dev_get_platdata(&pdev->dev);
 		if (pdata) {
@@ -2161,6 +2164,9 @@ static int flexcan_probe(struct platform_device *pdev)
 			clk_src = pdata->clk_src;
 		}
 	}
+
+	if (interface != NULL)
+		pr_info("## Get interface name:%s\n", interface);
 
 	if (!clock_freq) {
 		clk_ipg = devm_clk_get(&pdev->dev, "ipg");
@@ -2216,8 +2222,11 @@ static int flexcan_probe(struct platform_device *pdev)
 			devtype_data->quirks);
 		return -EINVAL;
 	}
-
-	dev = alloc_candev(sizeof(struct flexcan_priv), 1);
+	
+	if (!interface)
+		dev = alloc_candev(sizeof(struct flexcan_priv), 1);
+	else
+		dev = alloc_candev_name(sizeof(struct flexcan_priv), 1, interface);
 	if (!dev)
 		return -ENOMEM;
 

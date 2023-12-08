@@ -520,6 +520,7 @@
 	pinctrl-0 = <&pinctrl_flexcan1>;
 	xceiver-supply = <&reg_can1_stby>;
 	wakeup-source;
+	os,interface = "can0";
 	status = "okay";
 };
 
@@ -528,6 +529,7 @@
 	pinctrl-0 = <&pinctrl_flexcan2>;
 	xceiver-supply = <&reg_can2_stby>;
 	wakeup-source;
+	os,interface = "can1";
 	status = "okay";/* can2 pin conflict with pdm */
 };
 
@@ -619,6 +621,7 @@
 		xceiver-supply = <&reg_can3_stby>;
 		irq-gpio = <&gpio4 22 GPIO_ACTIVE_LOW>;
 		wakeup-source;
+		os,interface = "can2";
     };
 };
 
@@ -643,6 +646,7 @@
 		xceiver-supply = <&reg_can4_stby>;
 		irq-gpio = <&gpio4 23 GPIO_ACTIVE_LOW>;
 		wakeup-source;
+		os,interface = "can3";
 	};
 };
 
