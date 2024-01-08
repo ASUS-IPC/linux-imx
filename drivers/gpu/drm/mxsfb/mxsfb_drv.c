@@ -340,6 +340,7 @@ MODULE_DEVICE_TABLE(of, mxsfb_dt_ids);
 
 #ifdef CONFIG_TINKER_MCU
 extern int tinker_mcu_is_connected(void);
+extern bool is_dsi_panel_connected(void);
 #endif
 
 #ifdef CONFIG_TINKER_MCU_ILI9881C
@@ -359,8 +360,8 @@ static int mxsfb_probe(struct platform_device *pdev)
 		return -EPROBE_DEFER;
 	}
 
-	if(!tinker_mcu_is_connected() && !tinker_mcu_ili9881c_is_connected()) {
-		printk("mxsfb_probe: tc358762/ili9881c panel is not connected, lcdif probe stop\n");
+	if(!tinker_mcu_is_connected() && !tinker_mcu_ili9881c_is_connected() && !is_dsi_panel_connected()) {
+		printk("mxsfb_probe: tc358762/ili9881c/dsi panel is not connected, lcdif probe stop\n");
 		return -ENODEV;
 	}
 #endif

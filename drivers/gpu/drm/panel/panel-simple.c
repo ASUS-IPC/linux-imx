@@ -201,6 +201,10 @@ struct panel_desc {
 		 */
 		unsigned int unprepare;
 		unsigned int init;
+		unsigned int reset;
+		unsigned int reset_high;
+		unsigned int reset_low;
+		unsigned int reset_high2;
 	} delay;
 
 	/** @bus_format: See MEDIA_BUS_FMT_... defines. */
@@ -237,6 +241,7 @@ struct panel_simple {
 	struct drm_dp_aux *aux;
 
 	struct gpio_desc *enable_gpio;
+	struct gpio_desc *reset_gpio;
 	struct gpio_desc *hpd_gpio;
 
 	struct edid *edid;
@@ -318,6 +323,8 @@ static const struct proc_ops panelid_ops = {
 	.proc_read = seq_read,
 };
 #endif
+
+static enum mipi_dsi_panel dsi_panel;
 
 static void panel_simple_sleep(unsigned int msec)
 {
@@ -707,6 +714,17 @@ static int panel_simple_unprepare(struct drm_panel *panel)
 		printk("tinker_mcu_screen_power_off\n");
 		tinker_mcu_screen_power_off(p->dsi_id);
 	}
+
+	if (dsi_panel == MIPI_DSI_LKW070N13000_V2)
+	{
+		if(p->reset_gpio)
+			gpiod_direction_output(p->reset_gpio, 0);
+	}
+	else
+	{
+		if(p->reset_gpio)
+			gpiod_direction_output(p->reset_gpio, 1);
+	}
 #endif
 
 	pm_runtime_mark_last_busy(panel->dev);
@@ -754,14 +772,6 @@ static int panel_simple_prepare_once(struct panel_simple *p)
 	//gpiod_set_value_cansleep(p->enable_gpio, 1);
 #else
 	gpiod_set_value_cansleep(p->enable_gpio, 1);
-#endif
-
-#if defined(CONFIG_TINKER_MCU)
-	if (tinker_mcu_ili9881c_is_connected(p->dsi_id)) {
-		printk("tinker_mcu_ili9881c_screen_power_up\n");
-		tinker_mcu_ili9881c_screen_power_up(p->dsi_id);
-		tinker_ft5406_start_polling(p->dsi_id);
-	}
 #endif
 
 	delay = p->desc->delay.prepare;
@@ -850,20 +860,6 @@ static int panel_simple_prepare(struct drm_panel *panel)
 	}
 #endif
 
-#if defined(CONFIG_TINKER_MCU)
-	if (tinker_mcu_ili9881c_is_connected(p->dsi_id)) {
-		printk("tinker_mcu_ili9881c_screen_power_up\n");
-		tinker_mcu_ili9881c_screen_power_up(p->dsi_id);
-		tinker_ft5406_start_polling(p->dsi_id);
-	}
-
-	if (p->desc->init_seq) {
-		if ((p->dsi) && !tinker_mcu_is_connected(p->dsi_id)) {
-			panel_simple_xfer_dsi_cmd_seq(p, p->desc->init_seq);
-		}
-	}
-#endif
-
 	ret = pm_runtime_get_sync(panel->dev);
 	if (ret < 0) {
 		pm_runtime_put_autosuspend(panel->dev);
@@ -946,12 +942,45 @@ static int panel_simple_enable(struct drm_panel *panel)
 		panel_simple_sleep(20);
 		tinker_ft5406_start_polling(p->dsi_id);
 	}
+	else if (tinker_mcu_ili9881c_is_connected(p->dsi_id)) {
+		printk("tinker_mcu_ili9881c_screen_power_up\n");
+		tinker_mcu_ili9881c_screen_power_up(p->dsi_id);
+		tinker_ft5406_start_polling(p->dsi_id);
+	}
+
+	if (dsi_panel == MIPI_DSI_LKW070N13000_V2)
+	{
+		if(p->reset_gpio)
+			gpiod_direction_output(p->reset_gpio, 1);
+
+		if (p->desc->delay.reset_high)
+			msleep(p->desc->delay.reset_high);
+
+		if(p->reset_gpio)
+			gpiod_direction_output(p->reset_gpio, 0);
+
+		if (p->desc->delay.reset_low)
+			msleep(p->desc->delay.reset_low);
+
+		if(p->reset_gpio)
+			gpiod_direction_output(p->reset_gpio, 1);
+
+		if (p->desc->delay.reset_high2)
+			msleep(p->desc->delay.reset_high2);
+	}
 
 	if (p->desc->init_seq) {
 		if ((p->dsi) && tinker_mcu_is_connected(p->dsi_id)) {
 			err = panel_simple_xfer_dsi_cmd_seq(p, p->desc->init_seq);
 			//add delay after init to prevent blurry screen
 			msleep(200);
+		}
+		else if ((p->dsi) && tinker_mcu_ili9881c_is_connected(p->dsi_id)) {
+			panel_simple_xfer_dsi_cmd_seq(p, p->desc->init_seq);
+		}
+		else if(dsi_panel == MIPI_DSI_LKW070N13000_V2) {
+			if (p->dsi)
+				err = panel_simple_xfer_dsi_cmd_seq(p, p->desc->init_seq);
 		}
 
 		if (err)
@@ -1167,6 +1196,16 @@ static int panel_simple_probe(struct device *dev, const struct panel_desc *desc,
 			dev_err(dev, "failed to request GPIO: %d\n", err);
 		return err;
 	}
+#if defined(CONFIG_TINKER_MCU)
+	panel->reset_gpio = devm_gpiod_get_optional(dev, "reset", GPIOD_ASIS);
+	if (IS_ERR(panel->reset_gpio)) {
+		err = PTR_ERR(panel->reset_gpio);
+		if (err != -EPROBE_DEFER)
+			dev_err(dev, "failed to get reset GPIO: %d\n", err);
+		return err;
+	}
+#endif
+
 #if defined(CONFIG_SENSORS_BACKLIGHT_THERMAL)
 	panel->am_stbyb_gpio = devm_gpiod_get_optional(dev, "am-stbyb",
 						     GPIOD_OUT_LOW);
@@ -1230,8 +1269,8 @@ static int panel_simple_probe(struct device *dev, const struct panel_desc *desc,
 				of_node_put(backlight);
 				if (!panel->backlight)
 					return -EPROBE_DEFER;
+			}
 		}
-	}
 #endif
 
 	ddc = of_parse_phandle(dev->of_node, "ddc-i2c-bus", 0);
@@ -5648,6 +5687,14 @@ static int panel_simple_of_get_cmd(struct device *dev,
 				data = of_get_property(np, "powertip-rev-a-init-sequence",
 			       &len);
 	}
+	else if (dsi_panel == MIPI_DSI_LKW070N13000_V2)
+	{
+		data = of_get_property(np, "lkw070n13000-v2-init-sequence", &len);
+
+		of_property_read_u32(np, "reset-high-delay-ms", &desc->delay.reset_high);
+		of_property_read_u32(np, "reset-high2-delay-ms", &desc->delay.reset_high2);
+		of_property_read_u32(np, "reset-low-delay-ms", &desc->delay.reset_low);
+	}
 
 	if (data) {
 		desc->init_seq = devm_kzalloc(dev, sizeof(*desc->init_seq),
@@ -5662,6 +5709,9 @@ static int panel_simple_of_get_cmd(struct device *dev,
 			return err;
 		}
 	}
+	else {
+		dev_err(dev, "failed to get init sequence\n");
+	}
 
 	if (tinker_mcu_is_connected(dsi_id))
 		data = of_get_property(np, "rpi-exit-sequence",
@@ -5669,6 +5719,10 @@ static int panel_simple_of_get_cmd(struct device *dev,
 	else if (tinker_mcu_ili9881c_is_connected(dsi_id))
 		data = of_get_property(np, "powertip-exit-sequence",
 			       &len);
+	else if (dsi_panel == MIPI_DSI_LKW070N13000_V2)
+	{
+		data = of_get_property(np, "lkw070n13000-v2-exit-sequence", &len);
+	}
 
 	if (data) {
 		desc->exit_seq = devm_kzalloc(dev, sizeof(*desc->exit_seq),
@@ -6058,6 +6112,37 @@ static const struct panel_desc_dsi panasonic_vvx10f004b00 = {
 	.lanes = 4,
 };
 
+static const struct drm_display_mode lkw070n13000_v2_mode = {
+	.clock = 70000,
+	.hdisplay = 800,
+	.hsync_start = 800 + 40,
+	.hsync_end = 800 + 40 + 8,
+	.htotal = 800 + 80 + 20 + 80,
+	.vdisplay = 1280,
+	.vsync_start = 1280 + 10,
+	.vsync_end = 1280 + 10 + 4,
+	.vtotal = 1280 + 10 + 4 + 20,
+
+	.flags = DRM_MODE_FLAG_NVSYNC | DRM_MODE_FLAG_NHSYNC,
+};
+
+static const struct panel_desc_dsi lkw070n13000_v2_dec= {
+	.desc = {
+		.modes = &lkw070n13000_v2_mode,
+		.num_modes = 1,
+		.bpc = 8,
+		.size = {
+			.width = 151,
+			.height = 92,
+		},
+	},
+	.flags = MIPI_DSI_MODE_VIDEO |
+		MIPI_DSI_MODE_VIDEO_BURST |
+		MIPI_DSI_MODE_LPM ,
+	.format = MIPI_DSI_FMT_RGB888,
+	.lanes = 4,
+};
+
 static const struct drm_display_mode tc358762_mode = {
 	.clock = 40000,
 	.hdisplay = 800,
@@ -6230,6 +6315,14 @@ static int panel_simple_dsi_of_get_desc_data(struct device *dev,
 	return 0;
 }
 
+bool is_dsi_panel_connected(void)
+{
+	if (dsi_panel != MIPI_DSI_NONE)
+		return true;
+	else
+		return false;
+}
+
 static int panel_simple_dsi_probe(struct mipi_dsi_device *dsi)
 {
 	struct panel_simple *panel;
@@ -6239,6 +6332,7 @@ static int panel_simple_dsi_probe(struct mipi_dsi_device *dsi)
 	const struct of_device_id *id;
 #if defined(CONFIG_TINKER_MCU)
 	int dsi_id;
+	struct device_node *np = dev->of_node;
 #endif
 	int err;
 
@@ -6249,6 +6343,17 @@ static int panel_simple_dsi_probe(struct mipi_dsi_device *dsi)
 		return -ENODEV;
 
 #if defined(CONFIG_TINKER_MCU)
+
+	if(of_property_read_bool(np, "lkw070n13000-v2-panel-exist"))
+	{
+		dsi_panel = MIPI_DSI_LKW070N13000_V2;
+		pr_err("%s: lkw070n13000-v2 is connected\n", __func__);
+	}
+	else
+	{
+		dsi_panel = MIPI_DSI_NONE;
+	}
+
 	dsi_id = of_alias_get_id(dev->of_node->parent, "dsi");
 	d = devm_kzalloc(dev, sizeof(*d), GFP_KERNEL);
 	if (!d)
@@ -6259,6 +6364,11 @@ static int panel_simple_dsi_probe(struct mipi_dsi_device *dsi)
 	}
 	else if (tinker_mcu_ili9881c_is_connected(dsi_id)) {
 		memcpy(d, &asus_ili9881c_dec, sizeof(asus_ili9881c_dec));
+		panel_simple_of_get_cmd(dev, &d->desc, dsi_id);
+	}
+	else if (dsi_panel == MIPI_DSI_LKW070N13000_V2)
+	{
+		memcpy(d, &lkw070n13000_v2_dec, sizeof(lkw070n13000_v2_dec));
 		panel_simple_of_get_cmd(dev, &d->desc, dsi_id);
 	}
 #else

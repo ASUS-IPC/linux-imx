@@ -2054,6 +2054,7 @@ extern int tinker_mcu_is_connected(void);
 #ifdef CONFIG_TINKER_MCU_ILI9881C
 extern int tinker_mcu_ili9881c_is_connected(void);
 #endif
+bool lkw070n13000_v2_panel_is_connected = FALSE;
 
 static int nwl_dsi_probe(struct platform_device *pdev)
 {
@@ -2064,13 +2065,18 @@ static int nwl_dsi_probe(struct platform_device *pdev)
 	int ret;
 
 #ifdef CONFIG_TINKER_MCU
+	if (of_property_read_bool(dev->of_node, "lkw070n13000-v2-panel-exist")) {
+		pr_info("%s: lkw070n13000-v2-panel-exist\n", __func__);
+		lkw070n13000_v2_panel_is_connected = TRUE;
+	}
+
 	if(tinker_mcu_is_connected() == 2 && tinker_mcu_ili9881c_is_connected() == 2) {
-		printk("mxsfb_probe return EPROBE_DEFER\n");
+		printk("nwl_dsi_probe return EPROBE_DEFER\n");
 		return -EPROBE_DEFER;
 	}
 
-	if(!tinker_mcu_is_connected() && !tinker_mcu_ili9881c_is_connected()) {
-		printk("mxsfb_probe: tc358762/ili9881c panel is not connected, lcdif probe stop\n");
+	if(!tinker_mcu_is_connected() && !tinker_mcu_ili9881c_is_connected() && !lkw070n13000_v2_panel_is_connected) {
+		printk("nwl_dsi_probe: tc358762/ili9881c/dsi panel is not connected, lcdif probe stop\n");
 		return -ENODEV;
 	}
 #endif
