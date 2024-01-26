@@ -48,6 +48,7 @@
 		reset-delay-us = <2000>;
 		reset-post-delay-ms = <40>;
 		#reset-cells = <0>;
+		status = "disabled";
 	};
 
 	resmem: reserved-memory {

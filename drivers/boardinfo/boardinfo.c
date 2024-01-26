@@ -258,7 +258,7 @@ static int gpio_hwid_probe(struct platform_device *pdev)
 
 	skuid = (id3 << 3) + (id2 << 2) + (id1 << 1) + id0;
 
-	if (strcmp(boardinfo, "PE100A") == 0) {
+	if (strncmp(boardinfo, "PE100A", 6) == 0) {
 		iobd0_gpio = of_get_named_gpio(dev->of_node, "iobd0-gpios", 0);
 		if (!gpio_is_valid(iobd0_gpio)) {
 			printk("No iobd0-gpio pin available in gpio-hwid\n");
@@ -303,7 +303,7 @@ static int gpio_hwid_probe(struct platform_device *pdev)
 	if (!file)
 		return -ENOMEM;
 
-	if (strcmp(boardinfo, "PE100A") == 0) {
+	if (strncmp(boardinfo, "PE100A", 6) == 0) {
 		file = proc_create("ioboard", 0444, NULL, &boardio_ops);
 		if (!file)
 			return -ENOMEM;
@@ -323,10 +323,10 @@ static int gpio_hwid_remove(struct platform_device *pdev)
 	if (strcmp(boardinfo, "BLIZZARD") == 0)
 		gpio_free(pcb2_gpio);
 
-	if (strcmp(boardinfo, "PE100A") == 0 || strcmp(boardinfo, "IMX8P-IM-A") == 0)
+	if (strncmp(boardinfo, "PE100A", 6) == 0 || strncmp(boardinfo, "IMX8P-IM-A", 10) == 0)
 		gpio_free(sku3_gpio);
 
-	if (strcmp(boardinfo, "PE100A") == 0) {
+	if (strncmp(boardinfo, "PE100A", 6) == 0) {
 		gpio_free(iobd0_gpio);
 		gpio_free(iobd1_gpio);
 	}
@@ -336,11 +336,11 @@ static int gpio_hwid_remove(struct platform_device *pdev)
 
 /* PE100A return 0, PV100A return 1, IMX8P-IM-A return 2, IMX8P-IM-B return 3 */
 int boardinfo_show(void) {
-	if (strcmp(boardinfo, "PE100A") == 0)
+	if (strncmp(boardinfo, "PE100A", 6) == 0)
 		return 0;
 	else if (strcmp(boardinfo, "PV100A") == 0)
 		return 1;
-	else if (strcmp(boardinfo, "IMX8P-IM-A") == 0)
+	else if (strncmp(boardinfo, "IMX8P-IM-A", 10) == 0)
 		return 2;
 	else if (strcmp(boardinfo, "BLIZZARD") == 0 || strcmp(boardinfo, "BLIZZARD-EVT") == 0)
 		return 3;
