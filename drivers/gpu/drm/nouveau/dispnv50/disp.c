@@ -1653,7 +1653,7 @@ nv50_sor_update(struct nouveau_encoder *nv_encoder, u8 head,
 /* TODO: Should we extend this to PWM-only backlights?
  * As well, should we add a DRM helper for waiting for the backlight to acknowledge
  * the panel backlight has been shut off? Intel doesn't seem to do this, and uses a
- * fixed time delay from the vbios…
+ * fixed time delay from the vbios...
  */
 static void
 nv50_sor_atomic_disable(struct drm_encoder *encoder, struct drm_atomic_state *state)
@@ -2402,7 +2402,7 @@ nv50_disp_atomic_commit(struct drm_device *dev,
 			goto err_cleanup;
 	}
 
-	ret = drm_atomic_helper_swap_state(state, true);
+	ret = drm_atomic_helper_swap_state(state, true, nonblock);
 	if (ret)
 		goto err_cleanup;
 

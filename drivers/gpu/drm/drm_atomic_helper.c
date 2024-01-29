@@ -1863,7 +1863,7 @@ int drm_atomic_helper_commit(struct drm_device *dev,
 	 * the software side now.
 	 */
 
-	ret = drm_atomic_helper_swap_state(state, true);
+	ret = drm_atomic_helper_swap_state(state, true, nonblock);
 	if (ret)
 		goto err;
 
@@ -2763,7 +2763,7 @@ EXPORT_SYMBOL(drm_atomic_helper_cleanup_planes);
  * waiting for the previous commits has been interrupted.
  */
 int drm_atomic_helper_swap_state(struct drm_atomic_state *state,
-				  bool stall)
+				  bool stall,  bool nonblock)
 {
 	int i, ret;
 	struct drm_connector *connector;
@@ -2792,9 +2792,19 @@ int drm_atomic_helper_swap_state(struct drm_atomic_state *state,
 			if (!commit)
 				continue;
 
+			if (nonblock) {
 			ret = wait_for_completion_interruptible(&commit->hw_done);
 			if (ret)
 				return ret;
+			} else {
+				ret = wait_for_completion_interruptible_timeout(&commit->hw_done,
+							5*HZ);
+				if (ret <= 0) {
+					WARN_ON(1);
+					printk("drm_atomic_helper_swap_state fail 1,  return -ERESTARTSYS\n");
+					return  -ERESTARTSYS;
+				}
+			}
 		}
 
 		for_each_old_connector_in_state(state, connector, old_conn_state, i) {
@@ -2803,9 +2813,19 @@ int drm_atomic_helper_swap_state(struct drm_atomic_state *state,
 			if (!commit)
 				continue;
 
+			if (nonblock) {
 			ret = wait_for_completion_interruptible(&commit->hw_done);
 			if (ret)
 				return ret;
+			} else {
+				ret = wait_for_completion_interruptible_timeout(&commit->hw_done,
+							5*HZ);
+				if (ret <= 0) {
+					WARN_ON(1);
+					printk("drm_atomic_helper_swap_state fail 2,  return -ERESTARTSYS\n");
+					return  -ERESTARTSYS;
+				}
+			}
 		}
 
 		for_each_old_plane_in_state(state, plane, old_plane_state, i) {
@@ -2814,9 +2834,19 @@ int drm_atomic_helper_swap_state(struct drm_atomic_state *state,
 			if (!commit)
 				continue;
 
+			if (nonblock) {
 			ret = wait_for_completion_interruptible(&commit->hw_done);
 			if (ret)
 				return ret;
+			} else {
+				ret = wait_for_completion_interruptible_timeout(&commit->hw_done,
+							5*HZ);
+				if (ret <= 0) {
+					WARN_ON(1);
+					printk("drm_atomic_helper_swap_state fail 3,  return -ERESTARTSYS\n");
+					return  -ERESTARTSYS;
+				}
+			}
 		}
 	}
 
