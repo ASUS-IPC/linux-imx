@@ -60,6 +60,10 @@ extern int tinker_mcu_ili9881c_is_connected(int dsi_id);
 extern void tinker_ft5406_start_polling(int dsi_id);
 
 extern int lcd_size_flag[2];
+
+struct panel_simple *rpi_panel;
+static struct delayed_work backlight_work;
+#define RPI_DELAY_WORK_DELAY 200 //ms
 #endif
 
 struct panel_cmd_header {
@@ -988,10 +992,18 @@ static int panel_simple_enable(struct drm_panel *panel)
 	}
 
 	if (p->backlight) {
-		p->backlight->props.state &= ~BL_CORE_FBBLANK;
-		p->backlight->props.power = FB_BLANK_UNBLANK;
-		p->backlight->props.fb_blank = FB_BLANK_UNBLANK;
-		backlight_update_status(p->backlight);
+		if (tinker_mcu_is_connected(p->dsi_id)) {
+			p->backlight->props.state &= ~BL_CORE_FBBLANK;
+			p->backlight->props.power = FB_BLANK_UNBLANK;
+			p->backlight->props.fb_blank = FB_BLANK_UNBLANK;
+			schedule_delayed_work(&backlight_work, msecs_to_jiffies(RPI_DELAY_WORK_DELAY));
+		}
+		else {
+			p->backlight->props.state &= ~BL_CORE_FBBLANK;
+			p->backlight->props.power = FB_BLANK_UNBLANK;
+			p->backlight->props.fb_blank = FB_BLANK_UNBLANK;
+			backlight_update_status(p->backlight);
+		}
 	}
 #endif
 	panel_simple_wait(p->prepared_time, p->desc->delay.prepare_to_enable);
@@ -6323,6 +6335,17 @@ bool is_dsi_panel_connected(void)
 		return false;
 }
 
+#if defined(CONFIG_TINKER_MCU)
+static void rpi_backlight_enble_work(struct work_struct *work)
+{
+		if (rpi_panel->backlight) {
+			backlight_update_status(rpi_panel->backlight);
+		} else {
+			pr_err("%s: failed to get rpi_panel->backlight\n");
+		}
+}
+#endif
+
 static int panel_simple_dsi_probe(struct mipi_dsi_device *dsi)
 {
 	struct panel_simple *panel;
@@ -6413,7 +6436,13 @@ static int panel_simple_dsi_probe(struct mipi_dsi_device *dsi)
 		drm_panel_remove(&panel->base);
 		printk("failed to mipi_dsi_attach\n");
 	}
+
+#if defined(CONFIG_TINKER_MCU)
+	rpi_panel = panel;
+	INIT_DELAYED_WORK(&backlight_work, rpi_backlight_enble_work);
+#endif
 	printk("panel_simple_dsi_probe-\n");
+
 	return err;
 }
 
