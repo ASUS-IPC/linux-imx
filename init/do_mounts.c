@@ -595,6 +595,54 @@ void __init mount_root(void)
 #endif
 }
 
+extern int boardinfo_show(void);
+extern char *saved_command_line;
+#define DEFAULT_ROOT_DEVICE_PATH "/dev/mmcblk0p5"
+#define DEFAULT_DATA_DEVICE_PATH "/dev/mmcblk0p6"
+#define LENGTH_OF_ROOT_DEVICE_PATH (14)
+#define LENGTH_OF_DATA_DEVICE_PATH (14)
+#define BOARDINF_PE100A (0)
+
+void mount_overlay_on_rootfs(void)
+{
+	if (boardinfo_show() == BOARDINF_PE100A) {
+		static char *argv[] = { "/bin/bash", "/etc/init.d/overlayetc", DEFAULT_ROOT_DEVICE_PATH, DEFAULT_DATA_DEVICE_PATH, NULL, };
+		static char *envp[] = {
+			"HOME=/",
+			"TERM=linux",
+			"PATH=/sbin:/bin:/usr/sbin:/usr/bin", NULL };
+
+		char *root_device = DEFAULT_ROOT_DEVICE_PATH;
+		char data_device[] = DEFAULT_DATA_DEVICE_PATH;
+		char *root_pch = NULL;
+		char *data_pch = NULL;
+
+        root_pch = strstr(saved_command_line, "root=");
+		if ( root_pch != NULL) {
+			strncpy (root_device, root_pch + strlen("root="), LENGTH_OF_ROOT_DEVICE_PATH);
+		}
+
+		data_pch = strstr(saved_command_line, "data=");
+		if ( data_pch != NULL)
+			strncpy (data_device, data_pch + strlen("data="), LENGTH_OF_DATA_DEVICE_PATH);
+		else {
+			strncpy(data_device, root_device, LENGTH_OF_DATA_DEVICE_PATH);
+			mb();
+			printk("mount_overlay_on_rootfs  data_device = %s  %c %c %c\n", data_device, data_device[LENGTH_OF_DATA_DEVICE_PATH - 2],
+										data_device[LENGTH_OF_DATA_DEVICE_PATH - 1], data_device[LENGTH_OF_DATA_DEVICE_PATH - 1] +1);
+			data_device[LENGTH_OF_DATA_DEVICE_PATH - 1] = data_device[LENGTH_OF_DATA_DEVICE_PATH - 1] + 1;
+			mb();
+		}
+
+        argv[2] = root_device;
+        argv[3] = data_device;
+
+		printk("mount_overlay_on_rootfs  /etc/init.d/overlayetc root_device = %s data_device = %s +\n", root_device, data_device);
+		call_usermodehelper(argv[0], argv, envp, UMH_WAIT_PROC);
+		printk("mount_overlay_on_rootfs  /etc/init.d/overlayetc-\n");
+	}
+}
+
 /*
  * Prepare the namespace - decide what/where to mount, load ramdisks, etc.
  */
@@ -643,10 +691,12 @@ void __init prepare_namespace(void)
 	}
 
 	mount_root();
+
 out:
 	devtmpfs_mount();
 	init_mount(".", "/", NULL, MS_MOVE, NULL);
 	init_chroot(".");
+	mount_overlay_on_rootfs();
 }
 
 static bool is_tmpfs;
