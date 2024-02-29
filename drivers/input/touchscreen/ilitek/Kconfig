@@ -1,0 +1,11 @@
+config TOUCHSCREEN_ILITEK
+	tristate "Ilitek I2C 231X/251X/Lego Series Touch ICs"
+	depends on I2C
+	help
+	  Say Y here if you have touchscreen with ILITEK touch IC,
+	  it supports 231X/251X/ and other Lego series.
+
+	  If unsure, say N.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called ilitek_i2c.

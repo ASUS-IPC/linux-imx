@@ -30,6 +30,8 @@
 #include <linux/input.h>
 #include <linux/input/mt.h>
 #include <linux/i2c.h>
+#include <linux/spi/spi.h>
+
 #include <linux/slab.h>
 #include <linux/vmalloc.h>
 #include <linux/delay.h>
@@ -62,7 +64,6 @@
 #include <linux/icmp.h>
 #include <linux/udp.h>
 
-
 #ifdef CONFIG_OF
 #include <linux/of_gpio.h>
 #endif
@@ -77,47 +78,40 @@
 #include <linux/earlysuspend.h>
 #endif
 
-#define ILITEK_PLAT_QCOM			1
-#define ILITEK_PLAT_MTK				2
-#define ILITEK_PLAT_ROCKCHIP		3
-#define ILITEK_PLAT_ALLWIN			4
-#define ILITEK_PLAT_AMLOGIC			5
-#define ILITEK_PLAT					ILITEK_PLAT_QCOM
-//#define CONFIG_QCOM_DRM
-#if ILITEK_PLAT == ILITEK_PLAT_QCOM
-#ifdef CONFIG_QCOM_DRM
-#include <linux/msm_drm_notify.h>
-#define ILITEK_BLANK_POWERDOWN			MSM_DRM_BLANK_POWERDOWN
-#define ILITEK_BLANK_UNBLANK			MSM_DRM_BLANK_UNBLANK
-#define ILITEK_EVENT_BLANK			MSM_DRM_EVENT_BLANK
-#define ILITEK_BLANK_NORMAL			MSM_DRM_BLANK_UNBLANK
-#endif
-#endif
+#define ILITEK_BL_ADDR				0x41
 
-enum Gesture_Type {
-	Gesture_Disable = 0,
-	Gesture_Single_Click,
-	Gesture_Double_Click,
-	Gesture_Undefined, /* sentinel */
-};
+#define ILITEK_GESTURE_TYPES			\
+	X(Disable, 	0, "disable")		\
+	X(Single_Click, 1, "single-click")	\
+	X(Double_Click, 2, "double-click")
 #define ILITEK_GESTURE_DEFAULT			Gesture_Disable
 
-#define ILITEK_SLEEP				0
-#define ILITEK_POWEROFF				1
+#define X(_type, _id, _str)	Gesture_##_type = _id,
+enum Gesture_Type {
+	ILITEK_GESTURE_TYPES
+};
+#undef X
 
+#define ILITEK_LOW_POWER_TYPES		\
+	X(Sleep,	0, "sleep")	\
+	X(Idle,		1, "idle")	\
+	X(PowerOff,	2, "poweroff")
+#define ILITEK_LOW_POWER_DEFAULT		Low_Power_Sleep
 
-//#define ILITEK_UPDATE_FW
-//#define ILITEK_ESD_PROTECTION
+#define X(_type, _id, _str)	Low_Power_##_type = _id,
+enum Low_Power_Type {
+	ILITEK_LOW_POWER_TYPES
+};
+#undef X
+
 #define ILITEK_TOUCH_PROTOCOL_B
-//#define ILITEK_CHECK_FUNCMODE
 //#define ILITEK_REPORT_PRESSURE
 //#define ILITEK_USE_LCM_RESOLUTION
-#define ILITEK_ISR_PROTECT
+//#define ILITEK_ISR_PROTECT
 
-#define ILITEK_LOW_POWER			ILITEK_SLEEP
 #define ILITEK_TUNING_MESSAGE
 #define ILITEK_REGISTER_SUSPEND_RESUME
-
+#define ILITEK_ESD_CHECK_ENABLE			0
 
 #define ILITEK_TOOL
 
@@ -126,7 +120,7 @@ enum Gesture_Type {
 #define ILITEK_REVERT_Y				0
 #define TOUCH_SCREEN_X_MAX			1080	//LCD_WIDTH
 #define TOUCH_SCREEN_Y_MAX			1920	//LCD_HEIGHT
-#define ILITEK_RESOLUTION_MAX		16384
+#define ILITEK_RESOLUTION_MAX			16384
 //#define ILITEK_ENABLE_REGULATOR_POWER_ON
 #define ILITEK_GET_GPIO_NUM
 
@@ -144,129 +138,15 @@ enum Gesture_Type {
 #include <linux/wakelock.h>
 #endif
 
-#define RAW_DATA_TRANSGER_LENGTH		1024
-#define UPGRADE_LENGTH_BLV1_8			2048
-#define ILI_UPDATE_BY_CHECK_INT
-
 #define ILITEK_TS_NAME				"ilitek_ts"
 
 #define ABSSUB(a, b) ((a > b) ? (a - b) : (b - a))
 
-#if ILITEK_PLAT == ILITEK_PLAT_MTK
-//#define MTK_UNDTS //no use dts and for mtk old version
-
-#define ILITEK_ENABLE_DMA
-#define ILITEK_DMA_SIZE				4096
-#define ILITEK_USE_MTK_INPUT_DEV
-#ifdef ILITEK_GET_GPIO_NUM
-#undef ILITEK_GET_GPIO_NUM
-#endif
-
-#include <linux/sched.h>
-#include <linux/kthread.h>
-#include <linux/wait.h>
-#include <linux/time.h>
-
-#include <linux/namei.h>
-#include <linux/vmalloc.h>
-#include <linux/timer.h>
-#include <linux/jiffies.h>
-#include <linux/module.h>
-
-#ifdef MTK_UNDTS
-
-#define TPD_KEY_COUNT   4
-#define key_1           {60, 17000}	//auto define
-#define key_2           {180, 17000}
-#define key_3           {300, 17000}
-#define key_4           {420, 17000}
-
-#define TPD_KEYS        {KEY_MENU, KEY_HOMEPAGE, KEY_BACK, KEY_SEARCH}	//change for you panel key info
-#define TPD_KEYS_DIM    {{key_1, 50, 30 }, {key_2, 50, 30 }, {key_3, 50, 30 }, {key_4, 50, 30 } }
-
-struct touch_vitual_key_map_t {
-	int point_x;
-	int point_y;
-};
-
-extern struct touch_vitual_key_map_t touch_key_point_maping_array[];
-
-#include <mach/mt_pm_ldo.h>
-#include <cust_eint.h>
-#include "cust_gpio_usage.h"
-#include <mach/mt_gpio.h>
-#include <mach/mt_typedefs.h>
-#include <pmic_drv.h>
-#include <mach/mt_boot.h>
-#include <linux/dma-mapping.h>
-
-#else
-#include <linux/of.h>
-#include <linux/of_address.h>
-#include <linux/of_device.h>
-#include <linux/of_gpio.h>
-#include <linux/of_irq.h>
-#include <linux/gpio.h>
-
-#ifdef CONFIG_MTK_BOOT
-#include "mt_boot_common.h"
-#endif
-
-#endif /* MTK_UNDTS */
-
-#include "tpd.h"
-extern struct tpd_device *tpd;
-#endif /* ILITEK_PLAT == ILITEK_PLAT_MTK */
-
-#if ILITEK_PLAT == ILITEK_PLAT_ALLWIN
-#include <linux/irq.h>
-#include <linux/init-input.h>
-#include <linux/pm.h>
-#include <linux/gpio.h>
-extern struct ctp_config_info config_info;
-#endif
-
-
 #ifndef ILITEK_GET_GPIO_NUM
-#if ILITEK_PLAT == ILITEK_PLAT_MTK
-#ifdef MTK_UNDTS
-#define ILITEK_IRQ_GPIO				GPIO_CTP_EINT_PIN
-#define ILITEK_RESET_GPIO			GPIO_CTP_RST_PIN
-#else
-#define ILITEK_IRQ_GPIO				GTP_INT_PORT
-#define ILITEK_RESET_GPIO			GTP_RST_PORT
-#endif
-#elif ILITEK_PLAT == ILITEK_PLAT_ALLWIN
-#define ILITEK_IRQ_GPIO				config_info.int_number
-#define ILITEK_RESET_GPIO			config_info.wakeup_gpio.gpio
-#else
 #define ILITEK_IRQ_GPIO				9
 #define ILITEK_RESET_GPIO			10
-#endif
 #endif
 
 #define ILITEK_I2C_RETRY_COUNT			3
 
-#if ILITEK_PLAT == ILITEK_PLAT_ALLWIN
-extern int ilitek_suspend_allwin(struct i2c_client *client, pm_message_t mesg);
-extern int ilitek_resume_allwin(struct i2c_client *client);
-#endif
-
-#define ERR_ALLOC_MEM(X)	((IS_ERR(X) || X == NULL) ? 1 : 0)
-
-static inline void ilitek_kfree(void **mem)
-{
-	if (*mem != NULL) {
-		kfree(*mem);
-		*mem = NULL;
-	}
-}
-
-static inline void ipio_vfree(void **mem)
-{
-	if (*mem != NULL) {
-		vfree(*mem);
-		*mem = NULL;
-	}
-}
 #endif

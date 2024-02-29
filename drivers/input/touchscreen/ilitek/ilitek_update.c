@@ -1,128 +1,62 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
- * ILITEK Touch IC driver
+ * This file is part of ILITEK CommonFlow
  *
- * Copyright (C) 2011 ILI Technology Corporation.
- *
- * Author: Luca Hsu <luca_hsu@ilitek.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
- * MA 02110-1301 USA.
- *
+ * Copyright (c) 2022 ILI Technology Corp.
+ * Copyright (c) 2022 Luca Hsu <luca_hsu@ilitek.com>
+ * Copyright (c) 2022 Joe Hung <joe_hung@ilitek.com>
  */
 
-#include "ilitek_ts.h"
-#include "ilitek_common.h"
-#include "ilitek_protocol.h"
+#include "ilitek_update.h"
 
-#include <linux/firmware.h>
-#include <linux/vmalloc.h>
+char g_info[4096];
+void *g_private;
+update_info_t g_update_info = NULL;
 
-#ifdef ILITEK_UPDATE_FW
-#include "ilitek_fw.h"
+#ifndef ILITEK_KERNEL_DRIVER
+static int hex_to_bin(uint8_t ch)
+{
+	uint8_t cu = ch & 0xdf;
+	return -1 +
+		((ch - '0' +  1) & (unsigned)((ch - '9' - 1) &
+		('0' - 1 - ch)) >> 8) +
+		((cu - 'A' + 11) & (unsigned)((cu - 'F' - 1) &
+		('A' - 1 - cu)) >> 8);
+}
+
+static int hex2bin(uint8_t *dst, const uint8_t *src, size_t count)
+{
+	int hi = 0, lo = 0;
+
+	while (count--) {
+		if ((hi = hex_to_bin(*src++)) < 0 ||
+		    (lo = hex_to_bin(*src++)) < 0) {
+			TP_ERR("hex_to_bin failed, hi: %d, lo: %d\n", hi, lo);
+			return -EINVAL;
+		}
+
+		*dst++ = (hi << 4) | lo;
+	}
+	return 0;
+}
 #endif
 
-static uint16_t UpdateCRC(uint16_t crc, uint8_t newbyte)
-{
-	char i;			// loop counter
-#define CRC_POLY 0x8408		// CRC16-CCITT FCS (X^16+X^12+X^5+1)
-
-	crc = crc ^ newbyte;
-
-	for (i = 0; i < 8; i++) {
-		if (crc & 0x01) {
-			crc = crc >> 1;
-			crc ^= CRC_POLY;
-		} else {
-			crc = crc >> 1;
-		}
-	}
-	return crc;
-}
-
-uint16_t get_dri_crc(uint32_t startAddr, uint32_t endAddr,
-		     const uint8_t input[])
-{
-	uint16_t CRC = 0;
-	uint32_t i = 0;
-
-	// 2 is CRC
-	for (i = startAddr; i <= endAddr - 2; i++)
-		CRC = UpdateCRC (CRC, input[i]);
-
-	return CRC;
-}
-
-uint32_t get_dri_checksum(uint32_t startAddr, uint32_t endAddr,
-			  const uint8_t input[])
-{
-	uint32_t sum = 0;
-	uint32_t i = 0;
-
-	for (i = startAddr; i < endAddr; i++)
-		sum += input[i];
-
-	return sum;
-}
-
-static uint32_t hex_2_dec(const uint8_t *hex, int32_t len)
-{
-	uint32_t ret = 0, temp = 0;
-	int32_t i, shift = (len - 1) * 4;
-	for (i = 0; i < len; shift -= 4, i++) {
-		if ((hex[i] >= '0') && (hex[i] <= '9')) {
-			temp = hex[i] - '0';
-		} else if ((hex[i] >= 'a') && (hex[i] <= 'z')) {
-			temp = (hex[i] - 'a') + 10;
-		} else {
-			temp = (hex[i] - 'A') + 10;
-		}
-		ret |= (temp << shift);
-	}
-	return ret;
-}
-
-bool checksum(unsigned char *buf, int len, unsigned char fw_checksum)
-{
-	unsigned char chk;
-
-	chk = get_dri_checksum(0, len - 1, buf);
-	chk = ~(chk) + 1;
-
-	if (chk == fw_checksum)
-		return true;
-
-	tp_err("checksum not match, IC: %x vs. Driver: %x\n", fw_checksum, chk);
-
-	return false;
-}
-
-static uint32_t findstr(int start, int end, const uint8_t *data,
-			unsigned int buf_size, const uint8_t *tag, int tag_len)
+static uint32_t get_tag_addr(uint32_t start, uint32_t end,
+			     const uint8_t *buf, unsigned int buf_size,
+			     const uint8_t *tag, unsigned int tag_size)
 {
 	unsigned int i;
 
-	for (i = start; i <= (end - tag_len) && i < (buf_size - tag_len); i++) {
-		if (!strncmp((char *)(data + i), (char *)tag, tag_len))
-			return i + 1 + 32;
+	for (i = start; i <= end - tag_size && i < buf_size - tag_size; i++) {
+		if (!memcmp(buf + i, tag, tag_size))
+			return i + tag_size + 1;
 	}
 
 	return end;
 }
 
-uint32_t get_endaddr(uint32_t startAddr, uint32_t endAddr,
-		     const uint8_t buf[], unsigned int buf_size, bool is_AP)
+static uint32_t get_endaddr(uint32_t start, uint32_t end, const uint8_t *buf,
+			    unsigned int buf_size, bool is_AP)
 {
 	uint32_t addr;
 	uint8_t tag[32];
@@ -130,1063 +64,1230 @@ uint32_t get_endaddr(uint32_t startAddr, uint32_t endAddr,
 	const uint8_t blk_tag[] = "ILITek END TAG  ";
 
 	memset(tag, 0xFF, sizeof(tag));
+	memcpy(tag + 16, (is_AP) ? ap_tag : blk_tag, 16);
 
-	if (is_AP)
-		memcpy(tag + 16, ap_tag, 16);
-	else
-		memcpy(tag + 16, blk_tag, 16);
+	addr = get_tag_addr(start, end, buf, buf_size, tag, sizeof(tag));
+	TP_DBG("find tag in start/end: 0x%x/0x%x, tag addr: 0x%x\n",
+		start, end, addr);
 
-	addr = findstr(startAddr, endAddr, buf, buf_size, tag, 32);
-	tp_dbg("find tag in start/end: 0x%x/0x%x, tag addr: 0x%x\n",
-		startAddr, endAddr, addr);
 	return addr;
 }
 
-static int32_t check_busy(int32_t delay)
+static void decode_mm(struct ilitek_fw_handle *fw, uint32_t addr, uint8_t *buf)
 {
-	int32_t i;
-	uint8_t inbuf[2], outbuf[2];
-	for (i = 0; i < 1000; i++) {
-		inbuf[0] = CMD_GET_SYS_BUSY;
-		if (ilitek_i2c_write_and_read(inbuf, 1, delay, outbuf, 1) < 0)
-			return ILITEK_I2C_TRANSFER_ERR;
+	uint8_t i;
+	union mapping_info *mapping;
 
-		if (outbuf[0] == ILITEK_TP_SYSTEM_READY)
-			return 0;
+	UPDATE_UI_INFO("------------Memory Mapping information------------\n");
+
+	UPDATE_UI_INFO("memory-mapping-info addr: %#x\n", addr);
+
+	mapping = (union mapping_info *)(buf + addr);
+
+	UPDATE_UI_INFO("Hex Mapping Ver.: 0x%x\n", le32(mapping->mapping_ver, 3));
+	UPDATE_UI_INFO("Hex Protocol: 0x%x\n", le32(mapping->protocol_ver, 3));
+	UPDATE_UI_INFO("Hex IC type: 0x%x\n", mapping->ic_name);
+
+	fw->file_ic_name = mapping->ic_name;
+
+	if (le32(mapping->mapping_ver, 3) < 0x10000)
+		goto memory_mapping_end;
+
+	UPDATE_UI_INFO("Hex FW Ver(MSB 4-bytes): %02x-%02x-%02x-%02x\n",
+			mapping->_lego.fw_ver[3], mapping->_lego.fw_ver[2],
+			mapping->_lego.fw_ver[1], mapping->_lego.fw_ver[0]);
+	UPDATE_UI_INFO("Hex Tuning Ver.(4-bytes): %02x-%02x-%02x-%02x\n",
+			mapping->_lego.tuning_ver[3], mapping->_lego.tuning_ver[2],
+			mapping->_lego.tuning_ver[1], mapping->_lego.tuning_ver[0]);
+
+	fw->file_fw_ver[0] = mapping->_lego.fw_ver[3];
+	fw->file_fw_ver[1] = mapping->_lego.fw_ver[2];
+	fw->file_fw_ver[2] = mapping->_lego.fw_ver[1];
+	fw->file_fw_ver[3] = mapping->_lego.fw_ver[0];
+
+	fw->block_num = mapping->_lego.block_num;
+	if (fw->block_num > ARRAY_SIZE(fw->blocks)) {
+		TP_ERR("Unexpected block num: %hhu\n", fw->block_num);
+		fw->block_num = ARRAY_SIZE(fw->blocks);
 	}
-	tp_msg("check_busy error\n");
-	return -1;
+
+	UPDATE_UI_INFO("Total %hhu blocks\n", fw->block_num);
+	for (i = 0; i < fw->block_num; i++) {
+		fw->blocks[i].start = le32(mapping->_lego.blocks[i].addr, 3);
+		fw->blocks[i].end = (i == fw->block_num - 1) ?
+			le32(mapping->_lego.end_addr, 3) :
+			le32(mapping->_lego.blocks[i + 1].addr, 3);
+
+		fw->blocks[i].end = get_endaddr(fw->blocks[i].start,
+						fw->blocks[i].end,
+						buf, ILITEK_FW_BUF_SIZE,
+						i == 0);
+
+		UPDATE_UI_INFO("Block[%u], start:%#x end:%#x\n",
+				i, fw->blocks[i].start, fw->blocks[i].end);
+	}
+
+memory_mapping_end:
+	UPDATE_UI_INFO("--------------------------------------------------\n");
 }
 
-int32_t ilitek_changetoblmode(bool mode)
-{
-	int32_t i = 0;
-	uint8_t outbuf[64];
-
-	if (api_ptl_set_cmd(GET_MCU_MOD, NULL, outbuf) < 0)
-		return ILITEK_I2C_TRANSFER_ERR;
-
-	msleep(30);
-	if (outbuf[0] == ILITEK_TP_MODE_APPLICATION)
-		tp_msg("Touch IC mode: %x as AP MODE\n", outbuf[0]);
-	else if (outbuf[0] == ILITEK_TP_MODE_BOOTLOADER)
-		tp_msg("Touch IC mode: %x as BL MODE\n", outbuf[0]);
-	else
-		tp_err("Touch IC mode: %x as UNKNOWN MODE\n", outbuf[0]);
-
-	if ((outbuf[0] == ILITEK_TP_MODE_APPLICATION && !mode) ||
-	    (outbuf[0] == ILITEK_TP_MODE_BOOTLOADER && mode)) {
-		if (mode)
-			tp_msg("ilitek change to BL mode ok already BL mode\n");
-		else
-			tp_msg("ilitek change to AP mode ok already AP mode\n");
-
-		return ILITEK_SUCCESS;
-
-	}
-
-	for (i = 0; i < 5; i++) {
-		if (ts->bl_ver == 0x0108 || ts->ptl.ver_major == 0x6) {
-			if (api_ptl_set_cmd(SET_W_FLASH, NULL, outbuf) < 0)
-				return ILITEK_I2C_TRANSFER_ERR;
-
-		} else {
-			if (api_ptl_set_cmd(SET_WRITE_EN, NULL, outbuf) < 0)
-				return ILITEK_I2C_TRANSFER_ERR;
-		}
-
-		msleep(20);
-		if (mode) {
-			if (api_ptl_set_cmd(SET_BL_MODE, NULL, outbuf) < 0)
-				return ILITEK_I2C_TRANSFER_ERR;
-		} else {
-			if (api_ptl_set_cmd(SET_AP_MODE, NULL, outbuf) < 0)
-				return ILITEK_I2C_TRANSFER_ERR;
-		}
-
-		msleep(500 + i * 100);
-		if (api_ptl_set_cmd(GET_MCU_MOD, NULL, outbuf) < 0)
-			return ILITEK_I2C_TRANSFER_ERR;
-
-		msleep(30);
-		if (outbuf[0] == ILITEK_TP_MODE_APPLICATION)
-			tp_msg("Touch IC mode: %x as AP MODE\n", outbuf[0]);
-		else if (outbuf[0] == ILITEK_TP_MODE_BOOTLOADER)
-			tp_msg("Touch IC mode: %x as BL MODE\n", outbuf[0]);
-		else
-			tp_err("Touch IC mode: %x as UNKNOWN MODE\n", outbuf[0]);
-
-		if ((outbuf[0] == ILITEK_TP_MODE_APPLICATION && !mode) ||
-		    (outbuf[0] == ILITEK_TP_MODE_BOOTLOADER && mode)) {
-			if (mode)
-				tp_msg("ilitek change to BL mode ok\n");
-			else
-				tp_msg("ilitek change to AP mode ok\n");
-
-			return ILITEK_SUCCESS;
-		}
-	}
-
-	if (mode) {
-		tp_err("change to bl mode err, 0x%X\n", outbuf[0]);
-		return ILITEK_TP_CHANGETOBL_ERR;
-	} else {
-		tp_err("change to ap mode err, 0x%X\n", outbuf[0]);
-		return ILITEK_TP_CHANGETOAP_ERR;
-	}
-}
-
-static int32_t ilitek_upgrade_BL1_6(uint8_t *CTPM_FW)
-{
-	int32_t ret = 0, upgrade_status = 0, i = 0, j = 0, k = 0;
-	uint8_t buf[64] = { 0 };
-
-	uint32_t df_startaddr = ts->upg.df_start_addr;
-	uint32_t df_endaddr = ts->upg.df_end_addr;
-	uint32_t df_checksum = ts->upg.df_check;
-	uint32_t ap_startaddr = ts->upg.ap_start_addr;
-	uint32_t ap_endaddr = ts->upg.ap_end_addr;
-	uint32_t ap_checksum = ts->upg.ap_check;
-
-	uint8_t total_checksum = 0;
-	uint32_t df_write_checksum = 0, ap_write_checksum = 0;
-
-	if (df_startaddr < df_endaddr)
-		ts->has_df = true;
-	else
-		ts->has_df = false;
-
-	buf[0] = (uint8_t)CMD_WRITE_ENABLE;
-	buf[1] = 0x5A;
-	buf[2] = 0xA5;
-	buf[3] = 0x01;
-	if (!ts->has_df) {
-		tp_msg("ilitek no df data set df_endaddr 0x1ffff\n");
-		df_endaddr = 0x1ffff;
-		df_checksum = 0x1000 * 0xff;
-		buf[4] = df_endaddr >> 16;
-		buf[5] = (df_endaddr >> 8) & 0xFF;
-		buf[6] = (df_endaddr) & 0xFF;
-		buf[7] = df_checksum >> 16;
-		buf[8] = (df_checksum >> 8) & 0xFF;
-		buf[9] = df_checksum & 0xFF;
-	} else {
-		buf[4] = df_endaddr >> 16;
-		buf[5] = (df_endaddr >> 8) & 0xFF;
-		buf[6] = (df_endaddr) & 0xFF;
-		buf[7] = df_checksum >> 16;
-		buf[8] = (df_checksum >> 8) & 0xFF;
-		buf[9] = df_checksum & 0xFF;
-	}
-	tp_msg("df_startaddr=0x%X, df_endaddr=0x%X, df_checksum=0x%X\n",
-		df_startaddr, df_endaddr, df_checksum);
-	ret = ilitek_i2c_write(buf, 10);
-	if (ret < 0)
-		tp_err("ilitek_i2c_write\n");
-
-	msleep(20);
-	tp_msg("Start to write DF data...\n");
-	for (i = df_startaddr, j = 0; i < df_endaddr; i += 32) {
-		buf[0] = CMD_WRITE_DATA;
-		for (k = 0; k < 32; k++) {
-			if (!ts->has_df)
-				buf[1 + k] = 0xff;
-			else
-				buf[1 + k] = CTPM_FW[i + k];
-
-			df_write_checksum += buf[1 + k];
-			total_checksum += buf[1 + k];
-		}
-
-		ret = ilitek_i2c_write(buf, 33);
-		if (ret < 0) {
-			tp_err("ilitek_i2c_write_and_read\n");
-			return ILITEK_I2C_TRANSFER_ERR;
-		}
-
-		if (!(++j % (ts->page_number)))
-			mdelay(50);
-		else
-			mdelay(3);
-
-		upgrade_status = ((i - df_startaddr) * 100) / (df_endaddr - df_startaddr);
-		if (!(upgrade_status % 10))
-			tp_dbg("Firmware Upgrade(Data flash) status %02d%%\n", upgrade_status);
-	}
-
-	buf[0] = (uint8_t)CMD_WRITE_ENABLE;
-	buf[1] = 0x5A;
-	buf[2] = 0xA5;
-	buf[3] = 0x00;
-
-	if ((ap_endaddr + 1) % 32) {
-		ap_checksum = ap_checksum + (32 + 32 - ((ap_endaddr + 1) % 32)) * 0xff;
-		ap_endaddr = ap_endaddr + 32 + 32 - ((ap_endaddr + 1) % 32);
-	} else {
-		ap_checksum = (ap_checksum + 32 * 0xff) & 0xFF;
-		ap_endaddr = ((ap_endaddr + 32)) & 0xFF;
-	}
-	buf[4] = ap_endaddr >> 16;
-	buf[5] = (ap_endaddr >> 8) & 0xFF;
-	buf[6] = ap_endaddr & 0xFF;
-	buf[7] = ap_checksum >> 16;
-	buf[8] = (ap_checksum >> 8) & 0xFF;
-	buf[9] = ap_checksum & 0xFF;
-	ret = ilitek_i2c_write(buf, 10);
-	tp_msg("ap_startaddr=0x%X, ap_endaddr=0x%X, ap_checksum=0x%X\n",
-		ap_startaddr, ap_endaddr, ap_checksum);
-
-	msleep(20);
-	tp_msg("Start to write AP data...\n");
-	for (i = ap_startaddr, j = 0; i < ap_endaddr; i += 32) {
-		buf[0] = CMD_WRITE_DATA;
-		for (k = 0; k < 32; k++) {
-			if (k == 31 && i + 32 > ap_endaddr)
-				buf[1 + k] = 0;
-			else
-				buf[1 + k] = CTPM_FW[i + k];
-
-			ap_write_checksum += buf[1 + k];
-			total_checksum += buf[1 + k];
-		}
-
-		ret = ilitek_i2c_write(buf, 33);
-		if (ret < 0) {
-			tp_err("%s, ilitek_i2c_write_and_read\n", __func__);
-			return ILITEK_I2C_TRANSFER_ERR;
-		}
-
-		if (!(++j % (ts->page_number)))
-			mdelay(50);
-		else
-			mdelay(3);
-
-		upgrade_status = ((i - ap_startaddr) * 100) / (ap_endaddr - ap_startaddr);
-		if (!(upgrade_status % 10))
-			tp_dbg("Firmware Upgrade(AP) status %02d%%\n", upgrade_status);
-	}
-
-	tp_msg("AP checksum (Hex/Write): (0x%x/0x%x), DF checksum (Hex/Write): (0x%x/0x%x)\n",
-		ap_checksum, ap_write_checksum,
-		df_checksum, df_write_checksum);
-
-	buf[0] = 0xC7;
-	ilitek_i2c_write_and_read(buf, 1, 10, buf, 1);
-	tp_msg("Compare 1byte checksum (IC:%x/FW:%x)\n",
-		buf[0], total_checksum);
-
-	/* for upgrade via .ili especially */
-	ilitek_reset(ts->reset_time);
-
-	return 0;
-}
-
-static int32_t ilitek_upgrade_BL1_7(uint8_t *CTPM_FW)
-{
-	int32_t ret = 0, upgrade_status = 0, i = 0, k = 0, CRC_DF = 0, CRC_AP = 0;
-	uint8_t buf[64] = { 0 };
-	uint32_t df_startaddr = ts->upg.df_start_addr;
-	uint32_t df_endaddr = ts->upg.df_end_addr;
-	uint32_t ap_startaddr = ts->upg.ap_start_addr;
-	uint32_t ap_endaddr = ts->upg.ap_end_addr;
-
-	for (i = df_startaddr + 2; i < df_endaddr; i++)
-		CRC_DF = UpdateCRC(CRC_DF, CTPM_FW[i]);
-
-	tp_msg("CRC_DF = 0x%X\n", CRC_DF);
-
-	CRC_AP = get_dri_crc(ap_startaddr, ap_endaddr, CTPM_FW);
-
-	tp_msg("CRC_AP = 0x%x\n", CRC_AP);
-
-	buf[0] = (uint8_t)CMD_WRITE_ENABLE;	//0xc4
-	buf[1] = 0x5A;
-	buf[2] = 0xA5;
-	buf[3] = 0x01;
-	buf[4] = df_endaddr >> 16;
-	buf[5] = (df_endaddr >> 8) & 0xFF;
-	buf[6] = (df_endaddr) & 0xFF;
-	buf[7] = CRC_DF >> 16;
-	buf[8] = (CRC_DF >> 8) & 0xFF;
-	buf[9] = CRC_DF & 0xFF;
-	ret = ilitek_i2c_write(buf, 10);
-	if (ret < 0) {
-		tp_err("ilitek_i2c_write\n");
-		return ILITEK_I2C_TRANSFER_ERR;
-	}
-	check_busy(1);
-	if (((df_endaddr) % 32) != 0)
-		df_endaddr += 32;
-
-	tp_msg("Start to write DF data...\n");
-	for (i = df_startaddr; i < df_endaddr; i += 32) {
-		// we should do delay when the size is equal to 512 bytes
-		buf[0] = (uint8_t)CMD_WRITE_DATA;
-		for (k = 0; k < 32; k++)
-			buf[1 + k] = CTPM_FW[i + k];
-
-		if (ilitek_i2c_write(buf, 33) < 0) {
-			tp_err("%s, ilitek_i2c_write_and_read\n", __func__);
-			return ILITEK_I2C_TRANSFER_ERR;
-		}
-		check_busy(1);
-		upgrade_status = ((i - df_startaddr) * 100) / (df_endaddr - df_startaddr);
-		tp_dbg("Firmware Upgrade(Data flash), %02d%%\n", upgrade_status);
-	}
-
-	buf[0] = (uint8_t)0xC7;
-	if (ilitek_i2c_write(buf, 1) < 0) {
-		tp_err("ilitek_i2c_write\n");
-		return ILITEK_I2C_TRANSFER_ERR;
-	}
-	check_busy(1);
-	buf[0] = (uint8_t)0xC7;
-	ilitek_i2c_write_and_read(buf, 1, 10, buf, 4);
-	tp_msg("upgrade end write c7 read 0x%X, 0x%X, 0x%X, 0x%X\n", buf[0], buf[1], buf[2], buf[3]);
-	if (CRC_DF != (buf[1] << 8) + buf[0]) {
-		tp_err("CRC DF compare error\n");
-		//return ILITEK_UPDATE_FAIL;
-	} else {
-		tp_msg("CRC DF compare Right\n");
-	}
-	buf[0] = (uint8_t)CMD_WRITE_ENABLE;	//0xc4
-	buf[1] = 0x5A;
-	buf[2] = 0xA5;
-	buf[3] = 0x00;
-	buf[4] = (ap_endaddr + 1) >> 16;
-	buf[5] = ((ap_endaddr + 1) >> 8) & 0xFF;
-	buf[6] = ((ap_endaddr + 1)) & 0xFF;
-	buf[7] = 0;
-	buf[8] = (CRC_AP & 0xFFFF) >> 8;
-	buf[9] = CRC_AP & 0xFFFF;
-	ret = ilitek_i2c_write(buf, 10);
-	if (ret < 0) {
-		tp_err("ilitek_i2c_write\n");
-		return ILITEK_I2C_TRANSFER_ERR;
-	}
-	check_busy(1);
-	if (((ap_endaddr + 1) % 32) != 0) {
-		tp_msg("ap_endaddr += 32\n");
-		ap_endaddr += 32;
-	}
-	tp_msg("Start to write AP data...\n");
-	for (i = ap_startaddr; i < ap_endaddr; i += 32) {
-		buf[0] = (uint8_t)CMD_WRITE_DATA;
-		for (k = 0; k < 32; k++) {
-			buf[1 + k] = CTPM_FW[i + k];
-		}
-		if (ilitek_i2c_write(buf, 33) < 0) {
-			tp_err("ilitek_i2c_write\n");
-			return ILITEK_I2C_TRANSFER_ERR;
-		}
-		check_busy(1);
-		upgrade_status = ((i - ap_startaddr) * 100) / (ap_endaddr - ap_startaddr);
-		tp_dbg("Firmware Upgrade(AP) status: %02d%%\n", upgrade_status);
-	}
-	for (i = 0; i < 20; i++) {
-		buf[0] = (uint8_t)0xC7;
-		if (ilitek_i2c_write(buf, 1) < 0) {
-			tp_err("ilitek_i2c_write\n");
-			return ILITEK_I2C_TRANSFER_ERR;
-		}
-		check_busy(1);
-		buf[0] = (uint8_t)0xC7;
-		ret = ilitek_i2c_write_and_read(buf, 1, 10, buf, 4);
-		if (ret < 0) {
-			tp_err("ilitek_i2c_write_and_read 0xc7\n");
-			return ILITEK_I2C_TRANSFER_ERR;
-		}
-		tp_msg("upgrade end write c7 read 0x%X, 0x%X, 0x%X, 0x%X\n", buf[0], buf[1], buf[2], buf[3]);
-		if (CRC_AP != (buf[1] << 8) + buf[0]) {
-			tp_err("CRC compare error retry\n");
-			//return ILITEK_TP_UPGRADE_FAIL;
-		} else {
-			tp_msg("CRC compare Right\n");
-			break;
-		}
-	}
-	if (i >= 20) {
-		tp_err("CRC compare error\n");
-		return ILITEK_TP_UPGRADE_FAIL;
-	}
-	return 0;
-}
-
-int program_block_BL1_8(uint8_t *buffer, int block, uint32_t len)
-{
-	int ret = ILITEK_SUCCESS, i;
-	int upgrade_status;
-	uint16_t dri_crc = 0, ic_crc = 0;
-	static uint8_t *buff = NULL;
-
-	//buff = vmalloc(sizeof(uint8_t) * (len+1));
-	buff = kmalloc(len+1, GFP_KERNEL);
-	if (NULL == buff) {
-		tp_err("buff NULL\n");
-		return -ENOMEM;
-	}
-	memset(buff, 0xff, len+1);
-	dri_crc = get_dri_crc(ts->blk[block].start, ts->blk[block].end, buffer);
-	ret = api_write_flash_enable_BL1_8(ts->blk[block].start, ts->blk[block].end);
-	tp_msg("Upgrade block %d\n", block);
-
-	tp_msg("Start to write block[%d] data...\n", block);
-	for (i = ts->blk[block].start;
-	     i < ts->blk[block].end; i += len) {
-		buff[0] = (uint8_t) CMD_WRITE_DATA;
-		memcpy(buff + 1, buffer + i, len);
-
-		ret = ilitek_i2c_write_and_read(buff, len + 1, 1, NULL, 0);
-		if (ilitek_check_busy(40, 50, ILITEK_TP_SYSTEM_BUSY) < 0) {
-			tp_err("%s, Write Datas: CheckBusy Failed\n", __func__);
-			goto error_free;
-		}
-		upgrade_status = ((i - ts->blk[block].start + 1) * 100) / (ts->blk[block].end - ts->blk[block].start);
-		tp_dbg("Firmware Upgrade(block: %d) status %02d%%\n", block, upgrade_status);
-	}
-
-	ic_crc = api_get_block_crc(ts->blk[block].start, ts->blk[block].end, CRC_GET_FROM_FLASH);
-	tp_msg("Block:%d start:0x%x end:0x%x Real=0x%x,Get=0x%x\n",
-		block, ts->blk[block].start, ts->blk[block].end,
-		dri_crc, ic_crc);
-
-	if (dri_crc != ic_crc) {
-		tp_err("WriteAPData: CheckSum Failed! Real=0x%x,Get=0x%x\n",
-			dri_crc, ic_crc);
-		goto error_free;
-	}
-
-	kfree(buff);
-	return ILITEK_SUCCESS;
-
-error_free:
-	kfree(buff);
-	return ILITEK_FAIL;
-}
-
-static int program_slave_BL1_8(void)
-{
-	int ret = ILITEK_SUCCESS, i;
-	int retry;
-
-	if (ts->ptl.ver < PROTOCOL_V6) {
-		tp_err("protocol: 0x%x not support\n", ts->ptl.ver);
-		return -EINVAL;
-	}
-
-	ret = api_set_testmode(true);
-
-	retry = 1;
-	do {
-		api_get_ap_crc(ts->ic_num);
-
-		for (i = 0; i < ts->ic_num && i < ARRAY_SIZE(ts->ic); i++) {
-			if (ts->ic[0].crc == ts->ic[i].crc)
-				continue;
-
-			tp_err("Master CRC:0x%x, IC[%d] CRC:0x%x not match or force upgrade, retry: %d\n",
-				ts->ic[0].crc, i, ts->ic[i].crc, retry);
-
-			if (retry <= 0)
-				return -EFAULT;
-
-			api_set_access_slave(PROTOCOL_V6_ACCESS_SLAVE_PROGRAM);
-			api_write_flash_enable_BL1_8(ts->blk[0].start,
-						     ts->blk[0].end);
-			tp_msg("Please wait updating...\n");
-			msleep(20000);
-			break;
-		}
-
-	} while (--retry > 0);
-
-	retry = 1;
-	do {
-		api_get_slave_mode(ts->ic_num);
-
-		for (i = 0; i < ts->ic_num && i < ARRAY_SIZE(ts->ic); i++) {
-			if (ts->ic[i].mode == ILITEK_TP_MODE_APPLICATION)
-				continue;
-
-			tp_err("IC[%d] Mode:0x%x not in AP, retry: %d\n",
-				i, ts->ic[i].mode, retry);
-
-			if (retry <= 0)
-				return -EFAULT;
-
-			api_set_access_slave(PROTOCOL_V6_ACCESS_SLAVE_SET_APMODE);
-			break;
-		}
-	} while (--retry > 0);
-
-	if (ilitek_read_tp_info(false) < 0) {
-		tp_err("init read tp info error so exit\n");
-		return ILITEK_FAIL;
-	}
-
-	ret = api_set_testmode(false);
-	msleep(2000);
-
-	return ILITEK_SUCCESS;
-}
-
-static int32_t ilitek_upgrade_BL1_8(uint8_t *fw_buf)
-{
-	int ret = ILITEK_SUCCESS, count = 0;
-	uint32_t update_len = set_update_len;
-
-	ret = api_set_data_length(update_len);
-	for (count = 0; count < ts->upg.blk_num; count++) {
-		if (!ts->blk[count].crc_match) {
-			if (program_block_BL1_8(fw_buf, count, update_len) < 0) {
-				tp_err("Upgrade Block:%d Fail\n", count);
-				return ILITEK_FAIL;
-			}
-		}
-	}
-
-	if (ilitek_changetoblmode(false) < 0) {
-		tp_err("Change to ap mode failed\n");
-		return ILITEK_FAIL;
-	}
-
-	msleep(500);
-	if (ilitek_read_tp_info(false) < 0) {
-		tp_err("init read tp info error so exit\n");
-		return ILITEK_FAIL;
-	}
-
-	if (ts->ic_type == 0x2326) {
-		tp_msg("Firmware Upgrade on Slave\n");
-		ret = program_slave_BL1_8();
-	}
-
-	ilitek_reset(ts->reset_time);
-
-	return ret;
-}
-
-bool check_FW_upgrade(unsigned char *buffer)
-{
-	uint16_t dri_crc = 0, ic_crc = 0;
-	int count = 0;
-
-	if (ts->ptl.ver >= PROTOCOL_V6 || ts->ptl.ver == BL_V1_8) {
-		int update = false;
-
-		for (count = 0; count < ts->upg.blk_num; count++) {
-			ts->blk[count].crc_match = true;
-			ic_crc = api_get_block_crc(ts->blk[count].start, ts->blk[count].end, CRC_CALCULATION_FROM_IC);
-			dri_crc = get_dri_crc(ts->blk[count].start, ts->blk[count].end, buffer);
-
-			if (ic_crc != dri_crc) {
-				ts->blk[count].crc_match = false;
-				update = true;
-			}
-			tp_msg("Block[%d], Start/End Addr: 0x%x/0x%x, IC/Hex CRC: 0x%x/0x%x Matched:%d\n",
-				count, ts->blk[count].start, ts->blk[count].end,
-				ic_crc, dri_crc, ts->blk[count].crc_match);
-		}
-		return update;
-	}
-	return true;
-}
-
-int32_t _ilitek_upgrade_firmware(uint8_t *buffer)
-{
-	int32_t ret = 0, retry = 0;
-	uint8_t buf[64] = { 0 };
-	bool update;
-	unsigned int i;
-
-	tp_msg("ap_startaddr:0x%X, ap_endaddr:0x%X, ap_checksum:0x%X, ap_len: %d\n",
-		ts->upg.ap_start_addr, ts->upg.ap_end_addr, ts->upg.ap_check, ts->upg.ap_len);
-	tp_msg("df_startaddr:0x%X, df_endaddr:0x%X, df_checksum:0x%X, df_len: %d\n",
-		ts->upg.df_start_addr, ts->upg.df_end_addr, ts->upg.df_check, ts->upg.df_len);
-
-	tp_msg("------------Daemon Block information------------\n");
-	for (i = 0; i < ts->upg.blk_num && i < ARRAY_SIZE(ts->blk); i++) {
-		tp_msg("Block[%u]: start/end: 0x%x/0x%x\n",
-			i, ts->blk[i].start, ts->blk[i].end);
-	}
-
-Retry:
-	if (retry)
-		ilitek_reset(ts->reset_time);
-
-	update = true;
-	if (retry++ > 2) {
-		tp_err("upgrade retry 2 times failed\n");
-		return ret;
-	}
-
-	if (api_set_testmode(true) < ILITEK_SUCCESS)
-		goto Retry;
-
-	if (api_ptl_set_cmd(GET_MCU_VER, NULL, buf) < ILITEK_SUCCESS)
-		goto Retry;
-
-	update = check_FW_upgrade(buffer);
-	if (update) {
-		ret = ilitek_changetoblmode(true);
-		if (ret) {
-			tp_err("change to bl mode err ret = %d\n", ret);
-			goto Retry;
-		}
-
-		if (api_ptl_set_cmd(GET_PTL_VER, NULL, buf) < ILITEK_SUCCESS)
-			goto Retry;
-
-		tp_msg("bl protocol version %d.%d\n", buf[0], buf[1]);
-		ts->page_number = 16;
-		buf[0] = 0xc7;
-		ret = ilitek_i2c_write_and_read(buf, 1, 10, buf, 1);
-		tp_msg("0xc7 read= %x\n", buf[0]);
-	}
-
-	if (((ts->ptl.ver & 0xFFFF00) == BL_V1_8) || ts->ptl.ver >= PROTOCOL_V6) {
-		ret = ilitek_upgrade_BL1_8(buffer);
-	} else if((ts->ptl.ver & 0xFFFF00) == BL_V1_7) {
-		ret = ilitek_upgrade_BL1_7(buffer);
-	} else if((ts->ptl.ver & 0xFFFF00) == BL_V1_6) {
-		ret = ilitek_upgrade_BL1_6(buffer);
-	} else {
-		tp_err("not support BL protocol ver: %x\n", ts->bl_ver);
-		goto Retry;
-	}
-
-	if (ret < 0) {
-		tp_err("FW upgrade failed, err: %d\n", ret);
-		goto Retry;
-	}
-
-	tp_msg("upgrade firmware completed!\n");
-
-	if (ilitek_changetoblmode(false)) {
-		tp_err("change to ap mode failed\n");
-		goto Retry;
-	}
-
-	ilitek_reset(ts->reset_time);
-
-	ret = api_init_func();
-
-	return 0;
-}
-
-int hex_mapping_convert(uint32_t addr, uint8_t *buffer)
-{
-	uint32_t start = 0, count = 0, index = 0;
-
-	ts->upg.blk_num = 0;
-
-	tp_msg("info addr: 0x%x\n", addr);
-
-	start = addr + HEX_FWVERSION_ADDRESS;
-	for (count = start, index = HEX_FWVERSION_SIZE - 1;
-	     count < start + HEX_FWVERSION_SIZE; count++, --index)
-		ts->upg.hex_fw_ver[index] = buffer[count];
-
-	tp_msg_arr("Hex FW version:", ts->upg.hex_fw_ver, HEX_FWVERSION_SIZE);
-	tp_msg_arr("Hex DF start addr:", buffer + addr + HEX_DATA_FLASH_ADDRESS,
-		   HEX_DATA_FLASH_SIZE);
-
-	tp_msg_arr("Hex IC type:", buffer + addr + HEX_KERNEL_VERSION_ADDRESS,
-		   HEX_KERNEL_VERSION_SIZE);
-	ts->upg.hex_ic_type = buffer[addr + HEX_KERNEL_VERSION_ADDRESS];
-	ts->upg.hex_ic_type += (buffer[addr + HEX_KERNEL_VERSION_ADDRESS + 1] << 8);
-
-	start = addr + HEX_MEMONY_MAPPING_VERSION_ADDRESS;
-	for (count = start, index = 0;
-	     count < start + HEX_MEMONY_MAPPING_VERSION_SIZE; count++, index++)
-		ts->upg.map_ver += buffer[count] << (index*8);
-
-	tp_msg("Hex Mapping Version: 0x%x\n", ts->upg.map_ver);
-
-	if (ts->upg.map_ver < 0x10000)
-		return ILITEK_SUCCESS;
-
-	ts->upg.blk_num = buffer[addr + HEX_FLASH_BLOCK_NUMMER_ADDRESS];
-	if (ts->upg.blk_num > ARRAY_SIZE(ts->blk)) {
-		tp_err("Unexpected block num: %u\n", ts->upg.blk_num);
-		ts->upg.blk_num = ARRAY_SIZE(ts->blk);
-	}
-
-	tp_msg("------------Hex Block information------------\n");
-	tp_msg("Hex flash block number: %d\n", ts->upg.blk_num);
-	memset(ts->blk, 0, sizeof(ts->blk));
-	for (count = 0; count < ts->upg.blk_num; count++) {
-		start = addr + HEX_FLASH_BLOCK_INFO_ADDRESS + HEX_FLASH_BLOCK_INFO_SIZE * count;
-		ts->blk[count].start = buffer[start] + (buffer[start+1] << 8) + (buffer[start+2] << 16);
-		if (count == ts->upg.blk_num - 1) {
-			addr = addr + HEX_FLASH_BLOCK_END_ADDRESS;
-			ts->blk[count].end = buffer[addr] + (buffer[addr+1] << 8) + (buffer[addr+2] << 16);
-		} else {
-			ts->blk[count].end = buffer[start+3] + (buffer[start+4] << 8) + (buffer[start+5] << 16) - 1;
-		}
-		tp_msg("Hex Block:%d, start:0x%x end:0x%x\n", count, ts->blk[count].start,  ts->blk[count].end);
-	}
-
-	return ILITEK_SUCCESS;
-}
-
-int hex_file_convert(struct ilitek_ts_data *ts, unsigned char *pbuf,
-		     unsigned char *buffer, unsigned int hexfilesize)
-{
-	unsigned int exaddr = 0;
-	unsigned int i = 0, j = 0, k = 0;
-	unsigned int start_addr = 0xFFFF, hex_info_addr = 0;
-	unsigned int count = 0;
-	bool read_mapping = false;
-	unsigned int len = 0, addr = 0, type = 0;
-
-	for (i = 0; i < hexfilesize;) {
-		int offset;
-
-		len = hex_2_dec(&pbuf[i + 1], HEX_BYTE_CNT_LEN);
-		addr = hex_2_dec(&pbuf[i + 3], HEX_ADDR_LEN);
-		type = hex_2_dec(&pbuf[i + 7], HEX_RECORD_TYPE_LEN);
-
-		if (type == HEX_TYPE_ELA)
-			exaddr = hex_2_dec(&pbuf[i + HEX_DATA_POS_HEAD], (len * 2)) << 16;
-		if (type == HEX_TYPE_ESA)
-			exaddr = hex_2_dec(&pbuf[i + HEX_DATA_POS_HEAD], (len * 2)) << 4;
-		addr = addr + exaddr;
-
-		if (type == HEX_TYPE_ILI_MEM_MAP) {
-			hex_info_addr = hex_2_dec(&pbuf[i + HEX_DATA_POS_HEAD], (len * 2));
-			tp_msg("%s, hex_info_addr = 0x%x\n", __func__, hex_info_addr);
-			ts->upg.hex_info_flag = true;
-		}
-
-		if (addr >= hex_info_addr + HEX_MEMONY_MAPPING_FLASH_SIZE &&
-		    ts->upg.hex_info_flag && read_mapping == false) {
-			read_mapping = true;
-			hex_mapping_convert(hex_info_addr, buffer);
-		}
-
-		/* calculate checksum */
-		for (j = HEX_DATA_POS_HEAD; j < (HEX_DATA_POS_HEAD + (len * 2)); j += 2) {
-			if (type == HEX_TYPE_DATA) {
-				if (addr + (j - HEX_DATA_POS_HEAD) / 2 < ts->upg.df_start_addr)
-					ts->upg.ap_check += hex_2_dec(&pbuf[i + j], 2);
- 				else
-					ts->upg.df_check += hex_2_dec(&pbuf[i + j], 2);
-			}
-		}
-
-		if (pbuf[i + j + 2 + 1] == 0x0A) // CR+LF (0x0D 0x0A)
-			offset = 2;
-		else	// CR  (0x0D)
-			offset = 1;
-
-		if (type == HEX_TYPE_DATA) {
-			if (addr < start_addr)
-				start_addr = addr;
-
-			if (addr < ts->upg.ap_start_addr)
-				ts->upg.ap_start_addr = addr;
-
-			for (count = 0; count < ts->upg.blk_num; count++) {
-				if (addr + len - 1 > ts->blk[count].start &&
-				    count == ts->upg.blk_num - 1)
-					ts->blk[count].end = addr + len - 1;
-				else if (addr + len - 1 > ts->blk[count].start &&
-				    addr + len - 1 < ts->blk[count + 1].start)
-					ts->blk[count].end = addr + len - 1;
-
-			}
-
-			if ((addr + len) > ts->upg.ap_end_addr && (addr < ts->upg.df_start_addr))
-				ts->upg.ap_end_addr = addr + len;
-
-			if ((addr < ts->upg.ap_start_addr) && (addr >= ts->upg.df_start_addr))
-				ts->upg.df_start_addr = addr;
-
-			if ((addr + len) > ts->upg.df_end_addr && (addr >= ts->upg.df_start_addr))
-				ts->upg.df_end_addr = addr + len;
-
-			for (j = 0, k = 0; j < (len * 2); j += 2, k++)
-				buffer[addr + k] = hex_2_dec(&pbuf[i + HEX_DATA_POS_HEAD + j], 2);
-		}
-
-		if (type == HEX_TYPE_ILI_SDA) {
-			ts->upg.df_tag_exist = true;
-			ts->upg.df_start_addr = hex_2_dec(&pbuf[i + HEX_DATA_POS_HEAD], len * 2);
-			tp_msg("-----------Data Flash Start address:0x%x\n", ts->upg.df_start_addr);
-		}
-		i += HEX_DATA_POS_HEAD + (len * 2) + HEX_CHKSUM_LEN + offset;
-	}
-
-	return 0;
-}
-
-static int decode_hex(struct ilitek_ts_data *ts, uint8_t *fw_buf,
-		      const char *filename)
+static int decode_hex(struct ilitek_fw_handle *fw, uint8_t *hex,
+		      uint32_t start, uint32_t end, uint8_t *fw_buf)
 {
 	int error;
-	const struct firmware *fw;
-	struct device *dev = &ts->client->dev;
+	uint8_t info[4], data[16];
+	unsigned int i, len, addr, type, exaddr = 0;
+	uint32_t mapping_info_addr = 0;
 
-	tp_msg("\n");
+	fw->ap.start = (~0U);
+	fw->ap.end = 0x0;
+	fw->ap.checksum = 0x0;
+	fw->df.start = (~0U);
+	fw->df.end = 0x0;
+	fw->df.checksum = 0x0;
 
-	if ((error = request_firmware(&fw, filename, dev))) {
-		tp_err("request fw: %s failed, err:%d\n", filename, error);
-		return error;
-	}
+	for (i = start; i < end; i++) {
+		/* filter out non-hexadecimal characters */
+		if (hex_to_bin(hex[i]) < 0)
+			continue;
 
-	hex_file_convert(ts, (unsigned char *)fw->data, fw_buf, fw->size);
+		if ((error = hex2bin(info, hex + i, sizeof(info))) < 0)
+			return error;
 
-	release_firmware(fw);
+		len = info[0];
+		addr = be32(info + 1, 2);
+		type = info[3];
 
-	return 0;
-}
+		if ((error = hex2bin(data, hex + i + 8, len)) < 0)
+			return error;
 
-static int _decode_bin(struct ilitek_ts_data *ts, uint8_t *fw_buf,
-		       unsigned int fw_size, uint32_t info_addr)
-{
-	uint8_t buf[64];
-	unsigned int i;
+		switch (type) {
+		case 0xAC:
+			mapping_info_addr = be32(data, len);
+			break;
 
-	if (ts->ptl.ver >= PROTOCOL_V6 || ts->ptl.ver == BL_V1_8) {
-		api_ptl_set_cmd(GET_MCU_VER, NULL, buf);
+		case 0xAD:
+			fw->df.start = be32(data, len);
+			break;
 
-		/* Needs to check Kernel Version first */
-		if (info_addr)
-			hex_mapping_convert(info_addr, fw_buf);
-		else if (ts->upg.ic_df_start_addr == 0x2C000)
-			hex_mapping_convert(0x4020, fw_buf);
-		else
-			hex_mapping_convert(0x3020, fw_buf);
+		case 0xBA:
+			if (be32(data, len) != 2U)
+				break;
 
-		for (i = 0; i < ts->upg.blk_num; i++) {
-			if (!i)
-				ts->blk[i].end = get_endaddr(
-					ts->blk[i].start, ts->blk[i].end,
-					fw_buf, fw_size, true);
-            		else
-                		ts->blk[i].end = get_endaddr(
-                			ts->blk[i].start, ts->blk[i].end,
-                			fw_buf, fw_size, false);
-        	}
-	} else {
-		ilitek_changetoblmode(true);
-		api_ptl_set_cmd(GET_PTL_VER, NULL, buf);
-		api_ptl_set_cmd(GET_MCU_VER, NULL, buf);
+			TP_MSG("start to decode M2V part of hex file\n");
+			fw->m2v = true;
+			return decode_hex(fw, hex, i + 10 + len * 2 + 1, end,
+					  fw->m2v_buf);
 
-		ts->upg.df_start_addr = ts->upg.ic_df_start_addr;
+		case 0x01:
+			goto success_return;
 
-		if (ts->ptl.ver == BL_V1_7) {
-			hex_mapping_convert(0x2020, fw_buf);
-			ts->upg.ap_start_addr = 0x2000;
-			ts->upg.ap_end_addr = get_endaddr(ts->upg.ap_start_addr,
-							  ts->upg.df_start_addr,
-							  fw_buf, fw_size,
-							  true) + 1;
-			ts->upg.ap_check = get_dri_checksum(ts->upg.ap_start_addr,
-							    ts->upg.ap_end_addr,
-							    fw_buf);
-		} else if (ts->ptl.ver == BL_V1_6) {
-			hex_mapping_convert(0x500, fw_buf);
-			ts->upg.ap_start_addr = 0x0;
-			ts->upg.ap_end_addr = get_endaddr(ts->upg.ap_start_addr,
-							  ts->upg.df_start_addr,
-							  fw_buf, fw_size,
-							  true) + 3;
-			ts->upg.ap_check = get_dri_checksum(ts->upg.ap_start_addr,
-							    ts->upg.ap_end_addr,
-							    fw_buf);
-		} else {
-			tp_err("unexpected BL version: 0x%04X\n", ts->ptl.ver);
+		case 0x02:
+			exaddr = be32(data, len) << 4;
+			break;
+
+		case 0x04:
+			exaddr = be32(data, len) << 16;
+			break;
+
+		case 0x05:
+			TP_MSG("hex data type: %#x, start linear address: %#x\n",
+				type, be32(data, len));
+			break;
+
+		case 0x00:
+			addr += exaddr;
+
+			if (addr + len > ILITEK_FW_BUF_SIZE) {
+				TP_ERR("hex addr: %#x, buf size: %#x OOB\n",
+					addr + len, ILITEK_FW_BUF_SIZE);
+				return -ENOBUFS;
+			}
+			memcpy(fw_buf + addr, data, len);
+
+			fw->ap.start = MIN(fw->ap.start, addr);
+
+			if (addr + len < fw->df.start) {
+				fw->ap.end = MAX(fw->ap.end, addr + len);
+				fw->ap.checksum += get_checksum(0, len, data,
+								sizeof(data));
+			} else {
+				fw->df.end = MAX(fw->df.end, addr + len);
+				fw->df.checksum += get_checksum(0, len, data,
+								sizeof(data));
+			}
+
+			break;
+		default:
+			TP_ERR("unexpected type:%#x in hex, len:%u, addr:%#x\n",
+				type, len, addr);
 			return -EINVAL;
 		}
 
-		ts->upg.df_end_addr = fw_size;
-		ts->upg.df_check = get_dri_checksum(ts->upg.df_start_addr,
-						    ts->upg.df_end_addr,
-						    fw_buf);
+		i = i + 10 + len * 2;
 	}
 
-	ts->upg.hex_info_flag = true;
+success_return:
+	if (mapping_info_addr)
+		decode_mm(fw, mapping_info_addr, fw_buf);
 
 	return 0;
 }
 
-static int decode_bin(struct ilitek_ts_data *ts, uint8_t *fw_buf,
-		      const char *filename)
+static int decode_bin(struct ilitek_fw_handle *fw, uint8_t *bin, int bin_size)
 {
 	int error;
-	const struct firmware *fw;
-	struct device *dev = &ts->client->dev;
-	unsigned int fw_size;
+	struct ilitek_ts_device *dev = fw->dev;
 
-	tp_msg("\n");
+	fw->ap.start = (~0U);
+	fw->ap.end = 0x0;
+	fw->ap.checksum = 0x0;
+	fw->df.start = (~0U);
+	fw->df.end = 0x0;
+	fw->df.checksum = 0x0;
 
-	if ((error = request_firmware(&fw, filename, dev))) {
-		tp_err("request fw: %s failed, err:%d\n", filename, error);
+	if (bin_size > ILITEK_FW_BUF_SIZE) {
+		TP_ERR("bin file size: %#x, buf size: %#x OOB\n", bin_size,
+			ILITEK_FW_BUF_SIZE);
+		return -ENOBUFS;
+	}
+	memcpy(fw->fw_buf, bin, bin_size);
+
+	if ((error = api_protocol_set_cmd(dev, GET_PTL_VER, NULL)) < 0)
 		return error;
+
+	switch (dev->protocol.flag) {
+	case PTL_V6:
+		if ((error = api_protocol_set_cmd(dev, GET_MCU_VER,
+						  NULL)) < 0 ||
+		    (error = api_protocol_set_cmd(dev, GET_MCU_INFO,
+						  NULL)) < 0)
+			return error;
+
+		decode_mm(fw, dev->kernel_info.mm_addr, bin);
+		break;
+
+	case PTL_V3:
+		switch (dev->mcu.ic_name) {
+		case 0x2312:
+		case 0x2315:
+			fw->df.start = 0x1f000;
+			decode_mm(fw, 0x0500, bin);
+			fw->ap.start = 0x0;
+			fw->ap.end = get_endaddr(fw->ap.start, fw->df.start,
+						 bin, bin_size, true) + 3;
+			break;
+		default:
+			fw->df.start = 0xf000;
+			decode_mm(fw, 0x2020, bin);
+			fw->ap.start = 0x2000;
+			fw->ap.end = get_endaddr(fw->ap.start, fw->df.start,
+						 bin, bin_size, true) + 1;
+			break;
+		}
+		fw->ap.checksum = get_checksum(fw->ap.start, fw->ap.end, bin,
+					       bin_size);
+		fw->df.end = bin_size;
+		fw->df.checksum = get_checksum(fw->df.start, fw->df.end, bin,
+					       bin_size);
+		break;
+
+	default:
+		return -EINVAL;
 	}
 
-	tp_msg("fw size: %lu bytes\n", fw->size);
-	memcpy(fw_buf, fw->data, fw->size);
-	fw_size = fw->size;
-	release_firmware(fw);
-
-	return _decode_bin(ts, fw_buf, fw_size, 0);
+	return 0;
 }
 
-static int __maybe_unused decode_ili(struct ilitek_ts_data *ts, uint8_t *fw_buf)
+#ifdef ILITEK_BOOT_UPDATE
+#include "ilitek_fw.h"
+
+static int decode_ili(struct ilitek_fw_handle *fw)
 {
-#ifdef ILITEK_UPDATE_FW
 	int error;
-	uint32_t info_addr, i;
+	struct ilitek_ts_device *dev = fw->dev;
+	uint32_t i;
 	bool need_update = false;
-	uint8_t hex_fw_ver[8];
+	int size;
 
-	tp_msg("sizeof ili file: %zu bytes\n", sizeof(CTPM_FW));
+	/* for boot upgrade without using .ili file */
+	size = sizeof(CTPM_FW);
+	if (size < 32)
+		return -EINVAL;
 
-	memcpy(hex_fw_ver, CTPM_FW + 18, 8);
+	memcpy(fw->file_fw_ver, CTPM_FW + 18, 8);
 
-	tp_msg_arr("IC  fw ver:", ts->fw_ver, 8);
-	tp_msg_arr("Hex fw ver:", hex_fw_ver, 8);
+	TP_MSG_ARR("IC  fw ver:", 8, dev->fw_ver);
+	TP_MSG_ARR("Hex fw ver:", 8, fw->file_fw_ver);
 
-	if (!(ts->force_update)) {
+	if (dev->ic[0].mode == 0x5A) {
 		for (i = 0; i < 8; i++) {
-			if (hex_fw_ver[i] > ts->fw_ver[i]) {
+			if (fw->file_fw_ver[i] > dev->fw_ver[i]) {
 				need_update = true;
 				break;
 			}
 
-			if (hex_fw_ver[i] < ts->fw_ver[i])
+			if (fw->file_fw_ver[i] < dev->fw_ver[i])
 				break;
 		}
 
 		if (!need_update) {
-			tp_msg("Hex FW version is older so not upgrade\n");
+			TP_MSG("File FW version is older, no need to update\n");
 			return -EEXIST;
 		}
 	}
 
-	info_addr = 0;
-	if (ts->ptl.ver_major == 0x6 || ts->ptl.ver == BL_V1_8) {
-		info_addr = (CTPM_FW[10] << 8) + CTPM_FW[11];
-		tp_msg("Hex info addr: 0x%x\n", info_addr);
-	}
-
-	tp_msg("Hex info addr: 0x%x\n", info_addr);
-
-	memcpy(fw_buf, CTPM_FW + 32, sizeof(CTPM_FW) - 32);
-	if ((error = _decode_bin(ts, fw_buf, sizeof(CTPM_FW) - 32, info_addr)))
+	if ((error = decode_bin(fw, CTPM_FW + 32, size - 32)) < 0)
 		return error;
 
-	if (ts->ptl.ver_major != 0x6 && ts->ptl.ver != BL_V1_8) {
-		ts->upg.ap_start_addr = (CTPM_FW[0] << 16) + (CTPM_FW[1] << 8) + CTPM_FW[2];
-		ts->upg.ap_end_addr = (CTPM_FW[3] << 16) + (CTPM_FW[4] << 8) + CTPM_FW[5];
-		ts->upg.ap_check = (CTPM_FW[6] << 16) + (CTPM_FW[7] << 8) + CTPM_FW[8];
-		ts->upg.df_end_addr = (CTPM_FW[12] << 16) + (CTPM_FW[13] << 8) + CTPM_FW[14];
-		ts->upg.df_check = (CTPM_FW[15] << 16) + (CTPM_FW[16] << 8) + CTPM_FW[17];
-		ts->upg.df_len = (CTPM_FW[26] << 16) + (CTPM_FW[27] << 8) + CTPM_FW[28];
-		ts->upg.ap_len = (CTPM_FW[29] << 16) + (CTPM_FW[30] << 8) + CTPM_FW[31];
-		ts->upg.hex_ic_type = CTPM_FW[10] + (CTPM_FW[11] << 8);
-		tp_msg("ILI IC type: 0x%x\n", ts->upg.hex_ic_type);
+	if (dev->protocol.flag == PTL_V6)
+		return 0;
+
+	/*
+	 * Only V3 2312/2315 need ap checksum,
+	 * V3 251x need ap crc, which would be re-calculated afterward.
+	 * .ili file fill DF section with default 0xFF, but not 0.
+	 * remove below CTPM_FW parser after fixing .ili converter bug.
+	 */
+	if (dev->mcu.ic_name == 0x2312 || dev->mcu.ic_name == 0x2315) {
+		fw->ap.start = (CTPM_FW[0] << 16) + (CTPM_FW[1] << 8) +
+				CTPM_FW[2];
+		fw->ap.end = (CTPM_FW[3] << 16) + (CTPM_FW[4] << 8) +
+				CTPM_FW[5];
+		fw->ap.checksum = (CTPM_FW[6] << 16) + (CTPM_FW[7] << 8) +
+				CTPM_FW[8];
 	}
-#endif
+	fw->df.end = (CTPM_FW[12] << 16) + (CTPM_FW[13] << 8) + CTPM_FW[14];
+	fw->df.checksum = (CTPM_FW[15] << 16) + (CTPM_FW[16] << 8) +
+				CTPM_FW[17];
+	fw->file_ic_name = CTPM_FW[10] + (CTPM_FW[11] << 8);
+	TP_MSG("ILI IC type: 0x%x\n", fw->file_ic_name);
 
 	return 0;
 }
-
-static int decode_firmware(struct ilitek_ts_data *ts, uint8_t *fw_buf)
-{
-	int error;
-
-	ts->upg.ap_start_addr = 0xFFFF;
-	ts->upg.ap_end_addr = 0x0;
-	ts->upg.ap_check = 0x0;
-	ts->upg.df_start_addr = 0xFFFF;
-	ts->upg.df_end_addr = 0x0;
-	ts->upg.df_check = 0x0;
-	ts->upg.hex_info_flag = false;
-	ts->upg.df_tag_exist = false;
-
-	if ((error = decode_hex(ts, fw_buf, "ilitek.hex")) &&
-	    (error = decode_bin(ts, fw_buf, "ilitek.bin"))) {
-
-#ifdef ILITEK_UPDATE_FW
-		if (!(error = decode_ili(ts, fw_buf)))
-			return 0;
 #endif
 
-		return error;
-	}
-
-	return 0;
-}
-
-int ilitek_upgrade_firmware()
+static int decode_firmware(struct ilitek_fw_handle *fw, char *file_name)
 {
 	int error;
-	uint8_t *fw_buf;
-	uint8_t outbuf[64];
+	struct ilitek_ts_device *dev = fw->dev;
+	char *file_ext;
+	int file_size = 0;
+	uint8_t *file_buf;
 
-	memset(outbuf, 0, sizeof(outbuf));
+	uint32_t i;
 
-	fw_buf = (uint8_t *)vmalloc(ILITEK_HEX_UPGRADE_SIZE);
-	if (!fw_buf) {
-		tp_err("allocte fw_buf memory failed\n");
+	if (!fw)
+		return -EINVAL;
+
+	fw->ap.start = (~0U);
+	fw->ap.end = 0x0;
+	fw->ap.checksum= 0x0;
+	fw->df.start = (~0U);
+	fw->df.end = 0x0;
+	fw->df.checksum= 0x0;
+
+	if (!(file_ext = strrchr(file_name, '.')))
+		return -ENOENT;
+
+	file_buf = (uint8_t *)CALLOC(ILITEK_FW_FILE_SIZE, 1);
+	if (!file_buf)
 		return -ENOMEM;
+
+	/* no need to read .ili file */
+	if (_strcasecmp(file_ext, ".ili")) {
+		TP_MSG("start to load file: %s\n", file_name);
+		file_size = fw->cb.read_fw(file_name, file_buf,
+					   ILITEK_FW_FILE_SIZE, fw->_private);
+
+		if ((error = file_size) < 0) {
+			TP_ERR("read fw file failed, err: %d\n", error);
+			goto err_free;
+		}
 	}
 
-	ilitek_irq_disable();
-	mutex_lock(&ts->ilitek_mutex);
+	_strcpy(fw->fw_name, file_name, sizeof(fw->fw_name));
 
-	if ((error = api_ptl_set_cmd(GET_MCU_VER, NULL, outbuf)) < 0 ||
-	    (error = api_ptl_set_cmd(GET_PTL_VER, NULL, outbuf)) < 0)
-		goto unlock_and_irq_enable;
-
-	memset(fw_buf, 0xFF, ILITEK_HEX_UPGRADE_SIZE);
-	if (ts->ic_type == 0x2312 || ts->ic_type == 0x2315)
-		memset(fw_buf + 0x1F000, 0, 0x1000);
-
-	if (decode_firmware(ts, fw_buf)) {
-		tp_err("decode firmware failed\n");
-		error = -EFAULT;
-		goto unlock_and_irq_enable;
-	}
-
-	tp_msg("MCU version: 0x%04x, Hex IC type: 0x%04x\n",
-		ts->ic_type, ts->upg.hex_ic_type);
-	if (ts->upg.hex_info_flag && ts->upg.hex_ic_type &&
-	    ts->ic_type != ts->upg.hex_ic_type) {
-		tp_err("ic: ILI%04x, hex: ILI%04x not match\n",
-			ts->ic_type, ts->upg.hex_ic_type);
-
+	if (!_strcasecmp(file_ext, ".hex"))
+		error = decode_hex(fw, file_buf, 0, file_size, fw->fw_buf);
+	else if (!_strcasecmp(file_ext, ".bin"))
+		error = decode_bin(fw, file_buf, file_size);
+#ifdef ILITEK_BOOT_UPDATE
+	else if (!_strcasecmp(file_ext, ".ili"))
+		error = decode_ili(fw);
+#endif
+	else
 		error = -EINVAL;
-		goto unlock_and_irq_enable;
-	} else if ((!ts->upg.hex_info_flag || !ts->upg.hex_ic_type) &&
-		   ts->mcu_ver[0] != 0x03 && ts->mcu_ver[0] != 0x09) {
-		tp_err("ic: ILI%04x, hex: ILI230X not match\n", ts->ic_type);
 
-		error = -EINVAL;
-		goto unlock_and_irq_enable;
+	if (error < 0)
+		goto err_free;
+
+	/* for V3 251x IC, need re-calculate AP CRC (not checksum) */
+	if (dev->protocol.flag == PTL_V3 &&
+	    dev->mcu.ic_name != 0x2312 &&
+	    dev->mcu.ic_name != 0x2315) {
+		fw->ap.checksum = get_crc(fw->ap.start, fw->ap.end - 2,
+					  fw->fw_buf, ILITEK_FW_BUF_SIZE);
 	}
 
-	atomic_set(&ts->firmware_updating, 1);
-	ts->operation_protection = true;
-	error = _ilitek_upgrade_firmware(fw_buf);
-	ts->operation_protection = false;
-	atomic_set(&ts->firmware_updating, 0);
-	if (error < 0) {
-		tp_err("upgrade failed, err: %d\n", error);
-		goto unlock_and_irq_enable;
+	/* for Lego and V6 IC, check block's start/end address validity */
+	if (dev->protocol.flag == PTL_V6) {
+		for (i = 0; i < fw->block_num; i++) {
+			if (dev->kernel_info.min_addr <= fw->blocks[i].start &&
+			    dev->kernel_info.max_addr > fw->blocks[i].end)
+				continue;
+
+			if (!(fw->blocks[i].start % 0x1000))
+				continue;
+
+			TP_ERR("Block[%u] addr. OOB (%#x <= %#x/%#x < %#x) or invalid start addr\n",
+				i, dev->kernel_info.min_addr,
+				fw->blocks[i].start, fw->blocks[i].end,
+				dev->kernel_info.max_addr);
+			error = -EINVAL;
+			goto err_free;
+		}
 	}
 
-	ilitek_read_tp_info(false);
+err_free:
+	CFREE(file_buf);
 
-unlock_and_irq_enable:
-	mutex_unlock(&ts->ilitek_mutex);
-	ilitek_irq_enable();
-
-	vfree(fw_buf);
+	TP_MSG("MCU version: 0x%04x, Hex IC type: 0x%04x\n",
+		dev->mcu.ic_name, fw->file_ic_name);
+	if (dev->mcu.ic_name != fw->file_ic_name &&
+	    (dev->mcu.ic_name & 0xFF00) != 0x0300 &&
+	    (dev->mcu.ic_name & 0xFF00) != 0x0900) {
+		TP_ERR("ic: ILI%04x, hex: ILI%04x or ILI230x not matched\n",
+			dev->mcu.ic_name, fw->file_ic_name);
+		return -EINVAL;
+	}
 
 	return error;
 }
+
+static bool need_fw_update_v3(struct ilitek_fw_handle *fw)
+{
+	struct ilitek_ts_device *dev = fw->dev;
+	bool need;
+
+	UPDATE_UI_INFO("------------V3 AP/DF Info.------------\n");
+
+	UPDATE_UI_INFO("[ap] start:0x%X, end:0x%X, checksum:0x%X\n",
+		       fw->ap.start, fw->ap.end, fw->ap.checksum);
+	UPDATE_UI_INFO("[df] start:0x%X, end:0x%X, checksum:0x%X\n",
+		       fw->df.start, fw->df.end, fw->df.checksum);
+
+	need = (dev->ap_crc_v3 != fw->ap.checksum ||
+		(fw->df.start < fw->df.end &&
+		 dev->df_crc_v3 != fw->df.checksum));
+
+	UPDATE_UI_INFO("AP (IC:%#X/FW:%#X), Data (IC:%#X/FW:%#X) %s\n",
+		       dev->ap_crc_v3, fw->ap.checksum,
+		       dev->df_crc_v3, fw->df.checksum,
+		       (need) ? "not matched" : "matched");
+
+	if (dev->ic[0].mode == 0x55)
+		return true;
+
+	return need;
+}
+
+static bool need_fw_update_v6(struct ilitek_fw_handle *fw)
+{
+	struct ilitek_ts_device *dev = fw->dev;
+	uint8_t i;
+	bool need = false;
+
+	UPDATE_UI_INFO("------------Lego Block Info.------------\n");
+
+	/* first block CRC should be got by AP CRC command */
+	for (i = 1; i < fw->block_num; i++) {
+		dev->ic[0].crc[i] = api_get_block_crc_by_addr(dev,
+			CRC_CALCULATE, fw->blocks[i].start, fw->blocks[i].end);
+	}
+
+	for (i = 0; i < fw->block_num; i++) {
+		fw->blocks[i].crc = get_crc(fw->blocks[i].start,
+					    fw->blocks[i].end - 1,
+					    fw->fw_buf, ILITEK_FW_BUF_SIZE);
+
+		fw->blocks[i].crc_match = (fw->setting.force_update) ?
+			false : (dev->ic[0].crc[i] == fw->blocks[i].crc);
+
+		need = (!fw->blocks[i].crc_match) ? true : need;
+
+		UPDATE_UI_INFO("Block[%hhu]: start/end addr: %#x/%#x, CRC IC/File: 0x%hx/0x%hx %s\n",
+			       i, fw->blocks[i].start, fw->blocks[i].end,
+			       dev->ic[0].crc[i], fw->blocks[i].crc,
+			       (fw->blocks[i].crc_match) ?
+			       "matched" : "not matched");
+	}
+
+	/* check BL mode firstly before AP-cmd related varaible, ex: ic_num */
+	if (dev->ic[0].mode == 0x55)
+		return true;
+
+	for (i = 1; i < dev->tp_info.ic_num; i++) {
+		UPDATE_UI_INFO("Master/Slave[%hhu] CRC 0x%hx/0x%hx %s, mode: 0x%hhx %s\n",
+			i, fw->blocks[0].crc, dev->ic[i].crc[0],
+			(fw->blocks[0].crc == dev->ic[i].crc[0]) ?
+			"matched" : "not matched",
+			dev->ic[i].mode, dev->ic[i].mode_str);
+
+		if (dev->ic[i].crc[0] == fw->blocks[0].crc &&
+		    dev->ic[i].mode == 0x5A)
+			continue;
+		need = true;
+	}
+
+	if (fw->m2v) {
+		api_access_slave(dev, 0x80, M2V_GET_CHECKSUM,
+				 &fw->m2v_checksum);
+
+		UPDATE_UI_INFO("M2V file/m2v checksum: %#x/%#x %s\n",
+			       fw->ap.checksum, fw->m2v_checksum,
+			       (fw->ap.checksum == fw->m2v_checksum) ?
+			       "matched" : "not matched");
+
+		fw->m2v_need_update = (fw->ap.checksum != fw->m2v_checksum) ||
+			fw->setting.force_update;
+		need = fw->m2v_need_update;
+	}
+
+	return need;
+}
+
+static bool need_fw_update(struct ilitek_fw_handle *fw)
+{
+	struct ilitek_ts_device *dev = fw->dev;
+	bool need = false;
+	int i;
+
+	if (dev->protocol.flag == PTL_V3)
+		need = need_fw_update_v3(fw);
+	else if (dev->protocol.flag == PTL_V6)
+		need = need_fw_update_v6(fw);
+
+	if (fw->setting.force_update)
+		return true;
+	else if (fw->setting.fw_check_only)
+		return false;
+
+	for (i = 0; fw->setting.fw_ver_check && i < 8; i++) {
+		if (dev->fw_ver[i] >= fw->setting.fw_ver[i])
+			continue;
+
+		UPDATE_UI_INFO("IC FW version is older than Preset FW version\n");
+		UPDATE_UI_INFO("IC FW version: %02X.%02X.%02X.%02X.%02X.%02X.%02X.%02X",
+			       dev->fw_ver[0], dev->fw_ver[1],
+			       dev->fw_ver[2], dev->fw_ver[3],
+			       dev->fw_ver[4], dev->fw_ver[5],
+			       dev->fw_ver[6], dev->fw_ver[7]);
+		UPDATE_UI_INFO("Preset FW version: %02X.%02X.%02X.%02X.%02X.%02X.%02X.%02X",
+			       fw->setting.fw_ver[0], fw->setting.fw_ver[1],
+			       fw->setting.fw_ver[2], fw->setting.fw_ver[3],
+			       fw->setting.fw_ver[4], fw->setting.fw_ver[5],
+			       fw->setting.fw_ver[6], fw->setting.fw_ver[7]);
+
+		need = true;
+		break;
+	}
+
+	return need;
+}
+
+static int update_master(struct ilitek_fw_handle *fw, int idx, uint32_t len)
+{
+	int error;
+	struct ilitek_ts_device *dev = fw->dev;
+	unsigned int i;
+	uint16_t file_crc, ic_crc;
+	int retry = 3;
+
+	TP_MSG("updating block[%d] len: %u, start/end addr: %#x/%#x\n",
+		idx, len, fw->blocks[idx].start, fw->blocks[idx].end);
+
+err_retry:
+	if ((error = api_write_enable_v6(dev, false, false,
+					 fw->blocks[idx].start,
+					 fw->blocks[idx].end)) < 0)
+		return error;
+
+	memset(dev->wbuf, 0xff, sizeof(dev->wbuf));
+	for (i = fw->blocks[idx].start; i < fw->blocks[idx].end; i += len) {
+		/*
+		 * check end addr. of data write buffer is within valid range. 
+		 */
+		if (i + len > END_ADDR_LEGO) {
+			TP_ERR("block[%d] write addr. %#x + %#x > %#x OOB\n",
+				idx, i, len, END_ADDR_LEGO);
+			return -EINVAL;
+		}
+
+		memcpy(dev->wbuf + 1, fw->fw_buf + i, len);
+		error = api_write_data_v6(dev, len + 1);
+
+		if (error < 0) {
+			if (retry-- > 0)
+				goto err_retry;
+			return error;
+		}
+
+		fw->progress_curr = MIN(i + len - fw->blocks[idx].offset,
+					fw->progress_max);
+		fw->progress = (100 * fw->progress_curr) / fw->progress_max;
+		TP_DBG("block[%d] update progress: %hhu%%\n",
+			idx, fw->progress);
+
+		if (fw->cb.update_progress)
+			fw->cb.update_progress(fw->progress, fw->_private);
+	}
+
+	file_crc = get_crc(fw->blocks[idx].start, fw->blocks[idx].end - 1,
+			   fw->fw_buf, ILITEK_FW_BUF_SIZE);
+	ic_crc = api_get_block_crc_by_addr(dev, CRC_GET, fw->blocks[idx].start,
+					   fw->blocks[idx].end);
+
+	TP_MSG("Block[%d]: start/end addr: %#x/%#x, CRC IC/File: %#x/%#x %s\n",
+		idx, fw->blocks[idx].start, fw->blocks[idx].end, ic_crc,
+		file_crc, (file_crc == ic_crc) ? "matched" : "not matched");
+
+	return (file_crc != ic_crc) ? -EINVAL : 0;
+}
+
+static int update_slave(struct ilitek_fw_handle *fw)
+{
+	int error;
+	struct ilitek_ts_device *dev = fw->dev;
+	uint8_t i;
+
+	for (i = 0; i < fw->block_num; i++) {
+		dev->ic[0].crc[i] = api_get_block_crc_by_addr(dev,
+			CRC_CALCULATE, fw->blocks[i].start, fw->blocks[i].end);
+	}
+
+	if ((error = api_protocol_set_cmd(dev, GET_AP_CRC,
+					  &dev->tp_info.ic_num)) < 0)
+			return error;
+
+	for (i = 0; i < dev->tp_info.ic_num; i++) {
+		if (dev->ic[0].crc[0] == dev->ic[i].crc[0] &&
+		    !fw->setting.force_update)
+			continue;
+
+		TP_MSG("Master/Slave[%hhu] CRC:0x%hx/0x%hx not matched or force update\n",
+			i, dev->ic[0].crc[0], dev->ic[i].crc[0]);
+		TP_MSG("start updating slave...\n");
+		if ((error = api_access_slave(dev, 0x3, SLAVE_WRITE_AP,
+					      NULL)) < 0 ||
+		    (error = api_write_enable_v6(dev, false, true,
+						 fw->blocks[0].start,
+						 fw->blocks[0].end)) < 0)
+			return error;
+
+		goto success_return;
+	}
+
+	if ((error = api_protocol_set_cmd(dev, GET_MCU_MOD,
+					  &dev->tp_info.ic_num)) < 0)
+		return error;
+
+	for (i = 0; i < dev->tp_info.ic_num; i++) {
+		if (dev->ic[i].mode == 0x5A &&
+		    !fw->setting.force_update)
+			continue;
+
+		TP_MSG("Slave[%hhu] Mode:0x%hhx not in AP or force update\n",
+			i, dev->ic[i].mode);
+		TP_MSG("start changing slave mode to AP...\n");
+		if ((error = api_access_slave(dev, 0x3, SLAVE_SET_AP,
+					      NULL)) < 0)
+			return  error;
+		break;
+	}
+
+success_return:
+	return 0;
+}
+
+static int update_M3_M2V(struct ilitek_fw_handle *fw, uint32_t len)
+{
+	int error;
+	struct ilitek_ts_device *dev = fw->dev;
+	uint32_t i, tmp;
+	uint8_t buf[6];
+
+	//TODO: [Joe] read garbage ?
+	api_protocol_set_cmd(dev, GET_PTL_VER, NULL);
+	api_protocol_set_cmd(dev, GET_PTL_VER, NULL);
+
+	tmp = (fw->ap.end % len) ? (len - (fw->ap.end % len)) * 0xFF : 0;
+	fw->ap.checksum += tmp;
+
+	if ((error = api_to_bl_mode_m2v(dev, true)) < 0)
+		return error;
+
+	if ((error = api_set_data_len(dev, len)) < 0)
+		return error;
+
+	TP_MSG("updating M2V with start/end addr: %#x/%#x, checksum: %#x\n",
+		fw->ap.start, fw->ap.end, fw->ap.checksum);
+
+	buf[0] = (fw->ap.end >> 16) & 0xFF;
+	buf[1] = (fw->ap.end >> 8) & 0xFF;
+	buf[2] = fw->ap.end & 0xFF;
+	buf[3] = (fw->ap.checksum>> 16) & 0xFF;
+	buf[4] = (fw->ap.checksum >> 8) & 0xFF;
+	buf[5] = fw->ap.checksum & 0xFF;
+	if ((error = api_access_slave(dev, 0x80, M2V_WRITE_ENABLE, buf)) < 0)
+		return error;
+
+	memset(dev->wbuf, 0xff, sizeof(dev->wbuf));
+	for (i = fw->ap.start; i < fw->ap.end; i += len) {
+		memcpy(dev->wbuf + 1, fw->m2v_buf + i, len);
+
+		if ((error = api_write_data_m2v(dev, len + 1)) < 0)
+			return  error;
+
+		fw->progress_curr = MIN(fw->progress_curr + len,
+					fw->progress_max);
+		fw->progress = (100 * fw->progress_curr) / fw->progress_max;
+		TP_DBG("m2v update progress: %hhu%%\n", fw->progress);
+
+		if (fw->cb.update_progress)
+			fw->cb.update_progress(fw->progress, fw->_private);
+	}
+
+	//TODO: [Joe] check checksum again ?
+
+	if ((error = api_to_bl_mode_m2v(dev, false)) < 0)
+		return error;
+
+	if ((error = api_access_slave(dev, 0x80, M2V_GET_FW_VER,
+				      fw->m2v_fw_ver)) < 0)
+		return error;
+
+	TP_MSG_ARR("update M2V success, fw version:", 8, fw->m2v_fw_ver);
+
+	return 0;
+}
+
+static int ilitek_update_BL_v1_8(struct ilitek_fw_handle *fw)
+{
+	int error;
+	struct ilitek_ts_device *dev = fw->dev;
+	uint8_t i;
+
+	if ((error = api_set_data_len(dev, UPDATE_LEN)) < 0)
+		return error;
+
+	for (i = 0; i < fw->block_num; i++) {
+		if (fw->blocks[i].crc_match)
+			continue;
+
+		if ((error = update_master(fw, i, UPDATE_LEN)) < 0) {
+			TP_ERR("Upgrade Block:%hhu failed, err: %d\n",
+				i, error);
+			return error;
+		}
+	}
+
+	if ((error = api_to_bl_mode(dev, false, fw->blocks[0].start,
+				    fw->blocks[0].end)) < 0)
+		return error;
+
+	if ((error = api_set_ctrl_mode(dev, mode_suspend, false)) < 0)
+		return error;
+
+	/* get tp info. for updating ic num */
+	if ((error = api_protocol_set_cmd(dev, GET_TP_INFO, NULL)) < 0)
+		return error;
+
+	if (dev->tp_info.ic_num > 1 && (error = update_slave(fw)) < 0) {
+		TP_ERR("upgrade slave failed, err: %d\n", error);
+		return error;
+	}
+
+	if (fw->m2v && fw->m2v_need_update &&
+	    (error = update_M3_M2V(fw, 1024)) < 0) {
+		TP_ERR("upgrade m2v slave failed, err: %d\n", error);
+		return error;
+	}
+
+	return 0;
+}
+
+static int ilitek_update_BL_v1_7(struct ilitek_fw_handle *fw)
+{
+	int error;
+	struct ilitek_ts_device *dev = fw->dev;
+	uint32_t crc;
+	unsigned int i;
+
+	if ((error = api_erase_data_v3(dev)) < 0)
+		return error;
+
+	if (fw->df.end > fw->df.start) {
+		TP_MSG("updating DF start/end addr.: %#x/%#x, file checksum: %#x\n",
+			fw->df.start, fw->df.end, fw->df.checksum);
+
+		if ((error = api_write_enable_v3(dev, false, false, fw->df.end,
+						 fw->df.checksum)) < 0 ||
+		    (error = api_check_busy(dev, 1000, 10)) < 0)
+			return error;
+
+		for (i = fw->df.start; i < fw->df.end; i += 32) {
+			memset(dev->wbuf + 1, 0, 32);
+			if (i + 32 < fw->df.end)
+				memcpy(dev->wbuf + 1, fw->fw_buf + i, 32);
+			else
+				memcpy(dev->wbuf + 1, fw->fw_buf + i,
+				       fw->df.end - i - 1);
+
+			if ((error = api_write_data_v3(dev)) < 0 ||
+			    (error = api_check_busy(dev, 1000, 10)) < 0)
+				return error;
+
+			fw->progress_curr += 32;
+			fw->progress_curr = MIN(fw->progress_curr,
+				fw->progress_max);
+			fw->progress = (100 * fw->progress_curr) /
+				fw->progress_max;
+			TP_DBG("DF update progress: %hhu%%", fw->progress);
+
+			if (fw->cb.update_progress)
+				fw->cb.update_progress(fw->progress,
+						       fw->_private);
+		}
+
+		dev->cb.delay_ms(50);
+
+		dev->wbuf[0] = CMD_GET_AP_CRC;
+		if ((error = dev->cb.write_then_read(dev->wbuf, 1, NULL, 0,
+						     dev->_private)) < 0 ||
+		    (error = api_check_busy(dev, 1000, 10)) < 0)
+			return error;
+
+		dev->wbuf[0] = CMD_GET_AP_CRC;
+		if ((error = dev->cb.write_then_read(dev->wbuf, 1, dev->rbuf, 4,
+						    dev->_private)) < 0)
+			return error;
+
+		crc = (le16(dev->rbuf + 2) << 16) | le16(dev->rbuf);
+		TP_MSG("DF CRC file:%#x/ic:%#x %s\n", fw->df.checksum, crc,
+			(crc == fw->df.checksum) ? "matched" : "not matched");
+
+		if (crc != fw->df.checksum)
+			return -EFAULT;
+	}
+
+	if (fw->ap.end > fw->ap.start) {
+		TP_MSG("updating AP start/end addr.: %#x/%#x, file crc: %#x\n",
+			fw->ap.start, fw->ap.end, fw->ap.checksum);
+
+		if ((error = api_write_enable_v3(dev, false, true, fw->ap.end,
+						 fw->ap.checksum)) < 0 ||
+		    (error = api_check_busy(dev, 1000, 10)) < 0)
+			return error;
+
+		for (i = fw->ap.start; i < fw->ap.end; i += 32) {
+			memcpy(dev->wbuf + 1, fw->fw_buf + i, 32);
+			if ((error = api_write_data_v3(dev)) < 0 ||
+			    (error = api_check_busy(dev, 1000, 10)) < 0)
+				return error;
+
+			fw->progress_curr += 32;
+			fw->progress_curr = MIN(fw->progress_curr,
+				fw->progress_max);
+			fw->progress = (100 * fw->progress_curr) /
+				fw->progress_max;
+			TP_DBG("AP update progress: %hhu%%", fw->progress);
+
+			if (fw->cb.update_progress)
+				fw->cb.update_progress(fw->progress,
+						       fw->_private);
+		}
+
+		dev->wbuf[0] = CMD_GET_AP_CRC;
+		if ((error = dev->cb.write_then_read(dev->wbuf, 1, NULL, 0,
+						     dev->_private)) < 0 ||
+		    (error = api_check_busy(dev, 1000, 10)) < 0)
+			return error;
+
+		dev->wbuf[0] = CMD_GET_AP_CRC;
+		if ((error = dev->cb.write_then_read(dev->wbuf, 1, dev->rbuf, 4,
+						    dev->_private)) < 0)
+			return error;
+
+		crc = (le16(dev->rbuf + 2) << 16) | le16(dev->rbuf);
+		TP_MSG("AP CRC file:%#x/ic:%#x %s\n", fw->ap.checksum, crc,
+			(crc == (fw->ap.checksum & 0xFFFF)) ?
+			"matched" : "not matched");
+
+		if (crc != fw->ap.checksum)
+			return -EFAULT;
+	}
+
+	return 0;
+}
+
+static int ilitek_update_BL_v1_6(struct ilitek_fw_handle *fw)
+{
+	int error;
+	struct ilitek_ts_device *dev = fw->dev;
+	struct ilitek_ts_callback *cb = &dev->cb;
+	unsigned int i, j;
+
+	uint32_t checksum;
+	uint8_t total_checksum = 0;
+	uint32_t df_checksum = 0, ap_checksum = 0;
+
+	uint32_t tmp;
+
+	if ((error = api_write_enable_v3(dev, false, false, fw->df.end,
+					 fw->df.checksum)) < 0)
+		return error;
+
+	cb->delay_ms(20);
+
+	TP_MSG("Start to write DF data...\n");
+	memset(dev->wbuf, 0, sizeof(dev->wbuf));
+	for (i = fw->df.start, j = 0; i < fw->df.end; i += 32) {
+		memcpy(dev->wbuf + 1, fw->fw_buf + i, 32);
+		if ((error = api_write_data_v3(dev)) < 0)
+			return error;
+
+		checksum = get_checksum(0, 32, dev->wbuf + 1,
+					sizeof(dev->wbuf) - 1);
+		df_checksum += checksum;
+		total_checksum += checksum;
+
+		if (!(j % 16))
+			cb->delay_ms(50);
+		else
+			cb->delay_ms(3);
+		j++;
+
+		fw->progress_curr = MIN(fw->progress_curr + 32,
+					fw->progress_max);
+		fw->progress = (100 * fw->progress_curr) / fw->progress_max;
+		TP_DBG("DF update progress: %hhu%%", fw->progress);
+
+		if (fw->cb.update_progress)
+			fw->cb.update_progress(fw->progress, fw->_private);
+	}
+
+	/* BL 1.6 need more 32 byte 0xFF, end addr need to be multiples of 32 */
+	tmp = ((fw->ap.end + 1) % 32) ? 32 + 32 - ((fw->ap.end + 1) % 32) : 32;
+	fw->ap.end += tmp;
+	fw->ap.checksum += (tmp * 0xff);
+
+	if ((error = api_write_enable_v3(dev, false, true, fw->ap.end,
+					 fw->ap.checksum)) < 0)
+		return error;
+
+	TP_MSG("(after modified) AP start/end: %#x/%#x, checksum: %#x\n",
+		fw->ap.start, fw->ap.end, fw->ap.checksum);
+
+	cb->delay_ms(30);
+
+	TP_MSG("Start to write AP data...\n");
+	memset(dev->wbuf, 0, sizeof(dev->wbuf));
+	for (i = fw->ap.start, j = 0; i < fw->ap.end; i += 32) {
+		memcpy(dev->wbuf + 1, fw->fw_buf + i, 32);
+
+		//TODO: [Joe] check if below condition check is required
+		if (i + 32 > fw->ap.end)
+			dev->wbuf[32] = 0;
+
+		checksum = get_checksum(0, 32, dev->wbuf + 1,
+					sizeof(dev->wbuf) - 1);
+		ap_checksum += checksum;
+		total_checksum += checksum;
+
+		if ((error = api_write_data_v3(dev)) < 0)
+			return error;
+
+		if (!(j % 16))
+			cb->delay_ms(50);
+		else
+			cb->delay_ms(3);
+		j++;
+
+		fw->progress_curr = MIN(fw->progress_curr + 32,
+					fw->progress_max);
+		fw->progress = (100 * fw->progress_curr) / fw->progress_max;
+		TP_DBG("AP update progress: %hhu%%", fw->progress);
+
+		if (fw->cb.update_progress)
+			fw->cb.update_progress(fw->progress, fw->_private);
+	}
+
+	dev->wbuf[0] = CMD_GET_AP_CRC;
+	if ((error = cb->write_then_read(dev->wbuf, 1, dev->rbuf, 1,
+					 dev->_private)) < 0)
+		return error;
+
+	TP_MSG("AP checksum (file/write): %#x/%#x, DF checksum (file/write): %#x/%#x\n",
+		fw->ap.checksum, ap_checksum,
+		fw->df.checksum, df_checksum);
+	TP_MSG("Total checksum fw:%hhx, write:%hhx\n",
+		dev->rbuf[0], total_checksum);
+
+#ifdef ILITEK_BOOT_UPDATE
+	/*
+	 * .ili file fill DF section with default 0xFF, but not 0
+	 * which make flow stuck in BL mode.
+	 * so HW-reset is need before switching to AP mode.
+	 * remove HW-reset after fixing .ili converter bug.
+	 */
+	reset_helper(dev);
+#endif
+	return 0;
+}
+
+static void update_progress(struct ilitek_fw_handle *fw)
+{
+	struct ilitek_ts_device *dev = fw->dev;
+	uint8_t i;
+	unsigned int last_end = 0, last_offset = 0;
+
+	fw->progress = 0;
+	fw->progress_max = 0;
+	fw->progress_curr = 0;
+
+	switch (dev->protocol.flag) {
+	case PTL_V3:
+		if (fw->df.end > fw->df.start)
+			fw->progress_max += fw->df.end - fw->df.start;
+		if (fw->ap.end > fw->ap.start)
+			fw->progress_max += fw->ap.end - fw->ap.start;
+		break;
+
+	case PTL_V6:
+		for (i = 0; i < fw->block_num; i++) {
+			if (fw->blocks[i].crc_match)
+				continue;
+
+			fw->progress_max +=
+				fw->blocks[i].end - fw->blocks[i].start;
+			last_offset += fw->blocks[i].start - last_end;
+			fw->blocks[i].offset = last_offset;
+
+			last_end = fw->blocks[i].end;
+		}
+
+		if (fw->m2v_need_update)
+			fw->progress_max += fw->ap.end - fw->ap.start;
+
+		break;
+	}
+}
+
+void *ilitek_update_init(void *_dev, struct ilitek_update_callback *cb,
+			 void *_private)
+{
+	struct ilitek_fw_handle *fw;
+	struct ilitek_ts_device *dev = (struct ilitek_ts_device *)_dev;
+
+	TP_MSG("CommonFlow-Update code version: %#x\n", UPDATE_CODE_VERSION);
+
+	if (!dev)
+		return NULL;
+
+	if (api_update_ts_info(dev) < 0)
+		return NULL;
+
+	fw = (struct ilitek_fw_handle *)MALLOC(sizeof(*fw));
+	if (!fw)
+		return NULL;
+
+	/* initial all member to 0/ false/ NULL */
+	memset(fw, 0, sizeof(*fw));
+
+	fw->dev = dev;
+	fw->_private = _private;
+	fw->fw_buf = (uint8_t *)CALLOC(ILITEK_FW_BUF_SIZE, 1);
+	if (!fw->fw_buf)
+		goto err_free_fw;
+
+	fw->m2v_buf = (uint8_t *)CALLOC(ILITEK_FW_BUF_SIZE, 1);
+	if (!fw->m2v_buf)
+		goto err_free_fw_buf;
+
+	if (cb)
+		memcpy(&fw->cb, cb, sizeof(struct ilitek_update_callback));
+
+	if (fw->cb.update_info) {
+		g_update_info = fw->cb.update_info;
+		g_private = fw->_private;
+	}
+
+	return fw;
+
+err_free_fw_buf:
+	CFREE(fw->fw_buf);
+err_free_fw:
+	FREE(fw);
+
+	return NULL;
+}
+
+void ilitek_update_exit(void *handle)
+{
+	struct ilitek_fw_handle *fw = (struct ilitek_fw_handle *)handle;
+
+	if (!handle)
+		return;
+
+	if (fw->fw_buf)
+		CFREE(fw->fw_buf);
+
+	if (fw->m2v_buf)
+		CFREE(fw->m2v_buf);
+
+	if (fw)
+		FREE(fw);
+}
+
+int ilitek_update_load_fw(void *handle, char *fw_name)
+{
+	int error;
+	struct ilitek_fw_handle *fw = (struct ilitek_fw_handle *)handle;
+	struct ilitek_ts_device *dev;
+
+	if (!handle)
+		return -EINVAL;
+	dev = fw->dev;
+
+	/* buffer initialization */
+	memset(fw->fw_buf, 0xFF, ILITEK_FW_BUF_SIZE);
+	if (dev->mcu.ic_name == 0x2312 || dev->mcu.ic_name == 0x2315)
+		memset(fw->fw_buf + 0x1F000, 0, 0x1000);
+	memset(fw->m2v_buf, 0xFF, ILITEK_FW_BUF_SIZE);
+
+	if ((error = decode_firmware(fw, fw_name)) < 0)
+		return error;
+
+	if (dev->protocol.flag == PTL_V6) {
+		fw->file_fw_ver[4] =
+			fw->fw_buf[dev->mcu.df_start_addr + 7];
+		fw->file_fw_ver[5] =
+			fw->fw_buf[dev->mcu.df_start_addr + 6];
+		fw->file_fw_ver[6] =
+			fw->fw_buf[dev->mcu.df_start_addr + 5];
+		fw->file_fw_ver[7] =
+			fw->fw_buf[dev->mcu.df_start_addr + 4];
+
+		UPDATE_UI_INFO("File FW version: %02X.%02X.%02X.%02X.%02X.%02X.%02X.%02X\n",
+			       fw->file_fw_ver[0], fw->file_fw_ver[1],
+			       fw->file_fw_ver[2], fw->file_fw_ver[3],
+			       fw->file_fw_ver[4], fw->file_fw_ver[5],
+			       fw->file_fw_ver[6], fw->file_fw_ver[7]);
+	}
+
+	if ((error = api_set_ctrl_mode(dev, mode_suspend, false)) < 0)
+		return error;
+
+	need_fw_update(fw);
+
+	if ((error = api_set_ctrl_mode(dev, mode_normal, false)) < 0)
+		return error;;
+
+	return 0;
+}
+
+int ilitek_update_start(void *handle)
+{
+	int error;
+	int8_t retry = 0;
+	struct ilitek_fw_handle *fw = (struct ilitek_fw_handle *)handle;
+	struct ilitek_ts_device *dev;
+
+	if (!handle)
+		return -EINVAL;
+	dev = fw->dev;
+
+	do {
+		TP_MSG("fw update start, retry: %hhd, retry_limit: %hhd\n",
+			retry, fw->setting.retry);
+		if (retry)
+			reset_helper(dev);
+
+		if ((error = api_set_ctrl_mode(dev, mode_suspend, false)) < 0)
+			continue;
+
+		if (!need_fw_update(fw))
+			goto success_return;
+
+		update_progress(fw);
+		if (fw->cb.update_progress)
+			fw->cb.update_progress(0, fw->_private);
+
+		if ((error = api_to_bl_mode(dev, true, 0, 0)) < 0)
+			continue;
+
+		if (api_protocol_set_cmd(dev, GET_PTL_VER, NULL) < 0)
+			continue;
+
+		switch (dev->protocol.ver & 0xFFFF00) {
+		case BL_PROTOCOL_V1_8:
+			error = ilitek_update_BL_v1_8(fw);
+			break;
+		case BL_PROTOCOL_V1_7:
+			error = ilitek_update_BL_v1_7(fw);
+			break;
+		case BL_PROTOCOL_V1_6:
+			error = ilitek_update_BL_v1_6(fw);
+			break;
+		default:
+			TP_ERR("BL protocol ver: 0x%x not supported\n",
+				dev->protocol.ver);
+			continue;
+		}
+		if (error < 0)
+			continue;
+
+		if ((error = api_to_bl_mode(dev, false, fw->blocks[0].start,
+					    fw->blocks[0].end)) < 0)
+			continue;
+
+success_return:
+		/*
+		 * After change to AP mode, V3 need to erase data flash
+		 * if no data flash section in firmware file
+		 */
+		if (dev->protocol.flag == PTL_V3 &&
+				fw->df.end < fw->df.start &&
+				(error = api_erase_data_v3(dev)) < 0)
+			continue;
+
+		if ((error = api_update_ts_info(dev)) < 0)
+			continue;
+
+		if ((error = api_set_ctrl_mode(dev, mode_normal, false)) < 0)
+			continue;
+
+		if (fw->cb.update_progress)
+			fw->cb.update_progress(100, fw->_private);
+
+		TP_MSG("[ilitek_update_start] fw update success\n");
+
+		return 0;
+	} while (++retry < fw->setting.retry);
+
+	TP_ERR("[ilitek_update_start] fw update failed, err: %d\n", error);
+
+	return (error < 0) ? error : -EFAULT;
+}
+
+void ilitek_update_setting(void *handle, struct ilitek_fw_settings *setting)
+{
+	struct ilitek_fw_handle *fw = (struct ilitek_fw_handle *)handle;
+
+	if (!handle)
+		return;
+
+	memcpy(&fw->setting, setting, sizeof(struct ilitek_fw_settings));
+}
+

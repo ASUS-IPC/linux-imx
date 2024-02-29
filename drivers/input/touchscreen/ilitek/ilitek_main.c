@@ -24,17 +24,14 @@
 
 #include "ilitek_ts.h"
 #include "ilitek_common.h"
-#include "ilitek_protocol.h"
+
+int ilitek_log_level_value = ILITEK_DEFAULT_LOG_LEVEL;
 struct ilitek_ts_data *ts;
 
-char ilitek_driver_information[] = { DERVER_VERSION_0, DERVER_VERSION_1, DERVER_VERSION_2, DERVER_VERSION_3, CUSTOMER_H_ID, CUSTOMER_L_ID, TEST_VERSION};
-#if ILITEK_PLAT == ILITEK_PLAT_MTK
-extern struct tpd_device *tpd;
-#ifdef ILITEK_ENABLE_DMA
-static uint8_t *I2CDMABuf_va;
-static dma_addr_t I2CDMABuf_pa;
-#endif
-#endif
+char driver_ver[] = {
+	DRIVER_VERSION_0, DRIVER_VERSION_1, DRIVER_VERSION_2,
+	DRIVER_VERSION_3, CUSTOMER_H_ID, CUSTOMER_L_ID, TEST_VERSION,
+};
 
 #if defined(ILITEK_WAKELOCK_SUPPORT)
 struct wake_lock ilitek_wake_lock;
@@ -61,38 +58,28 @@ static void __maybe_unused ilitek_udp_reply(void *payload, int size)
 
 	skb = alloc_skb(len, GFP_ATOMIC);
 	if (!skb) {
-		tp_msg("alloc skb error\n");
+		tp_err("alloc skb error\n");
 		return;
 	}
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0)
 	nlh = nlmsg_put(skb, pid, seq, 0, size, 0);
-#else
-	nlh = NLMSG_PUT(skb, pid, seq, 0, size);
-#endif
+	if (!nlh)
+		goto nlmsg_failure;
 
 	nlh->nlmsg_flags = 0;
 	memcpy(NLMSG_DATA(nlh), payload, size);
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0)
 	NETLINK_CB(skb).portid = 0;	/* from kernel */
-#else
-	NETLINK_CB(skb).pid = 0;	/* from kernel */
-#endif
-
 	NETLINK_CB(skb).dst_group = 0;	/* unicast */
 
 	ret = netlink_unicast(ilitek_netlink_sock, skb, pid, MSG_DONTWAIT);
-	if (ret < 0) {
+	if (ret < 0)
 		tp_err("ilitek send failed, ret: %d\n", ret);
-		return;
-	}
 	return;
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 8, 0)
-nlmsg_failure:			/* Used by NLMSG_PUT */
-	if (skb)
-		kfree_skb(skb);
-#endif
+
+nlmsg_failure:
+	kfree_skb(skb);
+
 #endif /* ILITEK_TUNING_MESSAGE */
 }
 
@@ -145,7 +132,7 @@ static void __maybe_unused udp_receive(struct sk_buff *skb)
 			tp_msg("ilitek_irq_disable. do nothing\n");
 			break;
 		case 19:
-			ilitek_reset(ts->reset_time);
+			ilitek_reset(ts->dev->reset_time);
 			break;
 		case 21:
 			tp_msg("ilitek The ilitek_debug_flag = %d.\n", data[3]);
@@ -169,13 +156,13 @@ static void __maybe_unused udp_receive(struct sk_buff *skb)
 			break;
 		case 8:
 			tp_msg("get driver version\n");
-			ilitek_udp_reply(ilitek_driver_information, 7);
+			ilitek_udp_reply(driver_ver, 7);
 			break;
 		case 18:
 			tp_dbg("firmware update write 33 bytes data\n");
-			ret = ilitek_i2c_write(&data[3], 33);
+			ret = ilitek_write(&data[3], 33);
 			if (ret < 0)
-				tp_err("i2c write error, ret %d, addr %x\n", ret, ts->client->addr);
+				tp_err("i2c write error, ret %d\n", ret);
 			if (ret < 0) {
 				data[0] = 1;
 			} else {
@@ -188,9 +175,9 @@ static void __maybe_unused udp_receive(struct sk_buff *skb)
 			return;
 		}
 	} else if (data[count - 2] == 'W') {
-		ret = ilitek_i2c_write(data, count - 2);
+		ret = ilitek_write(data, count - 2);
 		if (ret < 0)
-			tp_err("i2c write error, ret %d, addr %x\n", ret, ts->client->addr);
+			tp_err("i2c write error, ret %d\n", ret);
 		if (ret < 0) {
 			data[0] = 1;
 		} else {
@@ -198,9 +185,9 @@ static void __maybe_unused udp_receive(struct sk_buff *skb)
 		}
 		ilitek_udp_reply(data, 1);
 	} else if (data[count - 2] == 'R') {
-		ret = ilitek_i2c_read(data, count - 2);
+		ret = ilitek_read(data, count - 2);
 		if (ret < 0)
-			tp_err("i2c read error, ret %d, addr %x\n", ret, ts->client->addr);
+			tp_err("i2c read error, ret %d\n", ret);
 		if (ret < 0) {
 			data[count - 2] = 1;
 		} else {
@@ -211,48 +198,53 @@ static void __maybe_unused udp_receive(struct sk_buff *skb)
 #endif /* ILITEK_TUNING_MESSAGE */
 }
 
-#ifdef ILITEK_ESD_PROTECTION
 static void ilitek_esd_check(struct work_struct *work)
 {
-	int i = 0;
-	uint8_t buf[64];
+	int retry = 3;
+	static bool is_first_run = true;
+	static uint32_t protocol_ver = 0;
 
+	/*
+	 * update protocol version at the first run
+	 */
+	if (is_first_run) {
+		is_first_run = false;
+		protocol_ver = ts->dev->protocol.ver;
+		tp_msg("[ESD] firstly loading protocol ver: %x as ref.\n",
+			protocol_ver);
+	}
 
-	if (ts->operation_protection) {
-		tp_msg("ilitek esd ts->operation_protection is true so not check\n");
-		goto ilitek_esd_check_out;
+	if (ts->operation_protection || ts->esd_skip) {
+		tp_msg("[ESD] operation_protection: %hhu, esd_skip: %hhu\n",
+			ts->operation_protection, ts->esd_skip);
+		goto skip_return;
 	}
 
 	mutex_lock(&ts->ilitek_mutex);
 
-	if (!ts->esd_check) {
-		tp_msg("esd not need check ts->esd_check is false!!!\n");
-		goto ilitek_esd_check_out;
-	}
-
-	for (i = 0; i < 3; i++) {
-		if (api_ptl_set_cmd(GET_PTL_VER, NULL, buf) < 0) {
-			tp_err("ilitek esd  i2c communication error\n");
+	for (; retry-- > 0;) {
+		if (api_protocol_set_cmd(ts->dev, GET_PTL_VER, NULL) < 0) {
+			tp_err("[ESD] i2c comm. failed\n");
 			continue;
 		}
 
-		if (buf[0] != ts->ptl.ver_major) {
-			tp_err("unexpected ptl ver %x vs. %x\n", buf[0], ts->ptl.ver);
+		if (protocol_ver != ts->dev->protocol.ver) {
+			tp_err("unexpected ptl ver (referance)%x vs. %x\n",
+				protocol_ver, ts->dev->protocol.ver);
 			continue;
 		}
 
-		tp_msg("[%s] pass\n", __func__);
-		goto ilitek_esd_check_out;
+		goto pass_return;
 	}
 
-	ilitek_reset(ts->reset_time);
+	ilitek_reset(ts->dev->reset_time);
 
-ilitek_esd_check_out:
+pass_return:
 	mutex_unlock(&ts->ilitek_mutex);
-	ts->esd_check = true;
-	queue_delayed_work(ts->esd_wq, &ts->esd_work, ts->esd_delay);
+
+skip_return:
+	queue_delayed_work(ts->esd_workq, &ts->esd_work, ts->esd_delay);
 }
-#endif
 
 void ilitek_irq_enable(void)
 {
@@ -265,7 +257,7 @@ void ilitek_irq_enable(void)
 #ifdef MTK_UNDTS
 	mt_eint_unmask(CUST_EINT_TOUCH_PANEL_NUM);
 #else
-	enable_irq(ts->client->irq);
+	enable_irq(ts->irq);
 #endif
 
 	atomic_set(&ts->irq_enabled, 1);
@@ -283,7 +275,7 @@ void ilitek_irq_disable(void)
 #ifdef MTK_UNDTS
 	mt_eint_mask(CUST_EINT_TOUCH_PANEL_NUM);
 #else
-	disable_irq_nosync(ts->client->irq);
+	disable_irq_nosync(ts->irq);
 #endif
 
 	atomic_set(&ts->irq_enabled, 0);
@@ -291,150 +283,236 @@ void ilitek_irq_disable(void)
 }
 
 #ifdef ILITEK_ENABLE_DMA
-static int ilitek_dma_i2c_read(struct i2c_client *client, uint8_t *buf, int len)
+static int ilitek_dma_i2c_read(uint8_t *buf, int len)
 {
-	int i = 0, err = 0;
+	struct i2c_client *client = (struct i2c_client *)ts->client;
+	int err;
+
 
 	if (len < 8) {
 		client->ext_flag = client->ext_flag & (~I2C_DMA_FLAG);
-		//client->addr = client->addr & I2C_MASK_FLAG;
 		return i2c_master_recv(client, buf, len);
 	}
+
 	client->ext_flag = client->ext_flag | I2C_DMA_FLAG;
-	//client->addr = (client->addr & I2C_MASK_FLAG) | I2C_DMA_FLAG;
-	err = i2c_master_recv(client, (uint8_t *)I2CDMABuf_pa, len);
-	if (err < 0)
+	if ((err = i2c_master_recv(client, (uint8_t *)I2CDMABuf_pa, len)) < 0)
 		return err;
-	for (i = 0; i < len; i++)
-		buf[i] = I2CDMABuf_va[i];
-	return err;
+
+	memcpy(buf, I2CDMABuf_va, len);
+
+	return 0;
 }
 
-static int ilitek_dma_i2c_write(struct i2c_client *client, uint8_t *pbt_buf, int dw_len)
+static int ilitek_dma_i2c_write(uint8_t *cmd, int len)
 {
-	int i = 0;
+	struct i2c_client *client = (struct i2c_client *)ts->client;
 
-	if (dw_len <= 8) {
+	if (len <= 8) {
 		client->ext_flag = client->ext_flag & (~I2C_DMA_FLAG);
-		//client->addr = client->addr & I2C_MASK_FLAG;
-		return i2c_master_send(client, pbt_buf, dw_len);
+		return i2c_master_send(client, cmd, len);
 	}
-	for (i = 0; i < dw_len; i++)
-		I2CDMABuf_va[i] = pbt_buf[i];
+
+	memcpy(I2CDMABuf_va, cmd, len);
+
 	client->ext_flag = client->ext_flag | I2C_DMA_FLAG;
-	//client->addr = (client->addr & I2C_MASK_FLAG) | I2C_DMA_FLAG;
-	return i2c_master_send(client, (uint8_t *)I2CDMABuf_pa, dw_len);
+
+	return i2c_master_send(client, (uint8_t *)I2CDMABuf_pa, len);
 }
 #endif
 
 static int ilitek_i2c_transfer(struct i2c_msg *msgs, int cnt)
 {
-	int ret = 0;
-	struct i2c_client *client = ts->client;
+	int err = 0;
+	struct i2c_client *client = (struct i2c_client *)ts->client;
 	int count = ILITEK_I2C_RETRY_COUNT;
+
 #ifdef ILITEK_ENABLE_DMA
-	int i = 0;
+	int i;
 
 	for (i = 0; i < cnt; i++) {
-		while (count >= 0) {
-			count -= 1;
+		count = ILITEK_I2C_RETRY_COUNT;
+		while (count-- >= 0) {
 			msgs[i].ext_flag = 0;
 			if (msgs[i].flags == I2C_M_RD)
-				ret = ilitek_dma_i2c_read(client, msgs[i].buf, msgs[i].len);
-			else if (msgs[i].flags == 0)
-				ret = ilitek_dma_i2c_write(client, msgs[i].buf, msgs[i].len);
+				err = ilitek_dma_i2c_read(msgs[i].buf, msgs[i].len);
+			else if (!msgs[i].flags)
+				err = ilitek_dma_i2c_write(msgs[i].buf, msgs[i].len);
 
-			if (ret < 0) {
-				tp_err("ilitek i2c transfer err\n");
+			if (err < 0) {
+				tp_err("i2c[0x%hx] dma tx/rx failed, err: %d\n",
+					msgs[i].addr, err);
 				mdelay(20);
 				continue;
 			}
+
 			break;
 		}
 	}
 #else
-#if ILITEK_PLAT == ILITEK_PLAT_ROCKCHIP
-#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 0, 0)
-	int i = 0;
-
-	for (i = 0; i < cnt; i++)
-		msgs[i].scl_rate = 400000;
-#endif
-#endif
-	while (count >= 0) {
-		count -= 1;
-		ret = i2c_transfer(client->adapter, msgs, cnt);
-		if (ret < 0) {
-			tp_err("ilitek_i2c_transfer cmd: %x, err: %d\n",
-				(msgs[0].buf != NULL) ? msgs[0].buf[0] : 0, ret);
+	while (count-- >= 0) {
+		if ((err = i2c_transfer(client->adapter, msgs, cnt)) < 0) {
+			tp_err("i2c[0x%hx] tx/rx failed, err: %d\n",
+				msgs[0].addr, err);
 			mdelay(20);
 			continue;
 		}
 		break;
 	}
 #endif
-	return ret;
+
+	return err;
 }
 
-int ilitek_i2c_write(uint8_t *cmd, int length)
+static int __maybe_unused ilitek_i2c_write_and_read(uint8_t *cmd, int w_len,
+						    int delay_ms, uint8_t *buf,
+						    int r_len)
 {
-	int ret = 0;
-	struct i2c_client *client = ts->client;
-	struct i2c_msg msgs[] = {
-		{.addr = client->addr, .flags = 0, .len = length, .buf = cmd,}
-	};
+	int error;
 
-	ret = ilitek_i2c_transfer(msgs, 1);
-	if (ret < 0)
-		tp_err("%s, i2c write error, ret %d\n", __func__, ret);
-	return ret;
-}
-
-int ilitek_i2c_read(uint8_t *data, int length)
-{
-	int ret = 0;
-	struct i2c_client *client = ts->client;
-	struct i2c_msg msgs_ret[] = {
-		{.addr = client->addr, .flags = I2C_M_RD, .len = length, .buf = data,}
-	};
-
-	ret = ilitek_i2c_transfer(msgs_ret, 1);
-	if (ret < 0)
-		tp_err("%s, i2c read error, ret %d\n", __func__, ret);
-
-	return ret;
-}
-
-int ilitek_i2c_write_and_read(uint8_t *cmd, int write_len, int delay, uint8_t *data, int read_len)
-{
-	int ret = 0;
-	struct i2c_client *client = ts->client;
+	/*
+	 * Default ILITEK_BL_ADDR. is firstly used.
+	 * if communication failed, change between BL addr. and
+	 * other addr. defined by DTS, then retry.
+	 */
+	static unsigned short addr = ILITEK_BL_ADDR;
+	struct i2c_client *client = (struct i2c_client *)ts->client;
 	struct i2c_msg msgs[2] = {
-		{.addr = client->addr, .flags = 0, .len = write_len, .buf = cmd,},
-		{.addr = client->addr, .flags = I2C_M_RD, .len = read_len, .buf = data,}
+		{.addr = addr, .flags = 0, .len = w_len,
+		 .buf = cmd, SCL_RATE(400000)},
+		{.addr = addr, .flags = I2C_M_RD, .len = r_len,
+		 .buf = buf, SCL_RATE(400000)}
 	};
 
-	if (ts->ilitek_repeat_start && delay == 0 &&
-		write_len > 0 && read_len > 0) {
-		ret = ilitek_i2c_transfer(msgs, 2);
-		if (ret < 0)
-			return ret;
-	} else {
-		if (write_len > 0) {
-			ret = ilitek_i2c_transfer(msgs, 1);
-			if (ret < 0)
-				return ret;
-		}
-		if (delay > 0)
-			mdelay(delay);
-		if (read_len > 0) {
-			ret = ilitek_i2c_transfer(msgs + 1, 1);
-			if (ret < 0)
-				return ret;
-		}
+	if (!delay_ms && w_len > 0 && r_len > 0 &&
+	    ilitek_i2c_transfer(msgs, 2) < 0) {
+		addr = (addr == ILITEK_BL_ADDR) ? client->addr : ILITEK_BL_ADDR;
+		msgs[0].addr = msgs[1].addr = addr;
+		return ilitek_i2c_transfer(msgs, 2);
 	}
 
-	return ret;
+	if (w_len > 0 && ilitek_i2c_transfer(msgs, 1) < 0) {
+		addr = (addr == ILITEK_BL_ADDR) ? client->addr : ILITEK_BL_ADDR;
+		msgs[0].addr = msgs[1].addr = addr;
+
+		if ((error = ilitek_i2c_transfer(msgs, 1)) < 0)
+			return error;
+	}
+
+	if (delay_ms > 0)
+		mdelay(delay_ms);
+
+	if (r_len > 0 && ilitek_i2c_transfer(msgs + 1, 1) < 0) {
+		addr = (addr == ILITEK_BL_ADDR) ? client->addr : ILITEK_BL_ADDR;
+		msgs[0].addr = msgs[1].addr = addr;
+
+		return ilitek_i2c_transfer(msgs + 1, 1);
+	}
+
+	return 0;
+}
+
+static int __maybe_unused ilitek_i2c_write(uint8_t *cmd, int len)
+{
+	return ilitek_i2c_write_and_read(cmd, len, 0, NULL, 0);
+}
+
+static int __maybe_unused ilitek_i2c_read(uint8_t *buf, int len)
+{
+	return ilitek_i2c_write_and_read(NULL, 0, 0, buf, len);
+}
+
+static int __maybe_unused ilitek_spi_write_and_read(uint8_t *cmd, int w_len,
+						    int delay_ms, uint8_t *buf,
+						    int r_len)
+{
+	int error;
+	static uint8_t wbuf[4096], rbuf[4096];
+	struct spi_device *spi = (struct spi_device *)ts->client;
+	struct spi_transfer xfer = {
+		.tx_buf = wbuf,
+		.len = r_len + 4,
+		.rx_buf = rbuf,
+		.speed_hz = ((struct spi_device *)ts->client)->max_speed_hz,
+	};
+	struct spi_message msg;
+
+	if (w_len > 0 && r_len > 0) {
+		if ((error = ilitek_spi_write_and_read(cmd, w_len, delay_ms,
+						       NULL, 0)) < 0)
+			return error;
+
+		return ilitek_spi_write_and_read(NULL, 0, 0, buf, r_len);
+	}
+
+	wbuf[1] = 0xAA;
+
+	/* wbuf[0] set as 0x83 for spi data read */
+	if (r_len > 0) {
+		wbuf[0] = 0x83;
+		memset(wbuf + 2, 0, xfer.len - 2);
+
+		spi_message_init(&msg);
+		spi_message_add_tail(&xfer, &msg);
+		if ((error = spi_sync(spi, &msg)) < 0)
+			return error;
+
+		tp_dbg("[rbuf]: %*phD, len: %d\n", xfer.len, rbuf, xfer.len);
+
+		memcpy(buf, rbuf + 4, r_len);
+	} else if (w_len > 0) {
+		wbuf[0] = 0x82;
+		wbuf[2] = cmd[0];
+		wbuf[3] = 0;
+		memcpy(wbuf + 4, cmd + 1, w_len - 1);
+
+		tp_dbg("[wbuf]: %*phD, len: %d\n", 3 + w_len, wbuf, 3 + w_len);
+
+		if ((error = spi_write(spi, wbuf, 3 + w_len)) < 0)
+			return error;
+
+		if (delay_ms > 0)
+			mdelay(delay_ms);
+	}
+
+	return 0;
+}
+
+static int __maybe_unused ilitek_spi_write(uint8_t *cmd, int len)
+{
+	return ilitek_spi_write_and_read(cmd, len, 0, NULL, 0);
+}
+
+static int __maybe_unused ilitek_spi_read(uint8_t *buf, int len)
+{
+	return ilitek_spi_write_and_read(NULL, 0, 0, buf, 0);
+}
+
+int ilitek_write(uint8_t *cmd, int len)
+{
+	int error;
+
+	error = ilitek_i2c_write(cmd, len);
+
+	return (error < 0) ? error : 0;
+}
+
+int ilitek_read(uint8_t *buf, int len)
+{
+	int error;
+
+	error = ilitek_i2c_read(buf, len);
+
+	return (error < 0) ? error : 0;
+}
+
+int ilitek_write_and_read(uint8_t *cmd, int w_len, int delay_ms,
+			  uint8_t *buf, int r_len)
+{
+	int error;
+
+	error = ilitek_i2c_write_and_read(cmd, w_len, delay_ms, buf, r_len);
+
+	return (error < 0) ? error : 0;
 }
 
 void __maybe_unused ilitek_gpio_dbg(void)
@@ -448,48 +526,16 @@ void __maybe_unused ilitek_gpio_dbg(void)
 
 void ilitek_reset(int delay)
 {
-	tp_msg("delay: %d\n", delay);
+	tp_msg("reset_gpio: %d, delay: %d\n", ts->reset_gpio, delay);
 
 	ilitek_irq_disable();
 
-#ifdef MTK_UNDTS
-	mt_set_gpio_mode(ILITEK_RESET_GPIO, GPIO_CTP_RST_PIN_M_GPIO);
-	mt_set_gpio_dir(ILITEK_RESET_GPIO, GPIO_DIR_OUT);
-	mt_set_gpio_out(ILITEK_RESET_GPIO, GPIO_OUT_ONE);
+	gpio_direction_output(ts->reset_gpio, 1);
 	mdelay(10);
-
-	mt_set_gpio_mode(ILITEK_RESET_GPIO, GPIO_CTP_RST_PIN_M_GPIO);
-	mt_set_gpio_dir(ILITEK_RESET_GPIO, GPIO_DIR_OUT);
-	mt_set_gpio_out(ILITEK_RESET_GPIO, GPIO_OUT_ZERO);
+	gpio_direction_output(ts->reset_gpio, 0);
 	mdelay(10);
-
-	mt_set_gpio_mode(ILITEK_RESET_GPIO, GPIO_CTP_RST_PIN_M_GPIO);
-	mt_set_gpio_dir(ILITEK_RESET_GPIO, GPIO_DIR_OUT);
-	mt_set_gpio_out(ILITEK_RESET_GPIO, GPIO_OUT_ONE);
+	gpio_direction_output(ts->reset_gpio, 1);
 	mdelay(delay);
-
-#else
-
-	if (ts->reset_gpio >= 0) {
-#if ILITEK_PLAT != ILITEK_PLAT_MTK
-		gpio_direction_output(ts->reset_gpio, 1);
-		mdelay(10);
-		gpio_direction_output(ts->reset_gpio, 0);
-		mdelay(10);
-		gpio_direction_output(ts->reset_gpio, 1);
-		mdelay(delay);
-#else
-		tpd_gpio_output(ts->reset_gpio, 1);
-		mdelay(10);
-		tpd_gpio_output(ts->reset_gpio, 0);
-		mdelay(10);
-		tpd_gpio_output(ts->reset_gpio, 1);
-		mdelay(delay);
-#endif
-	} else {
-		tp_err("reset pin is invalid\n");
-	}
-#endif
 
 	ilitek_irq_enable();
 }
@@ -518,103 +564,151 @@ static int ilitek_free_gpio(void)
 	return 0;
 }
 
+static int ilitek_request_pen_input_dev(void)
+{
+	int error;
+	struct input_dev *input;
+
+	if (!(input = input_allocate_device()))
+		return -ENOMEM;
+
+	tp_dbg("registering pen input device\n");
+
+	__set_bit(INPUT_PROP_DIRECT, input->propbit);
+	input->evbit[0] = BIT_MASK(EV_KEY) | BIT_MASK(EV_ABS);
+
+	__set_bit(BTN_TOOL_PEN, input->keybit);		/* In Range */
+	__set_bit(BTN_TOOL_RUBBER, input->keybit);	/* Invert */
+	__set_bit(BTN_STYLUS, input->keybit);		/* Barrel Swtich */
+	__set_bit(BTN_TOUCH, input->keybit);		/* Tip Switch */
+
+	input->name = "ILITEK STYLUS";
+	input->id.bustype = BUS_I2C;
+	input->dev.parent = ts->device;
+
+	input_set_abs_params(input, ABS_X, ts->dev->screen_info.pen_x_min,
+			     ts->dev->screen_info.pen_x_max, 0, 0);
+	input_set_abs_params(input, ABS_Y, ts->dev->screen_info.pen_y_min,
+			     ts->dev->screen_info.pen_y_max, 0, 0);
+
+	input_set_abs_params(input, ABS_PRESSURE,
+			     ts->dev->screen_info.pressure_min,
+			     ts->dev->screen_info.pressure_max, 0, 0);
+	input_set_abs_params(input, ABS_TILT_X,
+			     ts->dev->screen_info.x_tilt_min,
+			     ts->dev->screen_info.x_tilt_max, 0, 0);
+	input_set_abs_params(input, ABS_TILT_Y,
+			     ts->dev->screen_info.y_tilt_min,
+			     ts->dev->screen_info.y_tilt_max, 0, 0);
+
+	if ((error = input_register_device(input))) {
+		tp_err("register pen device failed, err: %d\n", error);
+		input_free_device(input);
+		return error;
+	}
+
+	ts->pen_input_dev = input;
+
+	return 0;
+}
+
 static int ilitek_request_input_dev(void)
 {
-	int error = 0;
-	int i = 0;
+	int error;
+	int i;
+#ifndef ILITEK_USE_MTK_INPUT_DEV
+	int x_min, y_min, x_max, y_max;
+#endif
 	struct input_dev *input;
 
 #ifdef ILITEK_USE_MTK_INPUT_DEV
-	ts->input_dev = tpd->dev;
-#else
-	ts->input_dev = input_allocate_device();
-#endif
-	if (!ts->input_dev) {
-		tp_err("allocate input device, error\n");
-		return -EFAULT;
-	}
-
-	input = ts->input_dev;
-
-	tp_dbg("[%s] start\n", __func__);
-
-#ifndef ILITEK_USE_MTK_INPUT_DEV
-	__set_bit(INPUT_PROP_DIRECT, input->propbit);
-	input->evbit[0] = BIT_MASK(EV_KEY) | BIT_MASK(EV_ABS);
-	input->keybit[BIT_WORD(BTN_TOUCH)] = BIT_MASK(BTN_TOUCH);
-
-#if !ILITEK_ROTATE_FLAG
-#ifdef ILITEK_USE_LCM_RESOLUTION
-	input_set_abs_params(input, ABS_MT_POSITION_X, 0, TOUCH_SCREEN_X_MAX, 0, 0);
-	input_set_abs_params(input, ABS_MT_POSITION_Y, 0, TOUCH_SCREEN_Y_MAX, 0, 0);
-#else
-	input_set_abs_params(input, ABS_MT_POSITION_X, ts->screen_min_x, ts->screen_max_x, 0, 0);
-	input_set_abs_params(input, ABS_MT_POSITION_Y, ts->screen_min_y, ts->screen_max_y, 0, 0);
-#endif
-#else
-#ifdef ILITEK_USE_LCM_RESOLUTION
-	input_set_abs_params(input, ABS_MT_POSITION_X, 0, TOUCH_SCREEN_Y_MAX, 0, 0);
-	input_set_abs_params(input, ABS_MT_POSITION_Y, 0, TOUCH_SCREEN_X_MAX, 0, 0);
-#else
-	input_set_abs_params(input, ABS_MT_POSITION_X, ts->screen_min_y, ts->screen_max_y, 0, 0);
-	input_set_abs_params(input, ABS_MT_POSITION_Y, ts->screen_min_x, ts->screen_max_x, 0, 0);
-#endif
-#endif
-	input_set_abs_params(input, ABS_MT_TOUCH_MAJOR, 0, 255, 0, 0);
-	input_set_abs_params(input, ABS_MT_WIDTH_MAJOR, 0, 255, 0, 0);
-
-	input->name = ILITEK_TS_NAME;
-	input->id.bustype = BUS_I2C;
-	input->dev.parent = &(ts->client)->dev;
-#endif
-
-#if defined(ILITEK_USE_MTK_INPUT_DEV) && defined(MTK_UNDTS)
+	if (!(input = tpd->dev))
+		return -ENOMEM;
+#ifdef MTK_UNDTS
 	if (tpd_dts_data.use_tpd_button) {
 		for (i = 0; i < tpd_dts_data.tpd_key_num; i++)
-			input_set_capability(input, EV_KEY, tpd_dts_data.tpd_key_local[i]);
+			input_set_capability(input, EV_KEY,
+					     tpd_dts_data.tpd_key_local[i]);
 	}
 #endif
+#else
+	x_min = ts->dev->screen_info.x_min;
+	y_min = ts->dev->screen_info.y_min;
+	x_max = ts->dev->screen_info.x_max;
+	y_max = ts->dev->screen_info.y_max;
+
+	if (!(input = input_allocate_device()))
+		return -ENOMEM;
+#endif
+
+	tp_dbg("registering touch input device\n");
 
 #ifdef ILITEK_TOUCH_PROTOCOL_B
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 7, 0)
-	input_mt_init_slots(input, ts->max_tp, INPUT_MT_DIRECT);
+	INPUT_MT_INIT_SLOTS(input, ts->dev->tp_info.max_fingers);
 #else
-	input_mt_init_slots(input, ts->max_tp);
-#endif
-#else
-	input_set_abs_params(input, ABS_MT_TRACKING_ID, 0, ts->max_tp, 0, 0);
+	input_set_abs_params(input, ABS_MT_TRACKING_ID, 0,
+			     ts->dev->tp_info.max_fingers, 0, 0);
 #endif
 
 #ifdef ILITEK_REPORT_PRESSURE
 	input_set_abs_params(input, ABS_MT_PRESSURE, 0, 255, 0, 0);
 #endif
 
-	for (i = 0; i < ts->keycount; i++)
-		set_bit(ts->keyinfo[i].id & KEY_MAX, input->keybit);
+	for (i = 0; i < ts->dev->tp_info.key_num; i++)
+		set_bit(ts->dev->key.info.keys[i].id & KEY_MAX, input->keybit);
 
 	input_set_capability(input, EV_KEY, KEY_POWER);
 
 #ifndef ILITEK_USE_MTK_INPUT_DEV
-	error = input_register_device(ts->input_dev);
-	if (error) {
+	input->name = ILITEK_TS_NAME;
+	input->id.bustype = BUS_I2C;
+	input->dev.parent = ts->device;
+
+	__set_bit(INPUT_PROP_DIRECT, input->propbit);
+	input->evbit[0] = BIT_MASK(EV_KEY) | BIT_MASK(EV_ABS);
+	input->keybit[BIT_WORD(BTN_TOUCH)] = BIT_MASK(BTN_TOUCH);
+
+#ifdef ILITEK_USE_LCM_RESOLUTION
+	x_min = 0; y_min = 0;
+	x_max = TOUCH_SCREEN_X_MAX; y_max = TOUCH_SCREEN_Y_MAX;
+#endif
+
+#if ILITEK_ROTATE_FLAG
+	swap(x_min, y_min);
+	swap(x_max, y_max);
+#endif
+
+	input_set_abs_params(input, ABS_MT_POSITION_X, x_min, x_max, 0, 0);
+	input_set_abs_params(input, ABS_MT_POSITION_Y, y_min, y_max, 0, 0);
+	input_set_abs_params(input, ABS_MT_TOUCH_MAJOR, 0, 255, 0, 0);
+	input_set_abs_params(input, ABS_MT_WIDTH_MAJOR, 0, 255, 0, 0);
+
+	if ((error = input_register_device(input))) {
 		tp_err("input_register_device failed, err: %d\n", error);
-		input_free_device(ts->input_dev);
+		input_free_device(input);
+		return error;
 	}
 #endif
 
-	return error;
+	ts->input_dev = input;
+
+	if (ts->dev->tp_info.pen_modes)
+		ilitek_request_pen_input_dev();
+
+	return 0;
 }
 
 static int ilitek_touch_down(int id, int x, int y, int p, int h, int w)
 {
 	struct input_dev *input = ts->input_dev;
-	if (y != ILITEK_RESOLUTION_MAX) {
 
-#if defined(ILITEK_USE_MTK_INPUT_DEV) || defined(ILITEK_USE_LCM_RESOLUTION)
-		x = (x - ts->screen_min_x) * TOUCH_SCREEN_X_MAX / (ts->screen_max_x - ts->screen_min_x);
-		y = (y - ts->screen_min_y) * TOUCH_SCREEN_Y_MAX / (ts->screen_max_y - ts->screen_min_y);
+#ifdef ILITEK_USE_LCM_RESOLUTION
+	x = (x - ts->screen_info.x_min) * TOUCH_SCREEN_X_MAX /
+		(ts->screen_info.x_max - ts->screen_info.x_min);
+	y = (y - ts->screen_info.y_min) * TOUCH_SCREEN_Y_MAX /
+		(ts->screen_info.y_max - ts->screen_info.y_min);
 #endif
-	}
+
 	input_report_key(input, BTN_TOUCH, 1);
 #ifdef ILITEK_TOUCH_PROTOCOL_B
 	input_mt_slot(input, id);
@@ -636,19 +730,6 @@ static int ilitek_touch_down(int id, int x, int y, int p, int h, int w)
 	input_event(input, EV_ABS, ABS_MT_TRACKING_ID, id);
 	input_mt_sync(input);
 #endif
-
-#if ILITEK_PLAT == ILITEK_PLAT_MTK
-#ifdef CONFIG_MTK_BOOT
-#ifndef MTK_UNDTS
-	if (tpd_dts_data.use_tpd_button) {
-		if (FACTORY_BOOT == get_boot_mode() || RECOVERY_BOOT == get_boot_mode()) {
-			tpd_button(x, y, 1);
-			tp_dbg("tpd_button(x, y, 1) = tpd_button(%d, %d, 1)\n", x, y);
-		}
-	}
-#endif
-#endif
-#endif
 	return 0;
 }
 
@@ -668,19 +749,6 @@ static int ilitek_touch_release(int id)
 #endif
 	set_arr(ts->touch_flag, id, 0);
 
-#if ILITEK_PLAT == ILITEK_PLAT_MTK
-#ifdef CONFIG_MTK_BOOT
-#ifndef MTK_UNDTS
-	if (tpd_dts_data.use_tpd_button) {
-		if (FACTORY_BOOT == get_boot_mode() || RECOVERY_BOOT == get_boot_mode()) {
-			tpd_button(0, 0, 0);
-			tp_dbg("tpd_button(x, y, 0) = tpd_button(%d, %d, 0)\n", 0, 0);
-		}
-	}
-#endif
-#endif
-#endif
-
 	return 0;
 }
 
@@ -691,10 +759,10 @@ static int ilitek_touch_release_all_point(void)
 
 #ifdef ILITEK_TOUCH_PROTOCOL_B
 	input_report_key(input, BTN_TOUCH, 0);
-	for (i = 0; i < ts->max_tp; i++)
+	for (i = 0; i < ts->dev->tp_info.max_fingers; i++)
 		ilitek_touch_release(i);
 #else
-	for (i = 0; i < ts->max_tp; i++)
+	for (i = 0; i < ts->dev->tp_info.max_fingers; i++)
 		set_arr(ts->touch_flag, i, 0);
 	ilitek_touch_release(0);
 #endif
@@ -705,30 +773,22 @@ static int ilitek_touch_release_all_point(void)
 
 static int ilitek_check_key_down(int x, int y)
 {
-	int j = 0;
-	for (j = 0; j < ts->keycount; j++) {
-		if ((x >= ts->keyinfo[j].x && x <= ts->keyinfo[j].x + ts->key_xlen) &&
-		    (y >= ts->keyinfo[j].y && y <= ts->keyinfo[j].y + ts->key_ylen)) {
-#if ILITEK_PLAT != ILITEK_PLAT_MTK
-			input_report_key(ts->input_dev, ts->keyinfo[j].id, 1);
-#else
-#ifndef MTK_UNDTS
-			if (tpd_dts_data.use_tpd_button) {
-				x = tpd_dts_data.tpd_key_dim_local[j].key_x;
-				y = tpd_dts_data.tpd_key_dim_local[j].key_y;
-				tp_dbg("key index=%x, tpd_dts_data.tpd_key_local[%d]=%d key down\n", j, j, tpd_dts_data.tpd_key_local[j]);
-				ilitek_touch_down(0, x, y, 10, 128, 1);
-			}
-#else
-			x = touch_key_point_maping_array[j].point_x;
-			y = touch_key_point_maping_array[j].point_y;
-			ilitek_touch_down(0, x, y, 10, 128, 1);
-#endif
-#endif
-			ts->keyinfo[j].status = 1;
+	int j;
+
+	for (j = 0; j < ts->dev->tp_info.key_num; j++) {
+		if ((x >= ts->dev->key.info.keys[j].x &&
+		     x <= ts->dev->key.info.keys[j].x +
+			ts->dev->key.info.x_len) &&
+		    (y >= ts->dev->key.info.keys[j].y &&
+		     y <= ts->dev->key.info.keys[j].y +
+			ts->dev->key.info.y_len)) {
+			input_report_key(ts->input_dev, ts->dev->key.info.keys[j].id, 1);
+			ts->dev->key.clicked[j] = true;
 			ts->touch_key_hold_press = true;
 			ts->is_touched = true;
-			tp_dbg("Key, Keydown ID=%d, X=%d, Y=%d, key_status=%d\n", ts->keyinfo[j].id, x, y, ts->keyinfo[j].status);
+			tp_dbg("Key, Keydown ID=%d, X=%d, Y=%d, key_status=%d\n",
+				ts->dev->key.info.keys[j].id, x, y,
+				ts->dev->key.clicked[j]);
 			break;
 		}
 	}
@@ -739,49 +799,32 @@ static int ilitek_check_key_release(int x, int y, int check_point)
 {
 	int j = 0;
 
-	for (j = 0; j < ts->keycount; j++) {
+	for (j = 0; j < ts->dev->tp_info.key_num; j++) {
+		if (!ts->dev->key.clicked[j])
+			continue;
+
 		if (check_point) {
-			if ((ts->keyinfo[j].status == 1) && (x < ts->keyinfo[j].x ||
-			    x > ts->keyinfo[j].x + ts->key_xlen || y < ts->keyinfo[j].y ||
-			    y > ts->keyinfo[j].y + ts->key_ylen)) {
-#if ILITEK_PLAT != ILITEK_PLAT_MTK
-				input_report_key(ts->input_dev, ts->keyinfo[j].id, 0);
-#else
-#ifndef MTK_UNDTS
-				if (tpd_dts_data.use_tpd_button) {
-					tp_dbg("key index=%x, tpd_dts_data.tpd_key_local[%d]=%d key up\n", j, j, tpd_dts_data.tpd_key_local[j]);
-					ilitek_touch_release(0);
-				}
-#else
-				ilitek_touch_release(0);
-#endif
-#endif
-				ts->keyinfo[j].status = 0;
+			if (x < ts->dev->key.info.keys[j].x ||
+			    x > ts->dev->key.info.keys[j].x + ts->dev->key.info.x_len ||
+			    y < ts->dev->key.info.keys[j].y ||
+			    y > ts->dev->key.info.keys[j].y + ts->dev->key.info.y_len) {
+				input_report_key(ts->input_dev,
+						 ts->dev->key.info.keys[j].id, 0);
+				ts->dev->key.clicked[j] = false;
 				ts->touch_key_hold_press = false;
 				tp_dbg("Key, Keyout ID=%d, X=%d, Y=%d, key_status=%d\n",
-						ts->keyinfo[j].id, x, y, ts->keyinfo[j].status);
+					ts->dev->key.info.keys[j].id, x, y,
+					ts->dev->key.clicked[j]);
 				break;
 			}
 		} else {
-			if (ts->keyinfo[j].status == 1) {
-#if ILITEK_PLAT != ILITEK_PLAT_MTK
-				input_report_key(ts->input_dev, ts->keyinfo[j].id, 0);
-#else
-#ifndef MTK_UNDTS
-				if (tpd_dts_data.use_tpd_button) {
-					tp_dbg("key index=%x, tpd_dts_data.tpd_key_local[%d]=%d key up\n", j, j, tpd_dts_data.tpd_key_local[j]);
-					ilitek_touch_release(0);
-				}
-#else
-				ilitek_touch_release(0);
-#endif
-#endif
-				ts->keyinfo[j].status = 0;
-				ts->touch_key_hold_press = false;
-				tp_dbg("Key, Keyout ID=%d, X=%d, Y=%d, key_status=%d\n",
-						ts->keyinfo[j].id, x, y, ts->keyinfo[j].status);
-				break;
-			}
+			input_report_key(ts->input_dev, ts->dev->key.info.keys[j].id, 0);
+			ts->dev->key.clicked[j] = false;
+			ts->touch_key_hold_press = false;
+			tp_dbg("Key, Keyout ID=%d, X=%d, Y=%d, key_status=%d\n",
+				ts->dev->key.info.keys[j].id, x, y,
+				ts->dev->key.clicked[j]);
+			break;
 		}
 	}
 	return 0;
@@ -923,23 +966,6 @@ void __maybe_unused ilitek_gesture_handle(bool touch, int idx, int x, int y)
 	input_sync(input);
 }
 
-static void ilitek_check_algo(uint8_t mode_status)
-{
-#ifdef ILITEK_CHECK_FUNCMODE
-	tp_dbg("mode_status = 0x%X\n", mode_status);
-	if (mode_status & 0x80)
-		tp_dbg("Palm reject mode enable\n");
-	if (mode_status & 0x40)
-		tp_dbg("Thumb mdoe enable\n");
-	if (mode_status & 0x04)
-		tp_dbg("Water mode enable\n");
-	if (mode_status & 0x02)
-		tp_dbg("Mist mode enable\n");
-	if (mode_status & 0x01)
-		tp_dbg("Normal mode\n");
-#endif
-}
-
 int ilitek_read_data_and_report_3XX(void)
 {
 	int ret = 0;
@@ -947,17 +973,22 @@ int ilitek_read_data_and_report_3XX(void)
 	int report_max_point = 6;
 	int release_point = 0;
 	int tp_status = 0;
-	int i = 0;
-	int x = 0;
-	int y = 0;
+	int i = 0, x = 0, y = 0;
 	struct input_dev *input = ts->input_dev;
-	uint8_t buf[64];
 	uint8_t mode_status;
 
-	memset(buf, 0, sizeof(buf));
+	/*
+	 * ISR may be activated after registering irq and
+	 * before creating input_dev
+	 */
+	if (!input) {
+		tp_err("input_dev is not registerred\n");
+		return -EINVAL;
+	}
 
-	buf[0] = CMD_GET_TOUCH_INFO;
-	ret = ilitek_i2c_write_and_read(buf, 1, 0, buf, 32);
+	memset(ts->buf, 0, 64);
+	ts->buf[0] = 0x10;
+	ret = ilitek_write_and_read(ts->buf, 1, 0, ts->buf, 32);
 	if (ret < 0) {
 		tp_err("get touch information err\n");
 		if (ts->is_touched) {
@@ -967,14 +998,12 @@ int ilitek_read_data_and_report_3XX(void)
 		return ret;
 	}
 
-	mode_status = buf[31];
-	buf[31] = 0;
-	ilitek_check_algo(mode_status);
+	mode_status = ts->buf[31];
+	ts->buf[31] = 0;
 
-	packet = buf[0];
+	packet = ts->buf[0];
 	if (packet == 2) {
-		ret = ilitek_i2c_read(buf + 31, 20);
-		if (ret < 0) {
+		if ((ret = ilitek_read(ts->buf + 31, 20)) < 0) {
 			tp_err("get touch information packet 2 err\n");
 			if (ts->is_touched) {
 				ilitek_touch_release_all_point();
@@ -984,19 +1013,19 @@ int ilitek_read_data_and_report_3XX(void)
 		}
 		report_max_point = 10;
 	}
-	buf[62] = mode_status;
+	ts->buf[62] = mode_status;
 
-	ilitek_udp_reply(buf, 64);
+	ilitek_udp_reply(ts->buf, 64);
 
-	if (buf[1] == 0x5F || buf[0] == 0xDB) {
+	tp_dbg("[rbuf]: %*phD, len: %d\n", 64, ts->buf, 64);
+
+	if (ts->buf[1] == 0x5F || ts->buf[0] == 0xDB) {
 		tp_dbg("debug message return\n");
 		return 0;
 	}
 
 	for (i = 0; i < report_max_point; i++) {
-		tp_status = buf[i * 5 + 1] >> 7;
-
-		tp_dbg("buf: 0x%x, tp_status: %d\n", buf[i * 5 + 1], tp_status);
+		tp_status = ts->buf[i * 5 + 1] >> 7;
 		if (!tp_status) {
 			release_point++;
 #ifdef ILITEK_TOUCH_PROTOCOL_B
@@ -1007,8 +1036,8 @@ int ilitek_read_data_and_report_3XX(void)
 
 		set_arr(ts->touch_flag, i, 1);
 
-		x = ((buf[i * 5 + 1] & 0x3F) << 8) + buf[i * 5 + 2];
-		y = (buf[i * 5 + 3] << 8) + buf[i * 5 + 4];
+		x = ((ts->buf[i * 5 + 1] & 0x3F) << 8) + ts->buf[i * 5 + 2];
+		y = (ts->buf[i * 5 + 3] << 8) + ts->buf[i * 5 + 4];
 
 		if (ts->system_suspend) {
 			tp_msg("system is suspend not report point\n");
@@ -1018,22 +1047,22 @@ int ilitek_read_data_and_report_3XX(void)
 		if (!(ts->is_touched))
 			ilitek_check_key_down(x, y);
 		if (!(ts->touch_key_hold_press)) {
-			if (x > ts->screen_max_x || y > ts->screen_max_y ||
-			    x < ts->screen_min_x || y < ts->screen_min_y) {
+			if (x > ts->dev->screen_info.x_max || y > ts->dev->screen_info.y_max ||
+			    x < ts->dev->screen_info.x_min || y < ts->dev->screen_info.y_min) {
 				tp_err("Point[%d]: (%d, %d), Limit: (%d:%d, %d:%d) OOB\n",
-					i, x, y, ts->screen_min_x, ts->screen_max_x,
-					ts->screen_min_y, ts->screen_max_y);
-				tp_err("Raw data: %x-%x-%x-%x-%x\n",
-					buf[i * 5 + 1], buf[i * 5 + 2],
-					buf[i * 5 + 3], buf[i * 5 + 4],
-					buf[i * 5 + 5]);
+					i, x, y, ts->dev->screen_info.x_min,
+					ts->dev->screen_info.x_max,
+					ts->dev->screen_info.y_min,
+					ts->dev->screen_info.y_max);
+				tp_err("Raw data: %*phD\n", 5,
+					ts->buf + i * 5 + 1);
 				continue;
 			}
 			ts->is_touched = true;
 			if (ILITEK_REVERT_X)
-				x = ts->screen_max_x - x + ts->screen_min_x;
+				x = ts->dev->screen_info.x_max - x + ts->dev->screen_info.x_min;
 			if (ILITEK_REVERT_Y)
-				y = ts->screen_max_y - y + ts->screen_min_y;
+				y = ts->dev->screen_info.y_max - y + ts->dev->screen_info.y_min;
 			tp_dbg("Touch id=%02X, x: %04d, y: %04d\n", i, x, y);
 			ilitek_touch_down(i, x, y, 10, 128, 1);
 		}
@@ -1053,6 +1082,61 @@ int ilitek_read_data_and_report_3XX(void)
 	return 0;
 }
 
+static int ilitek_pen_handler(unsigned char *buf, int size)
+{
+	struct pen_fmt *parser;
+	struct input_dev *pen_input = ts->pen_input_dev;
+	static int curr_tool = BTN_TOOL_PEN;
+	int tool;
+
+	if (!pen_input)
+		return -EINVAL;
+
+	parser = (struct pen_fmt *)(buf + 1);
+
+	tool = (parser->in_range && parser->invert) ?
+		BTN_TOOL_RUBBER : BTN_TOOL_PEN;
+
+	tp_dbg("x: %u, y: %u, x_tilt: %u, y_tilt: %u, curr_tool: %d, tool: %d\n",
+		parser->x, parser->y, parser->x_tilt, parser->y_tilt,
+		curr_tool, tool);
+
+	if (curr_tool != tool) {
+		input_report_key(pen_input, curr_tool, 0);
+		input_sync(pen_input);
+		curr_tool = tool;
+	}
+
+	input_report_key(pen_input, BTN_TOUCH,
+			 parser->tip_sw || parser->eraser);
+	input_report_key(pen_input, curr_tool, parser->in_range);
+	input_report_key(pen_input, BTN_STYLUS, parser->barrel_sw);
+	input_event(pen_input, EV_ABS, ABS_X, parser->x);
+	input_event(pen_input, EV_ABS, ABS_Y, parser->y);
+	input_event(pen_input, EV_ABS, ABS_PRESSURE, parser->pressure);
+	input_event(pen_input, EV_ABS, ABS_TILT_X, parser->x_tilt);
+	input_event(pen_input, EV_ABS, ABS_TILT_Y, parser->y_tilt);
+
+	input_sync(pen_input);
+
+	return 0;
+}
+
+static bool is_checksum_matched(uint8_t _checksum, int start, int end,
+				uint8_t *buf, int buf_size)
+{
+	uint8_t checksum;
+
+	checksum = ~(get_checksum(start, end, buf, buf_size)) + 1;
+	if (checksum != _checksum) {
+		tp_err("[buf]: %*phD, checksum : %hhx/%hhx not matched\n",
+			end - start, buf + start, checksum, _checksum);
+		return false;
+	}
+
+	return true;
+}
+
 int ilitek_read_data_and_report_6XX(void)
 {
 	int ret = 0;
@@ -1061,43 +1145,57 @@ int ilitek_read_data_and_report_6XX(void)
 	int release_point = 0;
 	int i = 0;
 	struct input_dev *input = ts->input_dev;
-	unsigned char buf[512];
-	unsigned char tmp[64];
-	int packet_len = 0;
-	int packet_max_point = 0;
-	struct touch_info_v6 *info;
+	uint8_t tmp;
+	int len = 0;
+	int max_cnt = 0;
+	struct touch_fmt *parser;
+	uint8_t checksum;
 
-	tp_dbg("[%s] format:%d\n", __func__, ts->format);
+	/*
+	 * ISR may be activated after registering irq and
+	 * before creating input_dev
+	 */
+	if (!input) {
+		tp_err("input_dev is not registerred\n");
+		return -EINVAL;
+	}
 
-	switch (ts->format) {
-	case 0:
-		packet_len = REPORT_FORMAT0_PACKET_LENGTH;
-		packet_max_point = REPORT_FORMAT0_PACKET_MAX_POINT;
+	len = ts->dev->finger.size;
+	max_cnt = ts->dev->finger.max_cnt;
+
+	tp_dbg("format:%d, packet cnts: %u, packet len: %u\n",
+		ts->dev->tp_info.format, ts->dev->finger.max_cnt,
+		ts->dev->finger.size);
+
+	for(i = 0; i < ts->dev->tp_info.max_fingers; i++)
+		ts->tp[i].status = false;
+
+	memset(ts->buf, 0, sizeof(ts->buf));
+
+	switch (ts->irq_handle_type) {
+	case irq_type_c_model:
+		for (i = 0, count = 1; i < count; i++) {
+			ilitek_read(ts->buf, ts->irq_read_len);
+			ilitek_udp_reply(ts->buf, ts->irq_read_len);
+			count = ts->buf[ts->irq_read_len - 1];
+		}
+
+		return 0;
+	case irq_type_debug:
+		ret = ilitek_read(ts->buf, 64);
+
+		if (ts->buf[0] == 0xDB) {
+			ilitek_udp_reply(ts->buf, 64);
+			return 0;
+		}
 		break;
-	case 1:
-		packet_len = REPORT_FORMAT1_PACKET_LENGTH;
-		packet_max_point = REPORT_FORMAT1_PACKET_MAX_POINT;
-		break;
-	case 2:
-		packet_len = REPORT_FORMAT2_PACKET_LENGTH;
-		packet_max_point = REPORT_FORMAT2_PACKET_MAX_POINT;
-		break;
-	case 3:
-		packet_len = REPORT_FORMAT3_PACKET_LENGTH;
-		packet_max_point = REPORT_FORMAT3_PACKET_MAX_POINT;
-		break;
+	case irq_type_normal:
 	default:
-		packet_len = REPORT_FORMAT0_PACKET_LENGTH;
-		packet_max_point = REPORT_FORMAT0_PACKET_MAX_POINT;
+		ret = ilitek_read(ts->buf, 64);
 		break;
 	}
 
-	for(i = 0; i < ts->max_tp; i++)
-		ts->tp[i].status = false;
-
-	ret = ilitek_i2c_read(buf, 64);
 	if (ret < 0) {
-		tp_err("get touch information err\n");
 		if (ts->is_touched) {
 			ilitek_touch_release_all_point();
 			ilitek_check_key_release(0, 0, 0);
@@ -1105,36 +1203,32 @@ int ilitek_read_data_and_report_6XX(void)
 		return ret;
 	}
 
-	if (ts->ilitek_log_level_value == ILITEK_DEBUG_LOG_LEVEL) {
-		tp_msg_arr("ilitek_i2c_read", buf, 64);
-	}
 	/*
 	 * Check checksum for I2C comms. debug.
 	 */
-	if (!checksum(buf, 64, buf[63])) {
-		tp_err("checksum failed, just skip...\n");
+	checksum = ~(get_checksum(0, 63, ts->buf, 64)) + 1;
+	if (!(is_checksum_matched(ts->buf[63], 0, 63,
+			ts->buf, sizeof(ts->buf))))
 		return 0;
-	}
 
-	ilitek_udp_reply(buf, 64);
+	ilitek_udp_reply(ts->buf, 64);
+	tp_dbg("[rbuf]: %*phD, len: %d\n", 64, ts->buf, 64);
 
+	/* Pen Report ID */
+	if (ts->buf[0] == 0x0C || ts->buf[0] == 0x0D)
+		return ilitek_pen_handler(ts->buf, 64);
 
-	if (buf[0] == 0xDB) {
-		tp_dbg("debug message return\n");
-		return 0;
-	}
-
-	report_max_point = buf[REPORT_ADDRESS_COUNT];
-	if (report_max_point > ts->max_tp) {
+	report_max_point = ts->buf[61];
+	if (report_max_point > ts->dev->tp_info.max_fingers) {
 		tp_err("FW report max point:%d > panel information max point:%d\n",
-			report_max_point, ts->max_tp);
-		return ILITEK_FAIL;
+			report_max_point, ts->dev->tp_info.max_fingers);
+		return -EINVAL;
 	}
-	count = CEIL(report_max_point, packet_max_point);
+	count = CEIL(report_max_point, max_cnt);
 	for (i = 1; i < count; i++) {
-		ret = ilitek_i2c_read(tmp, 64);
+		tmp = ts->buf[i * len * max_cnt];
+		ret = ilitek_read(ts->buf + i * len * max_cnt, 64);
 		if (ret < 0) {
-			tp_err("get touch information err, count=%d\n", count);
 			if (ts->is_touched) {
 				ilitek_touch_release_all_point();
 				ilitek_check_key_release(0, 0, 0);
@@ -1142,29 +1236,26 @@ int ilitek_read_data_and_report_6XX(void)
 			return ret;
 		}
 
-		if (!checksum(tmp, 64, tmp[63])) {
-			tp_err("checksum failed, just skip...\n");
+		if (!(is_checksum_matched(ts->buf[i * len * max_cnt + 63],
+					  0, 63, ts->buf + i * len * max_cnt,
+					  64)))
 			return 0;
-		}
 
-		memcpy(buf + 1 + i * packet_len * packet_max_point,
-		       tmp + 1, 63);
-
-		ilitek_udp_reply(tmp, 64);
-
+		ilitek_udp_reply(ts->buf + i * len * max_cnt, 64);
+		tp_dbg("[rbuf]: %*phD, len: %d\n", 64,
+			ts->buf + i * len * max_cnt, 64);
+		ts->buf[i * len * max_cnt] = tmp;
 	}
 
 	for (i = 0; i < report_max_point; i++) {
-		info = (struct touch_info_v6 *)(buf + i * packet_len + 1);
+		parser = (struct touch_fmt *)(ts->buf + i * len + 1);
 
-		ts->tp[i].status = info->status;
-		ts->tp[i].id = info->id;
+		ts->tp[i].status = parser->status;
+		ts->tp[i].id = parser->id;
 
-		tp_dbg("buf: 0x%x, tp_status: %d, id: %d\n", buf[i * packet_len + 1],
-			ts->tp[i].status, ts->tp[i].id);
-
-		if (ts->tp[i].id >= ts->max_tp) {
-			tp_err("id: %d, limit: %d OOB\n", ts->tp[i].id, ts->max_tp);
+		if (ts->tp[i].id >= ts->dev->tp_info.max_fingers) {
+			tp_err("id: %d, limit: %hhu OOB\n", ts->tp[i].id,
+				ts->dev->tp_info.max_fingers);
 			continue;
 		}
 
@@ -1178,19 +1269,26 @@ int ilitek_read_data_and_report_6XX(void)
 
 		set_arr(ts->touch_flag, ts->tp[i].id, 1);
 
-		ts->tp[i].x = info->x;
-		ts->tp[i].y = info->y;
+		ts->tp[i].x = parser->x;
+		ts->tp[i].y = parser->y;
 
 		ts->tp[i].p = 10;
 		ts->tp[i].w = 10;
 		ts->tp[i].h = 10;
 
-		if (ts->format == 1 || ts->format == 3)
-			ts->tp[i].p = info->p;
-
-		if (ts->format == 2 || ts->format == 3) {
-			ts->tp[i].w = info->w;
-			ts->tp[i].h = info->h;
+		switch (ts->dev->tp_info.format) {
+		case touch_fmt_1:
+			ts->tp[i].p = parser->p;
+			break;
+		case touch_fmt_2:
+			ts->tp[i].w = parser->w;
+			ts->tp[i].h = parser->h;
+			break;
+		case touch_fmt_3:
+			ts->tp[i].p = parser->p;
+			ts->tp[i].w = parser->w;
+			ts->tp[i].h = parser->h;
+			break;
 		}
 
 		tp_dbg("id: %d, x: %d, y: %d, p: %d, w: %d, h: %d\n",
@@ -1206,21 +1304,21 @@ int ilitek_read_data_and_report_6XX(void)
 			ilitek_check_key_down(ts->tp[i].x, ts->tp[i].y);
 
 		if (!(ts->touch_key_hold_press)) {
-			if (ts->tp[i].x > ts->screen_max_x ||
-			    ts->tp[i].y > ts->screen_max_y ||
-			    ts->tp[i].x < ts->screen_min_x ||
-			    ts->tp[i].y < ts->screen_min_y) {
+			if (ts->tp[i].x > ts->dev->screen_info.x_max ||
+			    ts->tp[i].y > ts->dev->screen_info.y_max ||
+			    ts->tp[i].x < ts->dev->screen_info.x_min ||
+			    ts->tp[i].y < ts->dev->screen_info.y_min) {
 				tp_err("Point[%d]: (%d, %d), Limit: (%d:%d, %d:%d) OOB\n",
 					ts->tp[i].id, ts->tp[i].x, ts->tp[i].y,
-					ts->screen_min_x, ts->screen_max_x,
-					ts->screen_min_y, ts->screen_max_y);
+					ts->dev->screen_info.x_min, ts->dev->screen_info.x_max,
+					ts->dev->screen_info.y_min, ts->dev->screen_info.y_max);
 			} else {
 				ts->is_touched = true;
 				if (ILITEK_REVERT_X)
-					ts->tp[i].x = ts->screen_max_x - ts->tp[i].x + ts->screen_min_x;
+					ts->tp[i].x = ts->dev->screen_info.x_max - ts->tp[i].x + ts->dev->screen_info.x_min;
 
 				if (ILITEK_REVERT_Y)
-					ts->tp[i].y = ts->screen_max_y - ts->tp[i].y + ts->screen_min_y;
+					ts->tp[i].y = ts->dev->screen_info.y_max - ts->tp[i].y + ts->dev->screen_info.y_min;
 
 				tp_dbg("Point[%02X]: X:%04d, Y:%04d, P:%d, H:%d, W:%d\n",
 						ts->tp[i].id, ts->tp[i].x,ts->tp[i].y,
@@ -1234,7 +1332,8 @@ int ilitek_read_data_and_report_6XX(void)
 			ilitek_check_key_release(ts->tp[i].x, ts->tp[i].y, 1);
 	}
 
-	tp_dbg("release point counter =  %d , report max point = %d\n", release_point, report_max_point);
+	tp_dbg("release point counter: %d , report max point: %d\n",
+		release_point, report_max_point);
 	if (release_point == report_max_point) {
 		if (ts->is_touched)
 			ilitek_touch_release_all_point();
@@ -1252,38 +1351,33 @@ int ilitek_read_data_and_report_6XX(void)
 static int ilitek_i2c_process_and_report(void)
 {
 	int ret = 0;
-	mutex_lock(&ts->ilitek_mutex);
-	if (!ts->unhandle_irq)
+
+	if (!ts->unhandle_irq) {
+		mutex_lock(&ts->ilitek_mutex);
 		ret = ts->process_and_report();
-	mutex_unlock(&ts->ilitek_mutex);
+		mutex_unlock(&ts->ilitek_mutex);
+	}
+
 	return ret;
 }
 
-#ifdef MTK_UNDTS
-static void ilitek_i2c_isr(void)
-#else
-static irqreturn_t ilitek_i2c_isr(int irq, void *dev_id)
-#endif
+static ISR_FUNC(ilitek_i2c_isr)
 {
 	tp_dbg("\n");
-#ifdef ILITEK_ESD_PROTECTION
-	ts->esd_check = false;
-#endif
+
+	atomic_set(&ts->get_INT, 1);
+	ilitek_gpio_dbg();
+
+	ts->esd_skip = true;
+
 	if (atomic_read(&ts->firmware_updating)) {
 		tp_dbg("firmware_updating return\n");
-#ifdef MTK_UNDTS
-		return;
-#else
-		return IRQ_HANDLED;
-#endif
+		ISR_RETURN(IRQ_HANDLED);
 	}
 
 #ifdef ILITEK_ISR_PROTECT
 	ilitek_irq_disable();
 #endif
-
-	atomic_set(&ts->get_INT, 1);
-	ilitek_gpio_dbg();
 
 	if (ilitek_i2c_process_and_report() < 0)
 		tp_err("process error\n");
@@ -1292,68 +1386,105 @@ static irqreturn_t ilitek_i2c_isr(int irq, void *dev_id)
 	ilitek_irq_enable();
 #endif
 
-#ifndef MTK_UNDTS
-	return IRQ_HANDLED;
-#endif
+	ts->esd_skip = false;
+
+	ISR_RETURN(IRQ_HANDLED);
 }
 
 static int ilitek_request_irq(void)
 {
-	int ret = 0;
-#if ILITEK_PLAT == ILITEK_PLAT_MTK
-#ifndef MTK_UNDTS
-	struct device_node *node;
-#endif
-#endif
+	int error;
+	ts->irq = gpio_to_irq(ts->irq_gpio);
 
-#if ILITEK_PLAT != ILITEK_PLAT_MTK
-	if ((ts->client->irq == 0) && (ts->irq_gpio > 0)) {
-		ts->client->irq = gpio_to_irq(ts->irq_gpio);
-		printk ("IRQ : gpio %d => %d\n", ts->irq_gpio, ts->client->irq);
-	} else {
-		printk ("IRQ : already specified => %d\n", ts->client->irq);
+	tp_msg("ts->irq: %d\n", ts->irq);
+	if (ts->irq <= 0)
+		return -EINVAL;
+
+	error = request_threaded_irq(ts->irq, NULL, ilitek_i2c_isr,
+				     ts->irq_trigger_type | IRQF_ONESHOT,
+				     "ilitek_touch_irq", ts);
+	if (error) {
+		tp_err("request threaded irq failed, err: %d\n", error);
+		return error;
 	}
-#else
-#ifndef MTK_UNDTS
-	node = of_find_matching_node(NULL, touch_of_match);
-	if (node)
-		ts->client->irq = irq_of_parse_and_map(node, 0);
-#endif
-#endif
-
-#ifdef MTK_UNDTS
-	mt_set_gpio_mode(ILITEK_IRQ_GPIO, GPIO_CTP_EINT_PIN_M_EINT);
-	mt_set_gpio_dir(ILITEK_IRQ_GPIO, GPIO_DIR_IN);
-	mt_set_gpio_pull_enable(ILITEK_IRQ_GPIO, GPIO_PULL_ENABLE);
-	mt_set_gpio_pull_select(ILITEK_IRQ_GPIO, GPIO_PULL_UP);
-
-	mt_eint_set_hw_debounce(CUST_EINT_TOUCH_PANEL_NUM, CUST_EINT_TOUCH_PANEL_DEBOUNCE_CN);
-	mt_eint_registration(CUST_EINT_TOUCH_PANEL_NUM, CUST_EINT_TOUCH_PANEL_TYPE, ilitek_i2c_isr, 1);
-	mt_eint_unmask(CUST_EINT_TOUCH_PANEL_NUM);
-#else
-	tp_msg("ts->client->irq: %d\n", ts->client->irq);
-	if (ts->client->irq > 0) {
-		ret = request_threaded_irq(ts->client->irq, NULL, ilitek_i2c_isr,
-					   ts->irq_tri_type | IRQF_ONESHOT,
-					   "ilitek_touch_irq", ts);
-		if (ret)
-			tp_err("ilitek_request_irq, error\n");
-	} else {
-		ret = -EINVAL;
-	}
-#endif
 
 	ts->irq_registerred = true;
 	atomic_set(&ts->irq_enabled, 1);
 
-	return ret;
+	return 0;
 }
+
+static int ilitek_read_fw(char *filename, unsigned char *buf, int size, void *data)
+{
+	int error, fw_size;
+	const struct firmware *fw;
+	struct device *device = (struct device *)data;
+
+	if ((error = request_firmware(&fw, filename, device))) {
+		tp_err("request fw: %s failed, err:%d\n", filename, error);
+		return error;
+	}
+
+	if (size < fw->size) {
+		fw_size = -EFBIG;
+		goto release_fw;
+	}
+
+	fw_size = fw->size;
+	memcpy(buf, fw->data, fw->size);
+
+release_fw:
+	release_firmware(fw);
+
+	return fw_size;
+}
+
+struct ilitek_update_callback update_cb = {
+	.read_fw = ilitek_read_fw,
+	.update_progress = NULL,
+	.update_info = NULL,
+};
+
+int ilitek_upgrade_firmware(char *filename)
+{
+	int error;
+	struct ilitek_fw_handle *handle;
+	struct ilitek_fw_settings setting;
+
+	ilitek_irq_disable();
+	mutex_lock(&ts->ilitek_mutex);
+	atomic_set(&ts->firmware_updating, 1);
+	ts->operation_protection = true;
+
+	handle = ilitek_update_init(ts->dev, &update_cb, ts->device);
+
+	setting.force_update = false;
+	setting.fw_check_only = false;
+	setting.fw_ver_check = false;
+	setting.retry = 3;
+	ilitek_update_setting(handle, &setting);
+
+	if ((error = ilitek_update_load_fw(handle, filename)) < 0 ||
+	    (error = ilitek_update_start(handle)) < 0)
+		goto err_return;
+
+err_return:
+	ilitek_update_exit(handle);
+
+	ts->operation_protection = false;
+	atomic_set(&ts->firmware_updating, 0);
+	mutex_unlock(&ts->ilitek_mutex);
+	ilitek_irq_enable();
+
+	return error;
+}
+
 
 static int __maybe_unused ilitek_update_thread(void *arg)
 {
-	int ret = 0;
+#ifdef ILITEK_BOOT_UPDATE
+	int error;
 
-#ifdef ILITEK_UPDATE_FW
 	tp_msg("\n");
 
 	if (kthread_should_stop()) {
@@ -1362,59 +1493,27 @@ static int __maybe_unused ilitek_update_thread(void *arg)
 	}
 
 	mdelay(100);
-	atomic_set(&ts->firmware_updating, 1);
-	ts->operation_protection = true;
-	ret = ilitek_upgrade_firmware();
-	ret = ilitek_read_tp_info(true);
-	ts->operation_protection = false;
-	atomic_set(&ts->firmware_updating, 0);
 
-	ret = ilitek_request_input_dev();
-	if (ret)
-		tp_err("register input device, error\n");
-	ret = ilitek_request_irq();
-	if (ret)
-		tp_err("ilitek_request_irq, error\n");
+	if ((error = ilitek_upgrade_firmware("ilitek.ili")) < 0 &&
+	    (error = ilitek_upgrade_firmware("ilitek.hex")) < 0 &&
+	    (error = ilitek_upgrade_firmware("ilitek.bin")) < 0)
+		return error;
+
+	error = ilitek_request_input_dev();
+	if (error)
+		return (error < 0) ? error : -EFAULT;
 #endif
 
-	return ret;
+	return 0;
 }
-
-#if 0
-static int ilitek_irq_handle_thread(void *arg)
-{
-	int ret = 0;
-	struct sched_param param = {.sched_priority = 4 };
-
-	sched_setscheduler(current, SCHED_RR, &param);
-	tp_msg("%s, enter\n", __func__);
-
-	// mainloop
-	while (!kthread_should_stop() && !ts->ilitek_exit_report) {
-		set_current_state(TASK_INTERRUPTIBLE);
-		wait_event_interruptible(waiter, ts->irq_trigger);
-		ts->irq_trigger = false;
-		ts->irq_handle_count++;
-		set_current_state(TASK_RUNNING);
-		if (ilitek_i2c_process_and_report() < 0)
-			tp_err("process error\n");
-		ilitek_irq_enable();
-	}
-	tp_err("%s, exit\n", __func__);
-	tp_err("%s, exit\n", __func__);
-	tp_err("%s, exit\n", __func__);
-	return ret;
-}
-#endif
 
 void ilitek_suspend(void)
 {
 	tp_msg("\n");
 
-#ifdef ILITEK_ESD_PROTECTION
-	ts->esd_check = false;
-	cancel_delayed_work_sync(&ts->esd_work);
-#endif
+	ts->esd_skip = true;
+	if (ts->esd_check && ts->esd_workq)
+		cancel_delayed_work_sync(&ts->esd_work);
 
 	if (ts->operation_protection || atomic_read(&ts->firmware_updating)) {
 		tp_msg("operation_protection or firmware_updating return\n");
@@ -1422,16 +1521,23 @@ void ilitek_suspend(void)
 	}
 
 	if (ts->gesture_status) {
-		ts->wake_irq_enabled = (enable_irq_wake(ts->client->irq) == 0);
-		if (api_set_idlemode(ENABLE_MODE) < 0)
-			tp_err("enable Idle mode err\n");
+		ts->wake_irq_enabled = (enable_irq_wake(ts->irq) == 0);
+
+		if (ts->low_power_status == Low_Power_Idle) {
+			mutex_lock(&ts->ilitek_mutex);
+			if (api_set_idle(ts->dev, true) < 0)
+				tp_err("enable Idle mode failed\n");
+			mutex_unlock(&ts->ilitek_mutex);
+		}
 	} else {
-#if ILITEK_LOW_POWER == ILITEK_SLEEP
-		mutex_lock(&ts->ilitek_mutex);
-		if (api_ptl_set_cmd(SET_IC_SLEEP, NULL, NULL) < 0)
-			tp_err("0x30 set tp sleep err\n");
-		mutex_unlock(&ts->ilitek_mutex);
-#endif
+		if (ts->low_power_status == Low_Power_Sleep) {
+			mutex_lock(&ts->ilitek_mutex);
+			if (api_protocol_set_cmd(ts->dev, SET_IC_SLEEP,
+						 NULL) < 0)
+				tp_err("set tp sleep failed\n");
+			mutex_unlock(&ts->ilitek_mutex);
+		}
+
 		ilitek_irq_disable();
 	}
 
@@ -1449,14 +1555,19 @@ void ilitek_resume(void)
 
 	if (ts->gesture_status) {
 		ilitek_irq_disable();
-		if (api_set_idlemode(DISABLE_MODE) < 0)
-			tp_err("disable Idle mode err\n");
+
+		if (ts->low_power_status == Low_Power_Idle) {
+			mutex_lock(&ts->ilitek_mutex);
+			if (api_set_idle(ts->dev, false) < 0)
+				tp_err("disable Idle mode err\n");
+			mutex_unlock(&ts->ilitek_mutex);
+		}
 
 		if (ts->gesture_status == Gesture_Double_Click)
 			finger_state = 0;
 
 		if (ts->wake_irq_enabled) {
-			disable_irq_wake(ts->client->irq);
+			disable_irq_wake(ts->irq);
 			ts->wake_irq_enabled = false;
 		}
 	} else {
@@ -1464,21 +1575,20 @@ void ilitek_resume(void)
 		 * If ILITEK_SLEEP is defined and FW support wakeup command,
 		 * the reset can be mark.
 		 */
-		 ilitek_reset(ts->reset_time);
+		 ilitek_reset(ts->dev->reset_time);
 
-#if ILITEK_LOW_POWER == ILITEK_SLEEP
-		mutex_lock(&ts->ilitek_mutex);
-		if (api_ptl_set_cmd(SET_IC_WAKE, NULL, NULL) < 0)
-			tp_err("0x31 set wake up err\n");
-		mutex_unlock(&ts->ilitek_mutex);
-#endif
+		if (ts->low_power_status == Low_Power_Sleep) {
+			mutex_lock(&ts->ilitek_mutex);
+			if (api_protocol_set_cmd(ts->dev, SET_IC_WAKE,
+						 NULL) < 0)
+				tp_err("0x31 set wake up err\n");
+			mutex_unlock(&ts->ilitek_mutex);
+		}
 	}
 
-#ifdef ILITEK_ESD_PROTECTION
-	ts->esd_check = true;
-	if (ts->esd_wq)
-		queue_delayed_work(ts->esd_wq, &ts->esd_work, ts->esd_delay);
-#endif
+	ts->esd_skip = false;
+	if (ts->esd_check && ts->esd_workq)
+		queue_delayed_work(ts->esd_workq, &ts->esd_work, ts->esd_delay);
 
 	ilitek_touch_release_all_point();
 	ilitek_check_key_release(0, 0, 0);
@@ -1488,36 +1598,14 @@ void ilitek_resume(void)
 	ilitek_irq_enable();
 }
 
-#if ILITEK_PLAT == ILITEK_PLAT_ALLWIN
-int ilitek_suspend_allwin(struct i2c_client *client, pm_message_t mesg)
-{
-	ilitek_suspend();
-	return 0;
-}
-
-int ilitek_resume_allwin(struct i2c_client *client)
-{
-	ilitek_resume();
-	return 0;
-}
-#endif
-
-#if ILITEK_PLAT != ILITEK_PLAT_MTK
-#if defined(CONFIG_FB) || defined(CONFIG_QCOM_DRM)
+#if defined(CONFIG_FB)
 static int __maybe_unused ilitek_notifier_callback(struct notifier_block *self,
 		unsigned long event, void *data) {
-#ifdef CONFIG_QCOM_DRM
-	struct msm_drm_notifier *ev_data = data;
-#else
+
 	struct fb_event *ev_data = data;
-#endif
 	int *blank;
 	tp_msg("FB EVENT event: %lu\n", event);
 
-#ifdef CONFIG_QCOM_DRM
-	if (!ev_data || (ev_data->id != 0))
-		return 0;
-#endif
 	if (ev_data && ev_data->data && event == ILITEK_EVENT_BLANK) {
 		blank = ev_data->data;
 		tp_msg("blank: %d\n", *blank);
@@ -1542,39 +1630,28 @@ static void __maybe_unused ilitek_late_resume(struct early_suspend *h)
 	ilitek_resume();
 }
 #endif
-#endif
 
-static int ilitek_get_gpio_num(void)
+static void ilitek_get_gpio_num(void)
 {
-	int ret = 0;
 #ifdef ILITEK_GET_GPIO_NUM
-#if ILITEK_PLAT == ILITEK_PLAT_ALLWIN
-	tp_msg("(config_info.wakeup_gpio.gpio) = %d (config_info.int_number) = %d\n", (config_info.wakeup_gpio.gpio), (config_info.int_number));
-	ts->reset_gpio = (config_info.wakeup_gpio.gpio);
-	ts->irq_gpio = (config_info.int_number);
-#else
 #ifdef CONFIG_OF
-	struct device *dev = &(ts->client->dev);
-	struct device_node *np = dev->of_node;
-
-	ts->reset_gpio = of_get_named_gpio(np, "ilitek,reset-gpio", 0);
+	ts->reset_gpio = of_get_named_gpio(ts->device->of_node, "ilitek,reset-gpio", 0);
 	if (ts->reset_gpio < 0)
 		tp_err("reset_gpio = %d\n", ts->reset_gpio);
-	ts->irq_gpio = of_get_named_gpio(np, "ilitek,irq-gpio", 0);
+	ts->irq_gpio = of_get_named_gpio(ts->device->of_node, "ilitek,irq-gpio", 0);
 	if (ts->irq_gpio < 0)
 		tp_err("irq_gpio = %d\n", ts->irq_gpio);
-#endif
 #endif
 #else
 	ts->reset_gpio = ILITEK_RESET_GPIO;
 	ts->irq_gpio = ILITEK_IRQ_GPIO;
 #endif
-	tp_msg("reset_gpio = %d irq_gpio = %d\n", ts->reset_gpio, ts->irq_gpio);
 
+	tp_msg("reset_gpio = %d irq_gpio = %d\n", ts->reset_gpio, ts->irq_gpio);
 
 #if defined(ILITEK_GPIO_DEBUG)
 	do {
-		ts->test_gpio = of_get_named_gpio(np, "ilitek,test-gpio", 0);
+		ts->test_gpio = of_get_named_gpio(ts->device->of_node, "ilitek,test-gpio", 0);
 		if (ts->test_gpio < 0) {
 			tp_err("test_gpio: %d\n", ts->test_gpio);
 			break;
@@ -1591,17 +1668,17 @@ static int ilitek_get_gpio_num(void)
 
 	} while (0);
 #endif
-
-	return ret;
 }
 
 static int ilitek_request_gpio(void)
 {
 	int ret = 0;
 
+	ts->irq_gpio = -ENODEV;
+	ts->reset_gpio = -ENODEV;
+
 	ilitek_get_gpio_num();
 
-#if ILITEK_PLAT != ILITEK_PLAT_MTK
 	if (ts->reset_gpio > 0) {
 		ret = gpio_request(ts->reset_gpio, "ilitek-reset-gpio");
 		if (ret) {
@@ -1636,71 +1713,71 @@ static int ilitek_request_gpio(void)
 				tp_err("Failed to direction input irq gpio err\n");
 		}
 	}
-#endif
+
 	return ret;
 }
 
-static int ilitek_create_esdandcharge_workqueue(void)
+int ilitek_create_esd_check_workqueue(void)
 {
-#ifdef ILITEK_ESD_PROTECTION
+	tp_msg("start to create esd workqueue\n");
+
 	INIT_DELAYED_WORK(&ts->esd_work, ilitek_esd_check);
-	ts->esd_wq = create_singlethread_workqueue("ilitek_esd_wq");
-	if (!ts->esd_wq) {
-		tp_err("create workqueue esd work err\n");
-	} else {
-		ts->esd_check = true;
-		ts->esd_delay = 2 * HZ;
-		queue_delayed_work(ts->esd_wq, &ts->esd_work, ts->esd_delay);
-	}
-#endif
+	ts->esd_workq = create_singlethread_workqueue("ilitek_esd_wq");
+	if (!ts->esd_workq)
+		return -ENOMEM;
+
+	ts->esd_skip = false;
+	ts->esd_delay = 2 * HZ;
+	queue_delayed_work(ts->esd_workq, &ts->esd_work, ts->esd_delay);
+
 	return 0;
 }
 
-static int __maybe_unused ilitek_register_resume_suspend(void)
+void ilitek_remove_esd_check_workqueue(void)
 {
-	int ret = 0;
+	tp_msg("start to remove esd workqueue\n");
 
+	if (ts->esd_workq) {
+		cancel_delayed_work_sync(&ts->esd_work);
+		destroy_workqueue(ts->esd_workq);
+		ts->esd_workq = NULL;
+	}
+}
+
+static int ilitek_register_resume_suspend(void)
+{
 #ifdef ILITEK_REGISTER_SUSPEND_RESUME
-
-#if ILITEK_PLAT != ILITEK_PLAT_MTK
-#if defined(CONFIG_FB) || defined(CONFIG_QCOM_DRM)
+	int error;
+#if defined(CONFIG_FB)
 	ts->fb_notif.notifier_call = ilitek_notifier_callback;
-#ifdef CONFIG_QCOM_DRM
-	ret = msm_drm_register_client(&ts->fb_notif);
-#else
-	ret = fb_register_client(&ts->fb_notif);
-#endif
-	if (ret)
-		tp_err("Unable to register fb_notifier: %d\n", ret);
+
+	error = fb_register_client(&ts->fb_notif);
+	if (error)
+		tp_err("register fb_notifier failed, err: %d\n", error);
+
 #elif defined(CONFIG_HAS_EARLYSUSPEND)
 	ts->early_suspend.level = EARLY_SUSPEND_LEVEL_BLANK_SCREEN + 1;
 	ts->early_suspend.suspend = ilitek_early_suspend;
 	ts->early_suspend.resume = ilitek_late_resume;
 	register_early_suspend(&ts->early_suspend);
 #endif
-#endif /* ILITEK_PLAT != ILITEK_PLAT_MTK */
 
-#if ILITEK_PLAT == ILITEK_PLAT_ALLWIN
-	device_enable_async_suspend(&ts->client->dev);
-	pm_runtime_set_active(&ts->client->dev);
-	pm_runtime_get(&ts->client->dev);
-	pm_runtime_enable(&ts->client->dev);
-#endif
+	device_enable_async_suspend(ts->device);
+	pm_runtime_set_active(ts->device);
+	pm_runtime_get(ts->device);
+	pm_runtime_enable(ts->device);
 
 #endif /* ILITEK_REGISTER_SUSPEND_RESUME */
-	return ret;
+
+	return 0;
 }
 
 static void __maybe_unused ilitek_release_resume_suspend(void)
 {
 #ifdef ILITEK_REGISTER_SUSPEND_RESUME
 
-#if defined(CONFIG_FB) || defined(CONFIG_QCOM_DRM)
-#ifdef CONFIG_QCOM_DRM
-	msm_drm_unregister_client(&ts->fb_notif);
-#else
+#if defined(CONFIG_FB)
 	fb_unregister_client(&ts->fb_notif);
-#endif
 #elif defined(CONFIG_HAS_EARLYSUSPEND)
 	unregister_early_suspend(&ts->early_suspend);
 #endif
@@ -1708,23 +1785,12 @@ static void __maybe_unused ilitek_release_resume_suspend(void)
 #endif /* ILITEK_REGISTER_SUSPEND_RESUME */
 }
 
-static int __maybe_unused ilitek_init_netlink(void)
+static int ilitek_init_netlink(void)
 {
 #ifdef ILITEK_TUNING_MESSAGE
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 6, 0)
-	struct netlink_kernel_cfg cfg = {
-		.groups = 0,
-		.input = udp_receive,
-	};
-#endif
+	NETLINK_KERNEL_CFG_DECLARE(cfg, udp_receive);
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 7, 0)
-	ilitek_netlink_sock = netlink_kernel_create(&init_net, NETLINK_USERSOCK, &cfg);
-#elif LINUX_VERSION_CODE < KERNEL_VERSION(3, 6, 0)
-	ilitek_netlink_sock = netlink_kernel_create(&init_net, NETLINK_CRYPTO, 0, udp_receive, NULL, THIS_MODULE);
-#else
-	ilitek_netlink_sock = netlink_kernel_create(&init_net, NETLINK_CRYPTO, THIS_MODULE, &cfg);
-#endif
+	ilitek_netlink_sock = NETLINK_KERNEL_CREATE(NETLINK_USERSOCK, &cfg, udp_receive);
 
 	if (!ilitek_netlink_sock)
 		tp_err("netlink_kernel_create failed\n");
@@ -1732,39 +1798,6 @@ static int __maybe_unused ilitek_init_netlink(void)
 	ilitek_debug_flag = false;
 #endif
 	return 0;
-}
-
-int ilitek_read_tp_info(bool boot)
-{
-	int ret = 0;
-	uint8_t outbuf[64] = {0};
-
-	tp_msg("driver version %d.%d.%d.%d.%d.%d.%d\n",
-		ilitek_driver_information[0], ilitek_driver_information[1],
-		ilitek_driver_information[2], ilitek_driver_information[3],
-		ilitek_driver_information[4], ilitek_driver_information[5],
-		ilitek_driver_information[6]);
-	if (api_set_testmode(true) < ILITEK_SUCCESS)
-		goto transfer_err;
-	if (api_ptl_set_cmd(GET_MCU_MOD, NULL, outbuf) < ILITEK_SUCCESS)
-		goto transfer_err;
-	if (api_ptl_set_cmd(GET_PTL_VER, NULL, outbuf) < ILITEK_SUCCESS)
-		goto transfer_err;
-	if (api_ptl_set_cmd(GET_MCU_VER, NULL, outbuf) < ILITEK_SUCCESS)
-		goto transfer_err;
-	if (api_ptl_set_cmd(GET_FW_VER, NULL, outbuf) < ILITEK_SUCCESS)
-		goto transfer_err;
-	if (boot && api_ptl_set_cmd(GET_SCRN_RES, NULL, outbuf) < ILITEK_SUCCESS)
-			goto transfer_err;
-	if (api_ptl_set_cmd(GET_TP_RES, NULL, outbuf) < ILITEK_SUCCESS)
-		goto transfer_err;
-	if (api_set_testmode(false) < ILITEK_SUCCESS)
-		goto transfer_err;
-
-	return ret;
-transfer_err:
-	tp_err("failed\n");
-	return ILITEK_FAIL;
 }
 
 static int __maybe_unused ilitek_alloc_dma(void)
@@ -1781,7 +1814,6 @@ static int __maybe_unused ilitek_alloc_dma(void)
 		}
 	}
 	memset(I2CDMABuf_va, 0, ILITEK_DMA_SIZE);
-	//ts->client->ext_flag |= I2C_DMA_FLAG;
 #endif
 
 	return 0;
@@ -1804,51 +1836,35 @@ static int __maybe_unused ilitek_free_dma(void)
 
 static int __maybe_unused ilitek_power_on(bool status)
 {
-	int ret = 0;
+#ifdef ILITEK_ENABLE_REGULATOR_POWER_ON
+	int error;
 
 	tp_msg("%s\n", status ? "POWER ON" : "POWER OFF");
 
-#ifdef ILITEK_ENABLE_REGULATOR_POWER_ON
-#if ILITEK_PLAT == ILITEK_PLAT_ALLWIN
-	input_set_power_enable(&(config_info.input_type), status);
-#else
-
 	if (status) {
-		if (ts->vdd) {
-			ret = regulator_enable(ts->vdd);
-			if (ret < 0) {
-				tp_err("regulator_enable vdd fail\n");
-				return -EINVAL;
-			}
+		if (ts->vdd && (error = regulator_enable(ts->vdd)) < 0) {
+			tp_err("regulator_enable vdd fail\n");
+			return error;
 		}
-		if (ts->vdd_i2c) {
-			ret = regulator_enable(ts->vdd_i2c);
-			if (ret < 0) {
-				tp_err("regulator_enable vdd_i2c fail\n");
-				return -EINVAL;
-			}
+		if (ts->vdd_i2c &&
+		    (error = regulator_enable(ts->vdd_i2c)) < 0) {
+			tp_err("regulator_enable vdd_i2c fail\n");
+			return error;
 		}
 	} else {
-		if (ts->vdd) {
-			ret = regulator_disable(ts->vdd);
-			if (ret < 0)
-				tp_err("regulator_enable vdd fail\n");
+		if (ts->vdd && (error = regulator_disable(ts->vdd)) < 0) {
+			tp_err("regulator_enable vdd fail\n");
+			return error;
 		}
-		if (ts->vdd_i2c) {
-			ret = regulator_disable(ts->vdd_i2c);
-			if (ret < 0)
-				tp_err("regulator_enable vdd_i2c fail\n");
+		if (ts->vdd_i2c &&
+		    (error = regulator_disable(ts->vdd_i2c)) < 0) {
+			tp_err("regulator_enable vdd_i2c fail\n");
+			return error;
 		}
 	}
-
-#ifdef MTK_UNDTS
-	if (status)
-		hwPowerOn(PMIC_APP_CAP_TOUCH_VDD, VOL_3300, "TP");
-#endif
-#endif
 #endif
 
-	return ret;
+	return 0;
 }
 
 static int __maybe_unused ilitek_request_regulator(struct ilitek_ts_data *ts)
@@ -1858,20 +1874,7 @@ static int __maybe_unused ilitek_request_regulator(struct ilitek_ts_data *ts)
 	char *vdd_name = "vdd";
 	char *vcc_i2c_name = "vcc_i2c";
 
-#if ILITEK_PLAT == ILITEK_PLAT_MTK
-	vdd_name = "vtouch";
-	ts->vdd = regulator_get(tpd->tpd_dev, vdd_name);
-	tpd->reg = ts->vdd;
-	if (IS_ERR(ts->vdd)) {
-		tp_err("regulator_get vdd fail\n");
-		ts->vdd = NULL;
-	} else {
-		ret = regulator_set_voltage(ts->vdd, 3000000, 3300000);
-		if (ret)
-			tp_err("Could not set vdd to 3000~3300mv.\n");
-	}
-#elif ILITEK_PLAT != ILITEK_PLAT_ALLWIN
-	ts->vdd = regulator_get(&ts->client->dev, vdd_name);
+	ts->vdd = regulator_get(ts->device, vdd_name);
 	if (IS_ERR(ts->vdd)) {
 		tp_err("regulator_get vdd fail\n");
 		ts->vdd = NULL;
@@ -1882,7 +1885,7 @@ static int __maybe_unused ilitek_request_regulator(struct ilitek_ts_data *ts)
 
 	}
 
-	ts->vdd_i2c = regulator_get(&ts->client->dev, vcc_i2c_name);
+	ts->vdd_i2c = regulator_get(ts->device, vcc_i2c_name);
 	if (IS_ERR(ts->vdd_i2c)) {
 		tp_err("regulator_get vdd_i2c fail\n");
 		ts->vdd_i2c = NULL;
@@ -1891,7 +1894,6 @@ static int __maybe_unused ilitek_request_regulator(struct ilitek_ts_data *ts)
 		if (ret)
 			tp_err("Could not set i2c to 3000~3300mv.\n");
 	}
-#endif /* ILITEK_PLAT == ILITEK_PLAT_MTK */
 #endif /* ILITEK_ENABLE_REGULATOR_POWER_ON */
 
 	return 0;
@@ -1899,7 +1901,7 @@ static int __maybe_unused ilitek_request_regulator(struct ilitek_ts_data *ts)
 
 static void __maybe_unused ilitek_release_regulator(void)
 {
-#if defined(ILITEK_ENABLE_REGULATOR_POWER_ON) && ILITEK_PLAT != ILITEK_PLAT_ALLWIN
+#if defined(ILITEK_ENABLE_REGULATOR_POWER_ON)
 	if (ts->vdd)
 		regulator_put(ts->vdd);
 	if (ts->vdd_i2c)
@@ -1910,7 +1912,7 @@ static void __maybe_unused ilitek_release_regulator(void)
 void ilitek_register_gesture(struct ilitek_ts_data *ts, bool init)
 {
 	if (init) {
-		device_init_wakeup(&ts->client->dev, 1);
+		device_init_wakeup(ts->device, 1);
 
 #ifdef ILITEK_WAKELOCK_SUPPORT
 		wake_lock_init(&ilitek_wake_lock, WAKE_LOCK_SUSPEND, "ilitek wakelock");
@@ -1918,112 +1920,156 @@ void ilitek_register_gesture(struct ilitek_ts_data *ts, bool init)
 		return;
 	}
 
-	device_init_wakeup(&ts->client->dev, 0);
+	device_init_wakeup(ts->device, 0);
 
 #ifdef ILITEK_WAKELOCK_SUPPORT
 	wake_lock_destroy(&ilitek_wake_lock);
 #endif
 }
 
-
-int ilitek_main_probe(struct i2c_client *client, const struct i2c_device_id *id)
+static int _ilitek_write_then_read(unsigned char *wbuf, int wlen,
+				   unsigned char *rbuf, int rlen, void *data)
 {
-	int ret = 0;
+	return ilitek_write_and_read(wbuf, wlen, 1, rbuf, rlen);
+}
 
-	if (!client) {
-		tp_err("i2c client is NULL\n");
-		return -1;
-	}
+static void _ilitek_init_ack(void *data)
+{
+	ilitek_irq_enable();
+	ts->unhandle_irq = true;
+	atomic_set(&ts->get_INT, 0);
+}
 
-	tp_msg("ILITEK client->addr = 0x%x client->irq = %d\n",
-		    client->addr, client->irq);
+static int _ilitek_wait_ack(uint8_t cmd, unsigned int tout_ms, void *data)
+{
+	unsigned int t_ms = 0;
+	int tmp, error = -ETIME;
 
-	if (client->addr != 0x41)
-		client->addr = 0x41;
+	UNUSED(cmd);
 
-	ts = kzalloc(sizeof(*ts), GFP_KERNEL);
-	if (!ts) {
-		tp_err("Alloc GFP_KERNEL memory failed\n");
+	do {
+		if ((tmp = atomic_read(&ts->get_INT))) {
+			error = 0;
+			break;
+		}
+
+		udelay(1000);
+		t_ms++;
+	} while (t_ms < tout_ms);
+
+	ts->unhandle_irq = false;
+	ilitek_irq_disable();
+
+	return error;
+}
+
+static void _ilitek_delay(unsigned int delay_ms)
+{
+	udelay(delay_ms * 1000);
+}
+
+static int _ilitek_reset(unsigned int delay_ms, void *data)
+{
+	/* return error if no reset gpio found */
+	if (ts->reset_gpio < 0)
+		return -ENODEV;
+
+	ilitek_reset(delay_ms);
+	return 0;
+}
+
+struct ilitek_ts_callback dev_cb = {
+	.write_then_read = _ilitek_write_then_read,
+	.read_interrupt_in = NULL,
+	.init_ack = _ilitek_init_ack,
+	.wait_ack = _ilitek_wait_ack,
+	.hw_reset = _ilitek_reset,
+	.re_enum = NULL,
+	.delay_ms = _ilitek_delay,
+	.msg = NULL,
+};
+
+int ilitek_main_probe(void *client, struct device *device)
+{
+	tp_msg("driver version: %hhu.%hhu.%hhu.%hhu.%hhu.%hhu.%hhu\n",
+		driver_ver[0], driver_ver[1], driver_ver[2], driver_ver[3],
+		driver_ver[4], driver_ver[5], driver_ver[6]);
+
+	if (!(ts = kzalloc(sizeof(*ts), GFP_KERNEL))) {
+		tp_err("allocate ts failed\n");
 		return -ENOMEM;
 	}
-	ts->irq_registerred = false;
 
 	ts->client = client;
-	ts->ilitek_log_level_value = ILITEK_DEFAULT_LOG_LEVEL;
-	tp_msg("ilitek log level: %d\n", ts->ilitek_log_level_value);
-	ts->ilitek_repeat_start = true;
+	ts->device = device;
+
 	mutex_init(&ts->ilitek_mutex);
 	ts->unhandle_irq = false;
 
 	ilitek_alloc_dma();
-
 	ilitek_request_regulator(ts);
 	ilitek_power_on(true);
-
 	ilitek_request_gpio();
 
 	ilitek_reset(1000);
-	ret = api_init_func();
-	if (ret < 0) {
-		tp_err("init read tp protocol error so exit\n");
-		goto err_free_gpio;
-	}
-	ilitek_read_tp_info(true);
 
-#ifdef ILITEK_UPDATE_FW
-	ts->update_thread = kthread_run(ilitek_update_thread, NULL, "ilitek_update_thread");
-	if (ts->update_thread == (struct task_struct *)ERR_PTR) {
-		ts->update_thread = NULL;
-		tp_err("kthread create ilitek_update_thread, error\n");
+	ts->dev = ilitek_dev_init(interface_i2c, &dev_cb, ts);
+	if (!ts->dev)
+		goto err_free_gpio;
+
+	if (ts->dev->protocol.flag == PTL_V6) {
+		ts->process_and_report = ilitek_read_data_and_report_6XX;
+		ts->irq_trigger_type = IRQF_TRIGGER_RISING;
+	} else {
+		ts->process_and_report = ilitek_read_data_and_report_3XX;
+		ts->irq_trigger_type = IRQF_TRIGGER_FALLING;
 	}
+
+	if (ilitek_request_irq())
+		goto err_dev_exit;
+
+#ifdef ILITEK_BOOT_UPDATE
+	ts->update_thread = kthread_run(ilitek_update_thread, NULL,
+					"ilitek_update_thread");
+	if (IS_ERR(ts->update_thread))
+		goto err_free_irq;
 #else
-	ret = ilitek_request_input_dev();
-	if (ret) {
-		tp_err("ilitek_request_input_dev failed, err: %d\n", ret);
-		goto err_free_gpio;
-	}
-
-	ret = ilitek_request_irq();
-	if (ret) {
-		tp_err("ilitek_request_irq failed, err: %d\n", ret);
-		input_free_device(ts->input_dev);
-		goto err_free_gpio;
-	}
-#endif
-
-#ifdef ILITEK_ISR_PROTECT
-	tp_msg("ILITEK_ISR_PROTECT is enabled\n");
+	if (ilitek_request_input_dev())
+		goto err_free_irq;
 #endif
 
 	ilitek_register_resume_suspend();
-
 	ilitek_create_sysfsnode();
-
-#ifdef ILITEK_TOOL
 	ilitek_create_tool_node();
-#endif
 	ilitek_init_netlink();
 
-	ilitek_create_esdandcharge_workqueue();
+	if ((ts->esd_check = ILITEK_ESD_CHECK_ENABLE))
+		ilitek_create_esd_check_workqueue();
 
-	ts->gesture_status = ILITEK_GESTURE_DEFAULT;
-	if (ts->gesture_status)
+	if ((ts->gesture_status = ILITEK_GESTURE_DEFAULT))
 		ilitek_register_gesture(ts, true);
 
+	ts->low_power_status = ILITEK_LOW_POWER_DEFAULT;
+
 	return 0;
+
+err_free_irq:
+	free_irq(ts->irq, ts);
+
+err_dev_exit:
+	ilitek_dev_exit(ts->dev);
 
 err_free_gpio:
 	ilitek_free_gpio();
 	ilitek_power_on(false);
 	ilitek_release_regulator();
-
-	tp_err("return -ENODEV\n");
+	ilitek_free_dma();
 	kfree(ts);
 
 	return -ENODEV;
 }
 
-int ilitek_main_remove(struct i2c_client *client)
+int ilitek_main_remove(void *client)
 {
 	tp_msg("\n");
 
@@ -2033,48 +2079,35 @@ int ilitek_main_remove(struct i2c_client *client)
 	if (ts->gesture_status)
 		ilitek_register_gesture(ts, false);
 
-#ifndef MTK_UNDTS
-	free_irq(ts->client->irq, ts);
-#endif
+	ilitek_remove_esd_check_workqueue();
 
 #ifdef ILITEK_TUNING_MESSAGE
-	if (ilitek_netlink_sock != NULL) {
+	if (ilitek_netlink_sock)
 		netlink_kernel_release(ilitek_netlink_sock);
-		ilitek_netlink_sock = NULL;
-	}
 #endif
 
+	ilitek_remove_tool_node();
+	ilitek_remove_sys_node();
 	ilitek_release_resume_suspend();
 
-	if (ts->input_dev) {
+	if (ts->pen_input_dev)
+		input_unregister_device(ts->pen_input_dev);
+
+	if (ts->input_dev)
 		input_unregister_device(ts->input_dev);
-		ts->input_dev = NULL;
-	}
 
-#ifdef ILITEK_TOOL
-	ilitek_remove_tool_node();
+#ifndef MTK_UNDTS
+	free_irq(ts->irq, ts);
 #endif
 
-	ilitek_remove_sys_node();
-
-#ifdef ILITEK_ESD_PROTECTION
-	if (ts->esd_wq) {
-		cancel_delayed_work(&ts->esd_work);
-		flush_workqueue(ts->esd_wq);
-		destroy_workqueue(ts->esd_wq);
-		ts->esd_wq = NULL;
-	}
-#endif
-
-	ilitek_power_on(false);
-	ilitek_release_regulator();
+	ilitek_dev_exit(ts->dev);
 
 	ilitek_free_gpio();
-
+	ilitek_power_on(false);
+	ilitek_release_regulator();
 	ilitek_free_dma();
 
 	kfree(ts);
-	ts = NULL;
 
 	return 0;
 }

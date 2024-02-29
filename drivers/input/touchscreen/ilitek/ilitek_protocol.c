@@ -1,708 +1,1658 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
- * ILITEK Touch IC driver
+ * This file is part of ILITEK CommonFlow
  *
- * Copyright (C) 2011 ILI Technology Corporation.
- *
- * Author: Luca Hsu <luca_hsu@ilitek.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
- * MA 02110-1301 USA.
- *
+ * Copyright (c) 2022 ILI Technology Corp.
+ * Copyright (c) 2022 Luca Hsu <luca_hsu@ilitek.com>
+ * Copyright (c) 2022 Joe Hung <joe_hung@ilitek.com>
  */
-#include "ilitek_common.h"
-#include <linux/slab.h>
-#include <linux/delay.h>
+
 #include "ilitek_protocol.h"
 
-typedef int protocol_func(uint8_t *inbuf, uint8_t *outbuf);
+//TODO: should be adjustable by public APIs
+int tp_log_level = ILITEK_LOG_MSG;
 
-typedef struct
-{
-	uint16_t cmd;
-	protocol_func *func;
-	uint8_t *name;
+char g_str[4096];
+msg_t g_msg = NULL;
+
+typedef int (*protocol_func_t)(struct ilitek_ts_device *, void *);
+
+struct protocol_map {
+	uint8_t cmd;
 	uint8_t flag;
-} PROTOCOL_MAP;
+	protocol_func_t func;
+	const char *desc;
+};
 
+#define X(_cmd, _protocol, _cmd_id, _api) \
+	static int _api(struct ilitek_ts_device *, void *);
+ILITEK_CMD_MAP
+#undef X
 
-static int api_ptl_set_func_mode(uint8_t *inbuf, uint8_t *outbuf)
+#define X(_cmd, _protocol, _cmd_id, _api) {_cmd, _protocol, _api, #_cmd_id},
+struct protocol_map protocol_maps[] = { ILITEK_CMD_MAP };
+#undef X
+
+uint16_t le16(const uint8_t *p)
 {
-	int ret = ILITEK_SUCCESS;
-
-	inbuf[0] = CMD_SET_FUNC_MOD;
-	ret = ilitek_i2c_write_and_read(inbuf, 4, 10, outbuf, 0);
-	return ret;
-}
-static int api_ptl_system_busy(uint8_t *inbuf, uint8_t *outbuf)
-{
-	int ret = ILITEK_SUCCESS;
-
-	inbuf[0] = CMD_GET_SYS_BUSY;
-	ret = ilitek_i2c_write_and_read(inbuf, 1, 10, outbuf, 1);
-	return ret;
+	return p[0] | p[1] << 8;
 }
 
-static int api_ptl_set_test_mode(uint8_t *inbuf, uint8_t *outbuf)
+uint16_t be16(const uint8_t *p)
 {
-	int ret = ILITEK_SUCCESS;
-
-	inbuf[0] = CMD_SET_TEST_MOD;
-	ret = ilitek_i2c_write_and_read(inbuf, 2, 0, outbuf, 0);
-	return ret;
+	return p[1] | p[0] << 8;
 }
 
-static int api_ptl_write_enable(uint8_t *inbuf, uint8_t *outbuf)
+uint32_t le32(const uint8_t *p, int bytes)
 {
-	int ret = ILITEK_SUCCESS;
-	uint8_t buf[64] = {0};
+	uint32_t val = 0;
 
-	buf[0] = CMD_WRITE_ENABLE;
-	buf[1] = 0x5A;
-	buf[2] = 0xA5;
-	ret = ilitek_i2c_write_and_read(buf, 3, 0, outbuf, 0);
-	return ret;
+	while (bytes--)
+		val += (p[bytes] << (8 * bytes));
+
+	return val;
 }
 
-static int api_ptl_set_apmode(uint8_t *inbuf, uint8_t *outbuf)
+uint32_t be32(const uint8_t *p, int bytes)
 {
-	int ret = ILITEK_SUCCESS;
-	uint8_t buf[64] = {0};
+	uint32_t val = 0;
 
-	buf[0] = CMD_SET_AP_MODE;
-	ret = ilitek_i2c_write_and_read(buf, 1, 0, outbuf, 0);
-	return ret;
+	while (bytes--)
+		val = (val << 8) | (*p++);
+
+	return val;
 }
 
-static int api_ptl_set_blmode(uint8_t *inbuf, uint8_t *outbuf)
+static uint16_t update_crc(uint16_t crc, uint8_t newbyte)
 {
-	int ret = ILITEK_SUCCESS;
-	uint8_t buf[64] = {0};
+	char i;
+	const uint16_t crc_poly = 0x8408;
 
-	buf[0] = CMD_SET_BL_MODE;
-	buf[1] = 0x5A;
-	buf[2] = 0xA5;
-	ret = ilitek_i2c_write_and_read(buf, 1, 0, outbuf, 0);
-	return ret;
-}
+	crc ^= newbyte;
 
-static int api_ptl_get_mcu_ver(uint8_t *inbuf, uint8_t *outbuf)
-{
-	uint8_t buf[64] = {0};
-
-	ts->ic_type = 0;
-
-	buf[0] = CMD_GET_MCU_VER;
-	if (ilitek_i2c_write_and_read(buf, 1, 5, outbuf, 32) < 0)
-		return ILITEK_FAIL;
-
-	memcpy(ts->mcu_ver, outbuf, 5);
-	memset(ts->product_id, 0, sizeof(ts->product_id));
-	memcpy(ts->product_id, outbuf + 6, 26);
-
-	ts->ic_type = ts->mcu_ver[0] + (ts->mcu_ver[1] << 8);
-	tp_msg("MCU KERNEL version:0x%x\n", ts->ic_type);
-	tp_msg("Module name:%s\n", ts->product_id);
-
-	if (ts->ptl.ver >= PROTOCOL_V6 || ts->ptl.ver == BL_V1_8)
-		ts->upg.ic_df_start_addr = (outbuf[4] << 16) + (outbuf[3] << 8) + outbuf[2];
-	else
-		ts->upg.ic_df_start_addr = (outbuf[2] << 16) + (outbuf[3] << 8) + outbuf[4];
-
-	tp_msg("IC DF start addr:0x%x\n", ts->upg.ic_df_start_addr);
-
-	return ILITEK_SUCCESS;
-}
-
-static int api_ptl_check_mode(uint8_t *inbuf, uint8_t *outbuf)
-{
-	int ret = ILITEK_SUCCESS;
-	uint8_t buf[64] = {0};
-
-	buf[0] = CMD_GET_MCU_MOD;
-	ret = ilitek_i2c_write_and_read(buf, 1, 5, outbuf, 2);
-	tp_msg("ilitek ic. mode =%d , it's %s\n", outbuf[0], ((outbuf[0] == 0x5A) ? "AP MODE" : "BL MODE"));
-
-	ts->force_update = false;
-
-#ifdef ILITEK_UPDATE_FW
-	if (outbuf[0] == 0x55)
-		ts->force_update = true;
-#endif
-	return ret;
-}
-
-static int api_ptl_get_fw_ver(uint8_t *inbuf, uint8_t *outbuf)
-{
-	int ret = ILITEK_SUCCESS;
-	uint8_t buf[64] = {0};
-
-	buf[0] = CMD_GET_FW_VER;
-	ret = ilitek_i2c_write_and_read(buf, 1, 5, outbuf, 8);
-
-	memcpy(ts->fw_ver, outbuf, 8);
-
-	tp_msg_arr("firmware version:", ts->fw_ver, 8);
-
-	return ret;
-}
-
-static int api_ptl_get_ptl_ver(uint8_t *inbuf, uint8_t *outbuf)
-{
-	int ret = ILITEK_SUCCESS;
-	uint8_t buf[64] = {0};
-
-	buf[0] = CMD_GET_PTL_VER;
-	if (ilitek_i2c_write_and_read(buf, 1, 5, outbuf, 3) < ILITEK_SUCCESS)
-		return ILITEK_FAIL;
-	ts->ptl.ver = (((int)outbuf[0]) << 16) + (((int)outbuf[1]) << 8);
-	ts->ptl.ver_major = outbuf[0];
-	ts->ptl.ver_mid = outbuf[1];
-	ts->ptl.ver_minor = outbuf[2];
-
-	ts->bl_ver = (outbuf[0] << 8) + outbuf[1];
-
-	tp_msg("protocol version: %d.%d.%d  ts->ptl.ver = 0x%x\n",
-		ts->ptl.ver_major, ts->ptl.ver_mid, ts->ptl.ver_minor,
-		ts->ptl.ver);
-	return ret;
-}
-
-static int api_ptl_get_sc_res(uint8_t *inbuf, uint8_t *outbuf)
-{
-	int ret = ILITEK_SUCCESS;
-	uint8_t buf[64] = {0};
-
-	buf[0] = CMD_GET_SCRN_RES;
-	ret = ilitek_i2c_write_and_read(buf, 1, 5, outbuf, 8);
-	ts->screen_min_x = outbuf[0];
-	ts->screen_min_x += ((int)outbuf[1]) * 256;
-	ts->screen_min_y = outbuf[2];
-	ts->screen_min_y += ((int)outbuf[3]) * 256;
-	ts->screen_max_x = outbuf[4];
-	ts->screen_max_x += ((int)outbuf[5]) * 256;
-	ts->screen_max_y = outbuf[6];
-	ts->screen_max_y += ((int)outbuf[7]) * 256;
-	tp_msg("screen_min_x: %d, screen_min_y: %d screen_max_x: %d, screen_max_y: %d\n",
-		    ts->screen_min_x, ts->screen_min_y, ts->screen_max_x, ts->screen_max_y);
-	return ret;
-}
-
-static int api_ptl_set_sleep(uint8_t *inbuf, uint8_t *outbuf)
-{
-	int ret = ILITEK_SUCCESS;
-	uint8_t buf[64] = {0};
-
-	buf[0] = CMD_SET_IC_SLEEP;
-	ret = ilitek_i2c_write_and_read(buf, 1, 0, outbuf, 0);
-	return ret;
-}
-
-static int api_ptl_set_wakeup(uint8_t *inbuf, uint8_t *outbuf)
-{
-	int ret = ILITEK_SUCCESS;
-	uint8_t buf[64] = {0};
-
-	buf[0] = CMD_SET_IC_WAKE;
-	ret = ilitek_i2c_write_and_read(buf, 1, 0, outbuf, 0);
-	return ret;
-}
-
-static int api_ptl_get_key_info_v3(uint8_t *inbuf, uint8_t *outbuf)
-{
-	int ret = ILITEK_SUCCESS, i = 0;
-	uint8_t buf[64] = {0};
-	int key_num = ts->keycount;
-
-	buf[0] = CMD_GET_KEY_INFO;
-	ret = ilitek_i2c_write_and_read(buf, 1, 10, outbuf, ILITEK_KEYINFO_FIRST_PACKET);
-	if (ret < 0)
-		return ret;
-	if (key_num > 5) {
-		for (i = 0; i < CEIL(key_num, ILITEK_KEYINFO_FORMAT_LENGTH) - 1; i++) {
-			tp_msg("read keyinfo times i = %d\n", i);
-			ret = ilitek_i2c_write_and_read(buf, 0, 10,
-					outbuf + ILITEK_KEYINFO_FIRST_PACKET + ILITEK_KEYINFO_OTHER_PACKET * i,
-					ILITEK_KEYINFO_OTHER_PACKET);
-			if (ret < 0)
-				return ret;
-		}
+	for (i = 0; i < 8; i++) {
+		if (crc & 0x01)
+			crc = (crc >> 1) ^ crc_poly;
+		else
+			crc = crc >> 1;
 	}
 
-	ts->key_xlen = (outbuf[0] << 8) + outbuf[1];
-	ts->key_ylen = (outbuf[2] << 8) + outbuf[3];
-	tp_msg("key_xlen: %d, key_ylen: %d\n", ts->key_xlen, ts->key_ylen);
-
-	for (i = 0; i < key_num; i++) {
-		ts->keyinfo[i].id = outbuf[i * ILITEK_KEYINFO_FORMAT_LENGTH + ILITEK_KEYINFO_V3_HEADER + ILITEK_KEYINFO_FORMAT_ID];
-		ts->keyinfo[i].x = (outbuf[i * ILITEK_KEYINFO_FORMAT_LENGTH + ILITEK_KEYINFO_V3_HEADER + ILITEK_KEYINFO_FORMAT_X_MSB] << 8)
-			+ outbuf[i * ILITEK_KEYINFO_FORMAT_LENGTH + ILITEK_KEYINFO_V3_HEADER + ILITEK_KEYINFO_FORMAT_X_LSB];
-		ts->keyinfo[i].y = (outbuf[i * ILITEK_KEYINFO_FORMAT_LENGTH + ILITEK_KEYINFO_V3_HEADER + ILITEK_KEYINFO_FORMAT_Y_MSB] << 8)
-			+ outbuf[i * ILITEK_KEYINFO_FORMAT_LENGTH + ILITEK_KEYINFO_V3_HEADER + ILITEK_KEYINFO_FORMAT_Y_LSB];
-		ts->keyinfo[i].status = 0;
-		tp_msg("key_id: %d, key_x: %d, key_y: %d, key_status: %d\n",
-				ts->keyinfo[i].id, ts->keyinfo[i].x, ts->keyinfo[i].y, ts->keyinfo[i].status);
-	}
-	return ret;
-}
-
-static int api_ptl_get_tp_res_v3(uint8_t *inbuf, uint8_t *outbuf)
-{
-	int ret = ILITEK_SUCCESS;
-	uint8_t buf[64] = {0};
-
-	buf[0] = CMD_GET_TP_RES;
-	ret = ilitek_i2c_write_and_read(buf, 1, 5, outbuf, 10);
-	if (ret < 0)
-		return ret;
-	ts->max_tp = outbuf[6];
-	ts->max_btn = outbuf[7];
-	ts->keycount = outbuf[8];
-	if (ts->keycount > 20) {
-		tp_err("exception keycount > 20 is %d set keycount = 0\n", ts->keycount);
-		ts->keycount = 0;
-	}
-	ts->tp_max_x = outbuf[0];
-	ts->tp_max_x += ((int)outbuf[1]) << 8;
-	ts->tp_max_y = outbuf[2];
-	ts->tp_max_y += ((int)outbuf[3]) << 8;
-	ts->x_ch = outbuf[4];
-	ts->y_ch = outbuf[5];
-
-	if (ts->keycount > ILITEK_SUPPORT_MAX_KEY_CNT) {
-		tp_err("exception keycount %d > %d\n", ts->keycount, ILITEK_SUPPORT_MAX_KEY_CNT);
-		return -EINVAL;
-	} else if (ts->keycount > 0 && ts->ptl.ver_major > 0x1) {
-		ret = api_ptl_get_key_info_v3(NULL, outbuf);
-		if (ret < 0)
-			return ret;
-	}
-
-	if (ts->max_tp > 40) {
-		tp_err("exception max_tp > 40 is %d set max_tp = 10\n", ts->max_tp);
-		ts->max_tp = 10;
-	}
-	tp_msg("tp_min_x: %d, tp_max_x: %d, tp_min_y: %d, tp_max_y: %d, ch_x: %d, ch_y: %d, max_tp: %d, key_count: %d\n",
-			ts->tp_min_x, ts->tp_max_x, ts->tp_min_y, ts->tp_max_y, ts->x_ch,
-			ts->y_ch, ts->max_tp, ts->keycount);
-	return ret;
-}
-
-static int api_ptl_get_key_info_v6(uint8_t *inbuf, uint8_t *outbuf)
-{
-	int ret = ILITEK_SUCCESS, i = 0;
-	uint8_t buf[64] = {0};
-	int key_num = ts->keycount;
-
-	buf[0] = CMD_GET_KEY_INFO;
-	ret = ilitek_i2c_write_and_read(buf, 1, 10, outbuf, ILITEK_KEYINFO_FIRST_PACKET);
-	if (ret < 0)
-		return ret;
-
-	ts->key_xlen = (outbuf[2] << 8) + outbuf[1];
-	ts->key_ylen = (outbuf[4] << 8) + outbuf[3];
-	tp_msg("v6 key_xlen: %d, key_ylen: %d\n", ts->key_xlen, ts->key_ylen);
-
-	for (i = 0; i < key_num; i++) {
-		ts->keyinfo[i].id = outbuf[i * ILITEK_KEYINFO_FORMAT_LENGTH + ILITEK_KEYINFO_V6_HEADER + ILITEK_KEYINFO_FORMAT_ID];
-		ts->keyinfo[i].x = (outbuf[i * ILITEK_KEYINFO_FORMAT_LENGTH + ILITEK_KEYINFO_V6_HEADER + ILITEK_KEYINFO_FORMAT_X_LSB] << 8)
-			+ outbuf[i * ILITEK_KEYINFO_FORMAT_LENGTH + ILITEK_KEYINFO_V6_HEADER + ILITEK_KEYINFO_FORMAT_X_MSB];
-		ts->keyinfo[i].y = (outbuf[i * ILITEK_KEYINFO_FORMAT_LENGTH + ILITEK_KEYINFO_V6_HEADER + ILITEK_KEYINFO_FORMAT_Y_LSB] << 8)
-			+ outbuf[i * ILITEK_KEYINFO_FORMAT_LENGTH + ILITEK_KEYINFO_V6_HEADER + ILITEK_KEYINFO_FORMAT_Y_MSB];
-		ts->keyinfo[i].status = 0;
-		tp_msg("key_id: %d, key_x: %d, key_y: %d, key_status: %d\n",
-				ts->keyinfo[i].id, ts->keyinfo[i].x, ts->keyinfo[i].y, ts->keyinfo[i].status);
-	}
-	return ret;
-}
-
-static int api_ptl_get_tp_res_v6(uint8_t *inbuf, uint8_t *outbuf)
-{
-	int ret = ILITEK_SUCCESS;
-	uint8_t buf[64] = {0};
-
-	buf[0] = CMD_GET_TP_RES;
-	ret = ilitek_i2c_write_and_read(buf, 1, 5, outbuf, 15);
-	if (ret < 0)
-		return ret;
-	ts->tp_max_x = outbuf[0];
-	ts->tp_max_x += ((int)outbuf[1]) << 8;
-	ts->tp_max_y = outbuf[2];
-	ts->tp_max_y += ((int)outbuf[3]) << 8;
-	ts->x_ch = outbuf[4] + ((int)outbuf[5] << 8);
-	ts->y_ch = outbuf[6] + ((int)outbuf[7] << 8);
-	ts->max_tp = outbuf[8];
-	ts->keycount = outbuf[9];
-	ts->ic_num = outbuf[10];
-	ts->format = outbuf[12];
-
-	if (ts->keycount > ILITEK_SUPPORT_MAX_KEY_CNT) {
-		tp_err("exception keycount %d > %d\n", ts->keycount, ILITEK_SUPPORT_MAX_KEY_CNT);
-		return -EINVAL;
-	} else if (ts->keycount > 0 && ts->ptl.ver_major > 0x1) {
-		ret = api_ptl_get_key_info_v6(NULL, outbuf);
-		if (ret < 0)
-			return ret;
-	}
-	if (ts->max_tp > 40) {
-		tp_err("exception max_tp > 40 is %d set max_tp = 40\n", ts->max_tp);
-		ts->max_tp = 40;
-	}
-	tp_msg("tp_min_x: %d, tp_max_x: %d, tp_min_y: %d, tp_max_y: %d, ch_x: %d, ch_y: %d, max_tp: %d, key_count: %d, ic_num: %d report format: %d\n",
-			ts->tp_min_x, ts->tp_max_x, ts->tp_min_y, ts->tp_max_y, ts->x_ch,
-			ts->y_ch, ts->max_tp, ts->keycount, ts->ic_num, ts->format);
-	return ret;
-}
-
-static int api_ptl_get_key_info(uint8_t *inbuf, uint8_t *outbuf)
-{
-	if (ts->ptl.flag == PTL_V3)
-		return api_ptl_get_key_info_v3(inbuf, outbuf);
-	else if (ts->ptl.flag == PTL_V6)
-		return api_ptl_get_key_info_v6(inbuf, outbuf);
-	else
-		return -EINVAL;
-}
-
-static int api_ptl_get_tp_res(uint8_t *inbuf, uint8_t *outbuf)
-{
-	if (ts->ptl.flag == PTL_V3)
-		return api_ptl_get_tp_res_v3(inbuf, outbuf);
-	else if (ts->ptl.flag == PTL_V6)
-		return api_ptl_get_tp_res_v6(inbuf, outbuf);
-	else
-		return -EINVAL;
-}
-
-
-static int api_ptl_write_flash_enable(uint8_t *inbuf, uint8_t *outbuf)
-{
-	int ret = ILITEK_SUCCESS;
-	uint8_t buf[64] = {0};
-
-	buf[0] = CMD_SET_W_FLASH;
-	buf[1] = 0x5A;
-	buf[2] = 0xA5;
-	ret = ilitek_i2c_write_and_read(buf, 3, 0, outbuf, 0);
-	return ret;
-}
-
-static int api_ptl_get_block_crc(uint8_t *inbuf, uint8_t *outbuf)
-{
-	int ret = ILITEK_SUCCESS;
-	uint16_t crc=0;
-
-	inbuf[0] = CMD_GET_BLK_CRC;
-	if (inbuf[1] == 0) {
-		ret = ilitek_i2c_write_and_read(inbuf, 8, 10, outbuf, 0);
-		ret = ilitek_check_busy(50, 50, ILITEK_TP_SYSTEM_BUSY);
-	}
-	inbuf[1] = 1;
-	ret = ilitek_i2c_write_and_read(inbuf, 2, 1, outbuf, 2);
-	crc = outbuf[0]+(outbuf[1] << 8);
 	return crc;
 }
 
-static int api_ptl_set_mode(uint8_t *inbuf, uint8_t *outbuf)
+uint16_t get_crc(uint32_t start, uint32_t end,
+		 uint8_t *buf, uint32_t buf_size)
 {
-	int ret = ILITEK_SUCCESS;
-	inbuf[0] = CMD_SET_MOD_CTRL;
-	inbuf[2] = 0;
-	ret = ilitek_i2c_write_and_read(inbuf, 3, 100, outbuf, 0);
-	return ret;
-}
+	uint16_t crc = 0;
+	uint32_t i;
 
-static int api_ptl_set_cdc_init(uint8_t *inbuf, uint8_t *outbuf)
-{
-	int ret = ILITEK_SUCCESS;
-
-	inbuf[0] = CMD_SET_CDC_INIT;
-	ret = ilitek_i2c_write_and_read(inbuf, 2, 10, outbuf, 0);
-	return ret;
-}
-
-/* Private define ------------------------------------------------------------*/
-PROTOCOL_MAP ptl_map[] =
-{
-	/* common cmds */
-	[GET_PTL_VER] = {CMD_GET_PTL_VER, api_ptl_get_ptl_ver, "GET_PTL_VER", PTL_V3 | PTL_V6},
-	[GET_FW_VER] = {CMD_GET_FW_VER, api_ptl_get_fw_ver, "GET_FW_VER", PTL_V3 | PTL_V6},
-	[GET_SCRN_RES] = {CMD_GET_SCRN_RES, api_ptl_get_sc_res, "GET_SCRN_RES", PTL_V3 | PTL_V6},
-	[GET_TP_RES] = {CMD_GET_TP_RES, api_ptl_get_tp_res ,"GET_TP_RES", PTL_V3 | PTL_V6},
-	[GET_MCU_MOD] = {CMD_GET_MCU_MOD, api_ptl_check_mode, "GET_MCU_MODE", PTL_V3 | PTL_V6},
-	[GET_MCU_VER] = {CMD_GET_MCU_VER, api_ptl_get_mcu_ver, "GET_MCU_VER", PTL_V3 | PTL_V6},
-	[GET_KEY_INFO] = {CMD_GET_KEY_INFO, api_ptl_get_key_info, "GET_KEY_INFO", PTL_V3 | PTL_V6},
-	[SET_IC_SLEEP] = {CMD_SET_IC_SLEEP, api_ptl_set_sleep, "SET_IC_SLEEP", PTL_V3 | PTL_V6},
-	[SET_IC_WAKE] = {CMD_SET_IC_WAKE, api_ptl_set_wakeup, "SET_IC_WAKE", PTL_V3 | PTL_V6},
-	[SET_FUNC_MOD] = {CMD_SET_FUNC_MOD, api_ptl_set_func_mode, "SET_FUNC_MOD", PTL_V3 | PTL_V6},
-	[GET_SYS_BUSY] = {CMD_GET_SYS_BUSY, api_ptl_system_busy, "GET_SYS_BUSY", PTL_V3 | PTL_V6},
-	[SET_AP_MODE] = {CMD_SET_AP_MODE, api_ptl_set_apmode, "SET_AP_MODE", PTL_V3 | PTL_V6},
-	[SET_BL_MODE] = {CMD_SET_BL_MODE, api_ptl_set_blmode, "SET_BL_MODE", PTL_V3 | PTL_V6},
-
-	/* v3 only cmds */
-	[SET_WRITE_EN] = {CMD_WRITE_ENABLE, api_ptl_write_enable, "CMD_WRITE_DATA", PTL_V3},
-	[SET_TEST_MOD] = {CMD_SET_TEST_MOD, api_ptl_set_test_mode, "SET_TEST_MODE", PTL_V3},
-
-	/* v6 only cmds */
-	[SET_MOD_CTRL] = {CMD_SET_MOD_CTRL, api_ptl_set_mode, "SET_CTRL_MODE", PTL_V6},
-	[SET_W_FLASH] = {CMD_SET_W_FLASH, api_ptl_write_flash_enable, "SET_WRITE_FLASH", PTL_V6},
-	[GET_BLK_CRC] = {CMD_GET_BLK_CRC, api_ptl_get_block_crc, "GET_BLK_CRC", PTL_V6},
-	[SET_CDC_INIT] = {CMD_SET_CDC_INIT, api_ptl_set_cdc_init, "SET_CRC_INIT", PTL_V6},
-};
-
-//-----------------------extern api function------------------------//
-int api_ptl_set_cmd(uint16_t idx, uint8_t *inbuf, uint8_t *outbuf)
-{
-	int ret = ILITEK_SUCCESS;
-
-	if (idx >= MAX_CMD_CNT)
-		return -EINVAL;
-
-	if (!(ts->ptl.flag & ptl_map[idx].flag)) {
-		tp_err("Unexpected cmd: %s for %x only, now is %x\n",
-			ptl_map[idx].name, ptl_map[idx].flag, ts->ptl.flag);
-		return -EINVAL;
+	if (end > buf_size || start > buf_size) {
+		TP_ERR("start/end addr: %#x/%#x buf size: %#x OOB\n",
+			start, end, buf_size);
 	}
 
-	ret = ptl_map[idx].func(inbuf, outbuf);
-	if (ret < 0)
-		return ret;
+	for (i = start; i < end && i < buf_size; i++)
+		crc = update_crc(crc, buf[i]);
 
-	return ILITEK_SUCCESS;
+	return crc;
 }
 
-int api_set_data_length(uint32_t data_len)
+uint32_t get_checksum(uint32_t start, uint32_t end,
+		      uint8_t *buf, uint32_t buf_size)
 {
-	int ret = ILITEK_SUCCESS;
-	uint8_t buf[64] = {0};
+	uint32_t sum = 0;
+	uint32_t i;
 
-	buf[0] = CMD_SET_DATA_LEN;
-	buf[1] = (uint8_t)(data_len & 0xFF);
-	buf[2] = (uint8_t)(data_len >> 8);
-	ret = ilitek_i2c_write_and_read(buf, 3, 1, NULL, 0);
-	return ret;
-}
-
-int api_write_flash_enable_BL1_8(uint32_t start,uint32_t end)
-{
-	uint8_t buf[64] = {0};
-
-	buf[0] = (uint8_t)CMD_SET_W_FLASH;
-	buf[1] = 0x5A;
-	buf[2] = 0xA5;
-	buf[3] = start & 0xFF;
-	buf[4] = (start >> 8) & 0xFF;
-	buf[5] = start >> 16;
-	buf[6] = end & 0xFF;
-	buf[7] = (end >> 8) & 0xFF;
-	buf[8] = end >> 16;
-
-	return ilitek_i2c_write_and_read(buf, 9, 1, NULL, 0);
-}
-
-uint16_t api_get_block_crc(uint32_t start, uint32_t end, uint32_t type)
-{
-	uint8_t inbuf[8] = {0}, outbuf[2] = {0};
-
-	inbuf[1] = type;
-	inbuf[2] = start;
-	inbuf[3] = (start >> 8) & 0xFF;
-	inbuf[4] = (start >> 16) & 0xFF;
-	inbuf[5] = end & 0xFF;
-	inbuf[6] = (end >> 8) & 0xFF;
-	inbuf[7] = (end >> 16) & 0xFF;
-	if (api_ptl_set_cmd(GET_BLK_CRC, inbuf, outbuf) < 0)
-		return ILITEK_FAIL;
-
-	return 	outbuf[0]+(outbuf[1] << 8);
-}
-
-
-int api_get_slave_mode(int number)
-{
-	int i = 0;
-	uint8_t inbuf[64] = {0}, outbuf[64] = {0};
-
-	inbuf[0] = (uint8_t)CMD_GET_MCU_MOD;
-	if (ilitek_i2c_write_and_read(inbuf, 1, 5, outbuf, number*2) < 0)
-		return ILITEK_FAIL;
-	for(i = 0; i < number && i < ARRAY_SIZE(ts->ic); i++){
-		ts->ic[i].mode = outbuf[i * 2];
-		tp_msg("IC[%d] mode: 0x%x\n", i, ts->ic[i].mode);
+	if (end > buf_size || start > buf_size) {
+		TP_ERR("start/end addr: %#x/%#x buf size: %#x OOB\n",
+			start, end, buf_size);
 	}
-	return ILITEK_SUCCESS;
+
+	for (i = start; i < end && i < buf_size; i++)
+		sum += buf[i];
+
+	return sum;
 }
 
-uint32_t api_get_ap_crc(int number)
+int reset_helper(struct ilitek_ts_device *dev)
 {
-	int i = 0;
-	uint8_t inbuf[64] = {0}, outbuf[64] = {0};
-
-	inbuf[0] = CMD_GET_AP_CRC;
-	if (ilitek_i2c_write_and_read(inbuf, 1, 1, outbuf, number * 2) < 0)
-		return ILITEK_FAIL;
-
-	for (i = 0; i < number && i < ARRAY_SIZE(ts->ic); i++){
-		ts->ic[i].crc = outbuf[i * 2] + (outbuf[i * 2 + 1] << 8);
-		tp_msg("IC[%d] CRC: 0x%x\n", i, ts->ic[i].crc);
+	if (dev->_interface == interface_i2c) {
+		/* sw reset if no reset-gpio found */
+		if (!dev->cb.hw_reset ||
+		    dev->cb.hw_reset(dev->reset_time, dev->_private) < 0)
+			return api_protocol_set_cmd(dev, SET_SW_RST, NULL);
+		return 0;
 	}
-	return ILITEK_SUCCESS;
+
+	return api_protocol_set_cmd(dev, SET_SW_RST, NULL);
 }
 
-int api_set_access_slave(uint8_t type)
+static int re_enum_helper(struct ilitek_ts_device *dev)
 {
 	int error;
-	uint8_t inbuf[64];
+	int retry = 5;
 
-	inbuf[0] = (uint8_t)CMD_ACCESS_SLAVE;
-	inbuf[1] = 0x3;
-	inbuf[2] = type;
+	if (!dev->cb.re_enum)
+		return -EINVAL;
 
-	if ((error = ilitek_i2c_write_and_read(inbuf, 3, 1, NULL, 0)) < 0)
+	do {
+		if (!(error = dev->cb.re_enum(dev->_private)))
+			return 0;
+
+		TP_ERR("re-enum failed, error: %d, retry: %d\n", error, retry);
+		dev->cb.delay_ms(500);
+	} while (retry--);
+
+	return -ENODEV;
+}
+
+static int write_then_wait_ack(struct ilitek_ts_device *dev,
+			       uint8_t *cmd, int wlen, int timeout_ms)
+{
+	int error;
+	struct ilitek_ts_callback *cb = &dev->cb;
+
+	if (cb->init_ack)
+		cb->init_ack(dev->_private);
+
+	if ((error = cb->write_then_read(cmd, wlen, NULL, 0,
+					 dev->_private)) < 0)
 		return error;
 
-	mdelay(2000);
+	/* cmd[0] should be ILITEK cmd code */
+	if ((error = cb->wait_ack(cmd[0], timeout_ms, dev->_private)) < 0)
+		TP_ERR("wait ack %d ms timeout, err: %d\n", timeout_ms, error);
 
-	if (ilitek_check_busy(10, 100, ILITEK_TP_SYSTEM_BUSY) < 0) {
-		tp_err("%s, Last: CheckBusy Failed\n", __func__);
-		return ILITEK_FAIL;
-	}
-	return ILITEK_SUCCESS;
+	if (error < 0 && (error = api_check_busy(dev, timeout_ms, 100)) < 0)
+		return error;
+
+	return 0;
 }
 
-int api_set_testmode(bool testmode)
+/* Common APIs */
+static int api_protocol_get_scrn_res(struct ilitek_ts_device *dev, void *data)
 {
-	uint8_t inbuf[3];
-	if (ts->ptl.flag == PTL_V3) {
-		if (testmode)
-			inbuf[1] = 0x01;
+	int error;
+	struct ilitek_screen_info *screen_info;
+
+	UNUSED(data);
+
+	if ((error = dev->cb.write_then_read(dev->wbuf, 1, dev->rbuf, 28,
+					     dev->_private)) < 0)
+		return error;
+
+	screen_info = (struct ilitek_screen_info *)dev->rbuf;
+
+	dev->screen_info.x_min = screen_info->x_min;
+	dev->screen_info.y_min = screen_info->y_min;
+	dev->screen_info.x_max = screen_info->x_max;
+	dev->screen_info.y_max = screen_info->y_max;
+
+	TP_DBG("screen x: %hu~%hu, screen y: %hu~%hu\n",
+		dev->screen_info.x_min, dev->screen_info.x_max,
+		dev->screen_info.y_min, dev->screen_info.y_max);
+
+	dev->screen_info.pressure_min = 0;
+	dev->screen_info.pressure_max = 0;
+	dev->screen_info.x_tilt_min = 0;
+	dev->screen_info.x_tilt_max = 0;
+	dev->screen_info.y_tilt_min = 0;
+	dev->screen_info.y_tilt_max = 0;
+	if (dev->protocol.ver > 0x60006) {
+		dev->screen_info.pressure_min = screen_info->pressure_min;
+		dev->screen_info.pressure_max = screen_info->pressure_max;
+		dev->screen_info.x_tilt_min = screen_info->x_tilt_min;
+		dev->screen_info.x_tilt_max = screen_info->x_tilt_max;
+		dev->screen_info.y_tilt_min = screen_info->y_tilt_min;
+		dev->screen_info.y_tilt_max = screen_info->y_tilt_max;
+
+		dev->screen_info.pen_x_min = screen_info->pen_x_min;
+		dev->screen_info.pen_y_min = screen_info->pen_y_min;
+		dev->screen_info.pen_x_max = screen_info->pen_x_max;
+		dev->screen_info.pen_y_max = screen_info->pen_y_max;
+	}
+
+	return 0;
+}
+
+static int api_protocol_get_tp_info_v3(struct ilitek_ts_device *dev, void *data)
+{
+	int error;
+	struct ilitek_tp_info_v3 *tp_info;
+
+	UNUSED(data);
+
+	if ((error = dev->cb.write_then_read(dev->wbuf, 1, dev->rbuf, 15,
+					     dev->_private)) < 0)
+		return error;
+
+	tp_info = (struct ilitek_tp_info_v3 *)dev->rbuf;
+	dev->tp_info.x_resolution = tp_info->x_resolution;
+	dev->tp_info.y_resolution = tp_info->y_resolution;
+	dev->tp_info.x_ch = tp_info->x_ch;
+	dev->tp_info.y_ch = tp_info->y_ch;
+	dev->tp_info.max_fingers = tp_info->max_fingers;
+	dev->tp_info.key_num = tp_info->key_num;
+
+	dev->tp_info.support_modes = tp_info->support_modes;
+	if (dev->tp_info.support_modes > 3 || !dev->tp_info.support_modes)
+		dev->tp_info.support_modes = 1;
+
+	return 0;
+}
+
+static int api_protocol_get_tp_info_v6(struct ilitek_ts_device *dev, void *data)
+{
+	int error;
+	struct ilitek_tp_info_v6 *tp_info;
+	uint8_t i;
+
+#define X(_enum, _code, _name) {_code, _name},
+	const struct {
+		const int code;
+		const char *str;
+	} pen_modes[] = { STYLUS_MODES };
+#undef X
+
+	UNUSED(data);
+
+	if ((error = dev->cb.write_then_read(dev->wbuf, 1, dev->rbuf, 21,
+					     dev->_private)) < 0)
+		return error;
+
+	tp_info = (struct ilitek_tp_info_v6 *)dev->rbuf;
+	dev->tp_info.x_resolution = tp_info->x_resolution;
+	dev->tp_info.y_resolution = tp_info->y_resolution;
+	dev->tp_info.x_ch = tp_info->x_ch;
+	dev->tp_info.y_ch = tp_info->y_ch;
+	dev->tp_info.max_fingers = tp_info->max_fingers;
+	dev->tp_info.key_num = tp_info->key_num;
+	dev->tp_info.ic_num = tp_info->ic_num;
+	dev->tp_info.format = tp_info->format;
+	dev->tp_info.support_modes = tp_info->support_modes;
+
+	if (dev->protocol.ver > 0x60002) {
+		dev->tp_info.block_num = tp_info->block_num;
+		TP_MSG("[Panel Information] Block Number: %hhu\n",
+			dev->tp_info.block_num);
+	}
+
+	if (dev->tp_info.ic_num > ARRAY_SIZE(dev->ic)) {
+		TP_ERR("invalid ic_num: %hhu\n", dev->tp_info.ic_num);
+		return -EINVAL;
+	}
+	TP_MSG("[Panel Information] Chip count: %u\n", dev->tp_info.ic_num);
+
+	dev->tp_info.pen_modes = 0;
+	memset(dev->pen_mode, 0, sizeof(dev->pen_mode));
+	if (dev->protocol.ver > 0x60006) {
+		dev->tp_info.pen_modes = tp_info->pen_modes;
+		if (!dev->tp_info.pen_modes)
+			_strcpy(dev->pen_mode, "Disable",
+				sizeof(dev->pen_mode));
+		for (i = 0; i < ARRAY_SIZE(pen_modes); i++) {
+			if (!(tp_info->pen_modes & pen_modes[i].code))
+				continue;
+			_strcat(dev->pen_mode, pen_modes[i].str);
+			_strcat(dev->pen_mode, ".");
+		}
+
+		TP_DBG("pen_modes: %hhu\n", dev->tp_info.pen_modes);
+		TP_MSG("[Panel Information] Pen Mode: %s\n", dev->pen_mode);
+
+		dev->tp_info.pen_format = tp_info->pen_format;
+		dev->tp_info.pen_x_resolution = tp_info->pen_x_resolution;
+		dev->tp_info.pen_y_resolution = tp_info->pen_y_resolution;
+		TP_MSG("[Panel Information] Pen Format: 0x%hhx\n",
+			dev->tp_info.pen_format);
+		TP_MSG("[Panel Information] Pen X/Y resolution: %hu/%hu\n",
+			dev->tp_info.pen_x_resolution,
+			dev->tp_info.pen_y_resolution);
+	}
+
+	if (dev->tp_info.max_fingers > 40) {
+		TP_ERR("invalid max tp: %d > 40\n",
+			dev->tp_info.max_fingers);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int api_protocol_get_tp_info(struct ilitek_ts_device *dev, void *data)
+{
+	int error;
+
+#define X(_enum, _id, _size, _cnt)	{_size, _cnt},
+	const struct {
+		const unsigned int size;
+		const unsigned int max_cnt;
+	} finger_fmts[] = { ILITEK_TOUCH_REPORT_FORMAT };
+#undef X
+
+	if (dev->protocol.flag == PTL_V3)
+		error = api_protocol_get_tp_info_v3(dev, data);
+	else if (dev->protocol.flag == PTL_V6)
+		error = api_protocol_get_tp_info_v6(dev, data);
+	else
+		return -EINVAL;
+
+	if (error < 0)
+		return error;
+
+	if (dev->tp_info.max_fingers > 40) {
+		TP_ERR("invalid max fingers: %d > 40\n",
+			dev->tp_info.max_fingers);
+		return -EINVAL;
+	}
+
+	switch (dev->tp_info.format) {
+	case touch_fmt_1:
+	case touch_fmt_2:
+	case touch_fmt_3:
+		dev->finger.size = finger_fmts[dev->tp_info.format].size;
+		dev->finger.max_cnt = finger_fmts[dev->tp_info.format].max_cnt;
+		break;
+	default:
+	case touch_fmt_0:
+		dev->finger.size = finger_fmts[touch_fmt_0].size;
+		dev->finger.max_cnt = finger_fmts[touch_fmt_0].max_cnt;
+		break;
+	}
+
+	TP_MSG("[Panel Information] X/Y resolution: %hu/%hu\n",
+		dev->tp_info.x_resolution, dev->tp_info.y_resolution);
+	TP_MSG("[Panel Information] X/Y channel: %hu/%hu\n",
+		dev->tp_info.x_ch, dev->tp_info.y_ch);
+	TP_MSG("[Panel Information] Support %hhu Fingers\n",
+		dev->tp_info.max_fingers);
+	TP_MSG("[Panel Information] Support %hhu Keys\n", dev->tp_info.key_num);
+
+	TP_MSG("[Panel Information] Support %hhu modes\n",
+			dev->tp_info.support_modes);
+
+	TP_DBG("touch format: %hhu, size: %u bytes, max cnt: %u per packet\n",
+		dev->tp_info.format, dev->finger.size, dev->finger.max_cnt);
+
+#ifdef ILITEK_KERNEL_DRIVER
+	/*
+	 * Only ILITEK I2C driver need to get key info.
+	 */
+	if (dev->tp_info.key_num > 0 &&
+			(error = api_protocol_set_cmd(dev, GET_KEY_INFO, NULL)) < 0)
+		return error;
+#endif
+
+	return 0;
+}
+
+static int api_protocol_get_key_info_v3(struct ilitek_ts_device *dev,
+					void *data)
+{
+	int error;
+	struct ilitek_key_info_v3 *key_info;
+	unsigned int i;
+
+	UNUSED(data);
+
+	/* Only i2c interface has key for V3 */
+	if (dev->_interface != interface_i2c)
+		return 0;
+
+	if (dev->tp_info.key_num > 20) {
+		TP_ERR("key count: %hhu invalid\n", dev->tp_info.key_num);
+		return -EINVAL;
+	}
+
+	if ((error = dev->cb.write_then_read(dev->wbuf, 1, dev->rbuf, 29,
+			dev->_private)) < 0)
+		return error;
+
+	for (i = 0; dev->tp_info.key_num > 5U &&
+			i < TP_DIV_ROUND_UP(dev->tp_info.key_num, 5U) - 1U; i++) {
+		TP_MSG("read keyinfo again, i: %u\n", i);
+		if ((error = dev->cb.write_then_read(NULL, 0,
+						     dev->rbuf + 29 + 5 * i, 25,
+						     dev->_private)) < 0)
+			return error;
+	}
+
+	key_info = (struct ilitek_key_info_v3 *)dev->rbuf;
+	dev->key.info.x_len = be16(key_info->x_len);
+	dev->key.info.y_len = be16(key_info->y_len);
+	TP_MSG("key_x_len: %hu, key_y_len: %hu\n",
+		dev->key.info.x_len, dev->key.info.y_len);
+
+	for (i = 0; i < dev->tp_info.key_num; i++) {
+		dev->key.info.keys[i].id = key_info->keys[i].id;
+		dev->key.info.keys[i].x = be16(key_info->keys[i].x);
+		dev->key.info.keys[i].y = be16(key_info->keys[i].y);
+		TP_MSG("key[%u] id: %hhu, x: %hu, y: %hu\n", i,
+			dev->key.info.keys[i].id, dev->key.info.keys[i].x,
+			dev->key.info.keys[i].y);
+	}
+
+	return 0;
+}
+
+static int api_protocol_get_key_info_v6(struct ilitek_ts_device *dev,
+					void *data)
+{
+	int error;
+	struct ilitek_key_info_v6 *key_info;
+	unsigned int i;
+
+	UNUSED(data);
+
+	if (dev->tp_info.key_num > ARRAY_SIZE(dev->key.info.keys)) {
+		TP_ERR("exception keycount %hhu > %d\n", dev->tp_info.key_num,
+			(int)ARRAY_SIZE(dev->key.info.keys));
+		return -EINVAL;
+	}
+
+	switch (dev->_interface) {
+	case interface_i2c:
+		if ((error = dev->cb.write_then_read(dev->wbuf, 1, dev->rbuf,
+			5 + dev->tp_info.key_num * 5, dev->_private)) < 0)
+			return error;
+		key_info = (struct ilitek_key_info_v6 *)dev->rbuf;
+		break;
+
+	case interface_usb:
+		if ((error = dev->cb.write_then_read(dev->wbuf, 1,
+				NULL, 0, dev->_private)) < 0 ||
+				(error = dev->cb.write_then_read(NULL, 0,
+				dev->rbuf, 256, dev->_private)) < 0)
+			return error;
+		key_info = (struct ilitek_key_info_v6 *)(dev->rbuf + 6);
+		break;
+	case interface_hid_over_i2c:
+		if ((error = dev->cb.write_then_read(dev->wbuf, 1,
+				NULL, 0, dev->_private)) < 0 ||
+				(error = dev->cb.write_then_read(NULL, 0,
+				dev->rbuf, 256, dev->_private)) < 0)
+			return error;
+		key_info = (struct ilitek_key_info_v6 *)(dev->rbuf + 4);
+		break;
+	default:
+		return -EINVAL;
+	};
+
+	dev->key.info.mode = key_info->mode;
+	TP_MSG("[Panel Information] key mode: %hhu\n", dev->key.info.mode);
+
+	dev->key.info.x_len = key_info->x_len;
+	dev->key.info.y_len = key_info->y_len;
+	TP_MSG("key_x_len: %hu, key_y_len: %hu\n",
+		dev->key.info.x_len, dev->key.info.y_len);
+
+	for (i = 0; i < dev->tp_info.key_num; i++) {
+		dev->key.info.keys[i].id = key_info->keys[i].id;
+		dev->key.info.keys[i].x = key_info->keys[i].x;
+		dev->key.info.keys[i].y = key_info->keys[i].y;
+		TP_MSG("key[%u] id: %hhu, x: %hu, y: %hu\n", i,
+			dev->key.info.keys[i].id, dev->key.info.keys[i].x,
+			dev->key.info.keys[i].y);
+	}
+
+	return 0;
+}
+
+static int api_protocol_get_key_info(struct ilitek_ts_device *dev, void *data)
+{
+	if (dev->protocol.flag == PTL_V3)
+		return api_protocol_get_key_info_v3(dev, data);
+	else if (dev->protocol.flag == PTL_V6)
+		return api_protocol_get_key_info_v6(dev, data);
+
+	return -EINVAL;
+}
+
+static int api_protocol_get_ptl_ver(struct ilitek_ts_device *dev, void *data)
+{
+	int error;
+
+	UNUSED(data);
+
+	dev->protocol.flag = PTL_V6;
+	dev->reset_time = 1000;
+	if ((error = dev->cb.write_then_read(dev->wbuf, 1, dev->rbuf, 3,
+			dev->_private)) < 0)
+		return error;
+
+	dev->protocol.ver = (dev->rbuf[0] << 16) + (dev->rbuf[1] << 8) +
+			dev->rbuf[2];
+	TP_MSG("[Protocol Version]: %x.%x.%x\n",
+		(dev->protocol.ver >> 16) & 0xFF,
+		(dev->protocol.ver >> 8) & 0xFF,
+		dev->protocol.ver & 0xFF);
+
+	if (((dev->protocol.ver >> 16) & 0xFF) == 0x3 ||
+			(dev->protocol.ver & 0xFFFF00) == BL_PROTOCOL_V1_6 ||
+			(dev->protocol.ver & 0xFFFF00) == BL_PROTOCOL_V1_7) {
+		dev->reset_time = 200;
+		dev->protocol.flag = PTL_V3;
+	} else if (((dev->protocol.ver >> 16) & 0xFF) == 0x6 ||
+		 (dev->protocol.ver & 0xFFFF00) == BL_PROTOCOL_V1_8) {
+		 dev->reset_time = 600;
+		dev->protocol.flag = PTL_V6;
+	}
+
+	return 0;
+}
+
+static int api_protocol_get_fw_ver(struct ilitek_ts_device *dev, void *data)
+{
+	int error;
+
+	UNUSED(data);
+
+	if ((error = dev->cb.write_then_read(dev->wbuf, 1, dev->rbuf, 8,
+			dev->_private)) < 0)
+		return error;
+
+	memcpy(dev->fw_ver, dev->rbuf, 8);
+
+	if (dev->ic[0].mode == 0x55)
+		TP_MSG_ARR("[BL Firmware Version]", 8, dev->fw_ver);
+	else
+		TP_MSG_ARR("[AP Firmware Version]", 8, dev->fw_ver);
+
+	return 0;
+}
+
+static int api_protocol_get_mcu_mode(struct ilitek_ts_device *dev, void *data)
+{
+	int error;
+	uint8_t i, ic_num = (data) ? *(uint8_t *)data : 1;
+
+	if (ic_num > ARRAY_SIZE(dev->ic))
+		return -EINVAL;
+
+	if ((error = dev->cb.write_then_read(dev->wbuf, 1, dev->rbuf,
+			2 * ic_num, dev->_private)) < 0)
+		return error;
+
+	for (i = 0; i < ic_num; i++) {
+		dev->ic[i].mode = dev->rbuf[i * 2];
+
+		if (dev->ic[i].mode == 0x5a)
+			_sprintf(dev->ic[i].mode_str, "AP");
+		else if (dev->ic[i].mode == 0x55)
+			_sprintf(dev->ic[i].mode_str, "BL");
 		else
-			inbuf[1] = 0x00;
-
-		if (api_ptl_set_cmd(SET_TEST_MOD, inbuf, NULL) < 0)
-			return ILITEK_FAIL;
-
-		mdelay(10);
-	} else if(ts->ptl.flag == PTL_V6) {
-		if (testmode)
-			inbuf[1] = ENTER_SUSPEND_MODE;
-		else
-			inbuf[1] = ENTER_NORMAL_MODE;
-
-		inbuf[2] = 0;
-		if (api_ptl_set_cmd(SET_MOD_CTRL, inbuf, NULL) < 0)
-			return ILITEK_FAIL;
-
-		mdelay(100);
+			_sprintf(dev->ic[i].mode_str, "UNKNOWN");
 	}
-	return ILITEK_SUCCESS;
+
+	TP_MSG("[Current Mode] Master: 0x%hhx %s\n", dev->ic[0].mode,
+		dev->ic[0].mode_str);
+	for (i = 1; i < ic_num; i++)
+		TP_MSG("[Current Mode] Slave[%hhu]: 0x%hhx %s\n", i,
+			dev->ic[i].mode, dev->ic[i].mode_str);
+
+	return 0;
 }
 
-int api_init_func(void)
+static int api_protocol_get_product_info(struct ilitek_ts_device *dev, void *data)
 {
-	int ret = ILITEK_SUCCESS;
-	uint8_t outbuf[64] = {0};
+	int error;
 
-	tp_msg("\n");
-	ts->ptl.flag = PTL_V6;
+	UNUSED(data);
 
-	//Prevent interrupt will interfere with i2c transfer.
-	if (api_set_testmode(true) < ILITEK_SUCCESS)
-		return ILITEK_FAIL;
+	/*
+	 * 0x45 cmd support after BL ver 1.8.3 and AP 6.0.7
+	 * return 0 to skip error check
+	 */
+	if ((dev->ic[0].mode == 0x55 && dev->protocol.ver < 0x010803) ||
+			(dev->ic[0].mode == 0x5a && dev->protocol.ver < 0x060007))
+		return 0;
 
-	if (api_ptl_set_cmd(GET_PTL_VER, NULL, outbuf) < ILITEK_SUCCESS)
-		return ILITEK_FAIL;
+	if ((error = dev->cb.write_then_read(dev->wbuf, 1, dev->rbuf, 8,
+			dev->_private)) < 0)
+		return error;
 
-	if (api_set_testmode(false) < ILITEK_SUCCESS)
-		return ILITEK_FAIL;
+	TP_MSG_ARR("[Production Info]", 8, dev->rbuf);
 
-	ts->ptl.flag = PTL_V3;
-	ts->process_and_report = ilitek_read_data_and_report_3XX;
-	ts->reset_time = 200;
-	ts->irq_tri_type = IRQF_TRIGGER_FALLING;
+	return 0;
+}
 
-	if (ts->ptl.ver_major == 0x3 || ts->ptl.ver == BL_V1_6 || ts->ptl.ver == BL_V1_7) {
-		ts->ptl.flag = PTL_V3;
-		tp_msg("Protocol: V3, set ISR falling trigger\n");
-		ts->process_and_report = ilitek_read_data_and_report_3XX;
-		ts->reset_time = 200;
-		ts->irq_tri_type = IRQF_TRIGGER_FALLING;
-	} else if (ts->ptl.ver_major == 0x6 || ts->ptl.ver == BL_V1_8) {
-		ts->ptl.flag = PTL_V6;
-		ts->process_and_report = ilitek_read_data_and_report_6XX;
-		ts->reset_time = 600;
-#if 0
-		tp_msg("Protocol: V6, set ISR rising trigger\n");
-		ts->irq_tri_type = IRQF_TRIGGER_RISING;
-#else
-		tp_msg("Protocol: V6, set ISR falling trigger\n");
-		ts->irq_tri_type = IRQF_TRIGGER_FALLING;
-#endif		
-	} else {
-		tp_err("Unknown protocl: %x, set as V3\n", ts->ptl.ver);
+static int api_protocol_get_fwid(struct ilitek_ts_device *dev, void *data)
+{
+	int error;
+
+	UNUSED(data);
+
+	/*
+	 * 0x46 cmd support after BL ver 1.8.2 and AP 6.0.7
+	 * return 0 to skip error check
+	 */
+	if ((dev->ic[0].mode == 0x55 && dev->protocol.ver < 0x010802) ||
+			(dev->ic[0].mode == 0x5a && dev->protocol.ver < 0x060007))
+		return 0;
+
+	if ((error = dev->cb.write_then_read(dev->wbuf, 1, dev->rbuf, 4,
+			dev->_private)) < 0)
+		return error;
+
+	TP_MSG("[Customer ID] %#x\n", le16(dev->rbuf));
+	TP_MSG("[FWID] %#x\n", le16(dev->rbuf + 2));
+
+	return 0;
+}
+
+static int api_protocol_get_mcu_ver(struct ilitek_ts_device *dev, void *data)
+{
+	int error;
+	unsigned int i;
+
+	UNUSED(data);
+
+	if ((error = dev->cb.write_then_read(dev->wbuf, 1, dev->rbuf, 32,
+			dev->_private)) < 0)
+		return error;
+
+	memcpy(&dev->mcu.parser, dev->rbuf, sizeof(dev->mcu.parser));
+
+	dev->mcu.ic_name = dev->mcu.parser.ic_name;
+	TP_MSG("[Kernel Version] IC: 0x%04X\n", dev->mcu.ic_name);
+
+	memset(dev->mcu.module_name, 0, sizeof(dev->mcu.module_name));
+	memcpy(dev->mcu.module_name, dev->mcu.parser.module_name,
+		sizeof(dev->mcu.parser.module_name));
+	for (i = 0; i < sizeof(dev->mcu.module_name); i++) {
+		if (dev->mcu.module_name[i] != 0xff)
+			continue;
+		dev->mcu.module_name[i] = 0;
 	}
-	return ret;
-}
 
-int api_get_funcmode(int mode)
-{
-	int ret = ILITEK_SUCCESS;
-	uint8_t inbuf[2], outbuf[64] = {0};
+	TP_MSG("[Module Name]: [%s]\n", dev->mcu.module_name);
 
-	inbuf[0] = CMD_SET_FUNC_MOD;
-	ret = ilitek_i2c_write_and_read(inbuf, 1, 10, outbuf, 3);
-	tp_msg("mode:%d\n", outbuf[2]);
-	if (mode != outbuf[2])
-		tp_msg("Set mode fail, set:%d, read:%d\n", mode, outbuf[2]);
+	dev->mcu.df_start_addr = 0;
+	if ((dev->protocol.ver & 0xFFFF00) == BL_PROTOCOL_V1_7 ||
+			(dev->protocol.ver & 0xFFFF00) == BL_PROTOCOL_V1_6) {
+		dev->mcu.df_start_addr = be32(dev->mcu.parser.df_start_addr, 3);
+	} else if (dev->protocol.flag == PTL_V6) {
+		dev->mcu.df_start_addr = le32(dev->mcu.parser.df_start_addr, 3);
 
-	return ret;
-}
-
-int api_set_funcmode(int mode)
-{
-	int ret = ILITEK_SUCCESS, i = 0;
-	uint8_t inbuf[4] = {CMD_SET_FUNC_MOD, 0x55, 0xAA, mode}, outbuf[64] = {0};;
-
-	tp_msg("ts->ptl.ver:0x%x\n", ts->ptl.ver);
-	if (ts->ptl.ver >= 0x30400) {
-		ret = api_ptl_set_func_mode(inbuf, NULL);
-		for (i = 0; i < 20; i++) {
-			mdelay(100);
-			ret = api_ptl_system_busy(inbuf, outbuf);
-			if (ret < ILITEK_SUCCESS)
-				return ret;
-			if (outbuf[0] == ILITEK_TP_SYSTEM_READY) {
-				tp_msg("system is ready\n");
-				ret = api_get_funcmode(mode);
-				return ret;
+		/*
+		 * for old protocol version, check df start addr.
+		 * to determine it is 29xx series or Lego series.
+		 */
+		if ((dev->ic[0].mode == 0x55 && dev->protocol.ver < 0x010803) ||
+				(dev->ic[0].mode == 0x5a && dev->protocol.ver < 0x060008)) {
+			if (dev->mcu.df_start_addr == DF_START_ADDR_29XX) {
+				dev->kernel_info.mm_addr = MM_ADDR_29XX;
+				dev->kernel_info.min_addr = START_ADDR_29XX;
+				dev->kernel_info.max_addr = END_ADDR_LEGO;
+			} else {
+				dev->kernel_info.mm_addr = MM_ADDR_LEGO;
+				dev->kernel_info.min_addr = START_ADDR_LEGO;
+				dev->kernel_info.max_addr = END_ADDR_LEGO;
 			}
 		}
-		tp_msg("system is busy\n");
-	} else {
-		tp_msg("It is protocol not support\n");
 	}
-	return ret;
+
+	TP_MSG("[Flash Start Addr.] %#x\n", dev->mcu.df_start_addr);
+
+	return 0;
 }
 
-int api_set_idlemode(int mode)
+static int api_protocol_get_mcu_info(struct ilitek_ts_device *dev, void *data)
 {
-	int ret = 0;
-	int8_t inbuf[2];
+	int error;
+	unsigned int i;
 
-	inbuf[0] = CMD_SET_IDLE;
-	inbuf[1] = mode;
-	tp_msg("mode:%d\n", mode);
-	ret = ilitek_i2c_write_and_read(inbuf, 2, 10, NULL, 0);
-	return ret;
+	UNUSED(data);
+
+	/*
+	 * 0x62 command support after BL ver 1.8.3 and AP 6.0.8,
+	 * return 0 to skip error check
+	 */
+	if ((dev->ic[0].mode == 0x55 && dev->protocol.ver < 0x010803) ||
+			(dev->ic[0].mode == 0x5a && dev->protocol.ver < 0x060008))
+		return 0;
+
+	if ((error = dev->cb.write_then_read(dev->wbuf, 1, dev->rbuf, 32,
+			dev->_private)) < 0)
+		return error;
+
+	memcpy(&dev->kernel_info.parser, dev->rbuf,
+		sizeof(dev->kernel_info.parser));
+
+	memset(dev->kernel_info.product_id, 0,
+		sizeof(dev->kernel_info.product_id));
+	memset(dev->kernel_info.module_name, 0,
+		sizeof(dev->kernel_info.module_name));
+
+	memcpy(dev->kernel_info.product_id, dev->kernel_info.parser.product_id,
+		sizeof(dev->kernel_info.parser.product_id));
+	memcpy(dev->kernel_info.module_name,
+		dev->kernel_info.parser.module_name,
+		sizeof(dev->kernel_info.parser.module_name));
+	dev->kernel_info.mm_addr = le32(dev->kernel_info.parser.mm_addr, 3);
+
+	for (i = 0; i < sizeof(dev->kernel_info.module_name); i++) {
+		if (dev->kernel_info.module_name[i] != 0xff)
+			continue;
+		dev->kernel_info.module_name[i] = 0;
+	}
+
+	TP_MSG("[Product ID] %s\n", dev->kernel_info.product_id);
+	TP_MSG("[Memory Mapping Addr.] %#x\n", dev->kernel_info.mm_addr);
+	TP_MSG("[MM. Module Name]: [%s]\n", dev->kernel_info.module_name);
+
+	/*
+	 * check memory mapping start addr.
+	 * to determine it is 29xx series or Lego series.
+	 */
+	if (dev->kernel_info.mm_addr == MM_ADDR_29XX) {
+		dev->kernel_info.min_addr = START_ADDR_29XX;
+		dev->kernel_info.max_addr = END_ADDR_LEGO;
+	} else {
+		dev->kernel_info.min_addr = START_ADDR_LEGO;
+		dev->kernel_info.max_addr = END_ADDR_LEGO;
+	}
+
+	return 0;
+}
+
+
+static int api_protocol_get_core_ver(struct ilitek_ts_device *dev, void *data)
+{
+	int error;
+
+	UNUSED(data);
+
+	if ((error = dev->cb.write_then_read(dev->wbuf, 1, dev->rbuf, 8,
+			dev->_private)) < 0)
+		return error;
+
+	memcpy(dev->core_ver, dev->rbuf, 8);
+
+	TP_MSG_ARR("[CoreVersion]", 4, dev->core_ver);
+
+	return 0;
+}
+
+static int api_protocol_set_sw_reset(struct ilitek_ts_device *dev, void *data)
+{
+	int error;
+	int wlen = 1;
+
+	UNUSED(data);
+
+	/* Do not software reset for I2C-HID interface */
+	if (dev->_interface == interface_hid_over_i2c)
+		return 0;
+
+	dev->wbuf[1] = 0;
+	if (dev->protocol.flag == PTL_V3)
+		wlen = 2;
+
+	if ((error = dev->cb.write_then_read(dev->wbuf, wlen, dev->rbuf, 0,
+			dev->_private)) < 0)
+		return error;
+
+	dev->cb.delay_ms(dev->reset_time);
+
+	if (dev->_interface == interface_usb)
+		return re_enum_helper(dev);
+
+	return 0;
+}
+
+static int api_protocol_get_sys_busy(struct ilitek_ts_device *dev, void *data)
+{
+	int error;
+
+	if (data)
+		*(uint8_t *)data = 0;
+
+	if ((error = dev->cb.write_then_read(dev->wbuf, 1, dev->rbuf, 1,
+			dev->_private)) < 0)
+		return error;
+
+	if (data)
+		*(uint8_t *)data = dev->rbuf[0];
+
+	return 0;
+}
+
+static int api_protocol_get_ap_crc_v6(struct ilitek_ts_device *dev, void *data)
+{
+	int error;
+	uint8_t i, ic_num = (data) ? *(uint8_t *)data : 1;
+
+	if (ic_num > ARRAY_SIZE(dev->ic))
+		return -EINVAL;
+
+	if ((error = dev->cb.write_then_read(dev->wbuf, 1,
+			dev->rbuf, 2 * ic_num,
+			dev->_private)) < 0)
+		return  error;
+
+	dev->ic[0].crc[0] = le16(dev->rbuf);
+	TP_MSG("[FW CRC] Master: 0x%hx\n", dev->ic[0].crc[0]);
+
+	for (i = 1; i < ic_num; i++) {
+		dev->ic[i].crc[0] = le16(dev->rbuf + 2 * i);
+		TP_MSG("[FW CRC] Slave[%hhu]: 0x%hx\n", i, dev->ic[i].crc[0]);
+	}
+
+	return 0;
+}
+
+static int api_protocol_get_ap_crc_v3(struct ilitek_ts_device *dev, void *data)
+{
+	int error, rlen;
+
+	UNUSED(data);
+
+	rlen = 2;
+	if (dev->mcu.ic_name == 0x2312 || dev->mcu.ic_name == 0x2315)
+		rlen = 4;
+
+	if (dev->_interface == interface_i2c) {
+		if ((error = dev->cb.write_then_read(dev->wbuf, 1, NULL, 0,
+				dev->_private)) < 0)
+			return  error;
+		dev->cb.delay_ms(600);
+		if ((error = dev->cb.write_then_read(NULL, 0, dev->rbuf, rlen,
+				dev->_private)) < 0)
+			return error;
+	} else {
+		if ((error = dev->cb.write_then_read(dev->wbuf, 1, dev->rbuf,
+				rlen, dev->_private)) < 0)
+			return error;
+	}
+
+	dev->ap_crc_v3 = le16(dev->rbuf);
+	if (dev->mcu.ic_name == 0x2312 || dev->mcu.ic_name == 0x2315)
+		dev->ap_crc_v3 |= (le16(dev->rbuf + 2) << 16);
+
+	TP_MSG("[Check Code] AP: %#x\n", dev->ap_crc_v3);
+
+	return 0;
+}
+
+
+static int api_protocol_get_ap_crc(struct ilitek_ts_device *dev, void *data)
+{
+
+	if (dev->protocol.flag == PTL_V6)
+		return api_protocol_get_ap_crc_v6(dev, data);
+	else if (dev->protocol.flag == PTL_V3)
+		return api_protocol_get_ap_crc_v3(dev, data);
+
+	return -EINVAL;
+}
+
+
+static int api_protocol_set_mode_v3(struct ilitek_ts_device *dev, void *data)
+{
+	UNUSED(data);
+
+	return dev->cb.write_then_read(dev->wbuf, 2, NULL, 0, dev->_private);
+}
+
+static int api_protocol_write_enable(struct ilitek_ts_device *dev, void *data)
+{
+	int error;
+	bool in_ap = (data) ? *(bool *)data : true;
+
+	if ((error = dev->cb.write_then_read(dev->wbuf, (in_ap) ? 3 : 10, NULL,
+			0, dev->_private)) < 0)
+		return error;
+
+	dev->cb.delay_ms(200);
+
+	return 0;
+}
+
+static int api_protocol_write_data_v3(struct ilitek_ts_device *dev, void *data)
+{
+	UNUSED(data);
+
+	return dev->cb.write_then_read(dev->wbuf, 33, NULL, 0, dev->_private);
+}
+
+static int api_protocol_get_df_crc(struct ilitek_ts_device *dev,  void *data)
+{
+	int error;
+
+	UNUSED(data);
+
+	dev->df_crc_v3 = 0;
+	if ((error = dev->cb.write_then_read(dev->wbuf, 1, dev->rbuf, 4,
+			dev->_private)) < 0)
+		return error;
+
+	dev->df_crc_v3 = le16(dev->rbuf + 2) << 16 | le16(dev->rbuf);
+	TP_MSG("[Check Code] Data: %#x\n", dev->df_crc_v3);
+
+	return 0;
+}
+
+static int api_protocol_set_mode_v6(struct ilitek_ts_device *dev, void *data)
+{
+	UNUSED(data);
+
+	return dev->cb.write_then_read(dev->wbuf, 3, NULL, 0, dev->_private);
+}
+
+static int api_protocol_get_block_crc_by_addr(struct ilitek_ts_device *dev, void *data)
+{
+	int error;
+	uint8_t type = (data) ? *(uint8_t *)data : 0;
+
+	dev->wbuf[1] = type;
+	if (type == CRC_CALCULATE) {
+		if ((error = write_then_wait_ack(dev, dev->wbuf, 8, 5000)) < 0)
+			return error;
+		dev->wbuf[1] = CRC_GET;
+	}
+
+	return dev->cb.write_then_read(dev->wbuf, 2, dev->rbuf, 2, dev->_private);
+}
+
+static int api_protocol_set_data_len(struct ilitek_ts_device *dev, void *data)
+{
+	UNUSED(data);
+
+	return dev->cb.write_then_read(dev->wbuf, 3, NULL, 0, dev->_private);
+}
+
+static int api_protocol_set_flash_enable(struct ilitek_ts_device *dev,
+					void *data)
+{
+	int error;
+	uint8_t type = (data) ? *(uint8_t *)data : 0;
+	int wlen, rlen;
+	bool in_ap = ((type & 0x1) != 0) ? true : false;
+	bool is_slave = ((type & 0x2) != 0) ? true : false;
+
+	uint32_t set_start, set_end, get_start, get_end;
+
+	if (!is_slave) {
+		wlen = (in_ap) ? 3 : 9;
+		rlen = (in_ap || dev->protocol.ver < 0x010803) ? 0 : 6;
+
+		set_start = le32(dev->wbuf + 3, 3);
+		set_end = le32(dev->wbuf + 6, 3);
+
+		if ((error = dev->cb.write_then_read(dev->wbuf, wlen,
+				dev->rbuf, rlen,
+				dev->_private)) < 0)
+			return error;
+
+		if (in_ap || dev->protocol.ver < 0x010803)
+			return 0;
+
+		get_start = le32(dev->rbuf, 3);
+		get_end = le32(dev->rbuf + 3, 3);
+
+		if (set_start != get_start || set_end != get_end) {
+			TP_ERR("start/end addr.: %#x/%#x vs. %#x/%#x not match\n",
+				set_start, set_end, get_start, get_end);
+			return -EINVAL;
+		}
+
+		return 0;
+	}
+
+	switch (dev->_interface) {
+	case interface_i2c:
+	case interface_hid_over_i2c:
+		if ((error = write_then_wait_ack(dev, dev->wbuf, 9, 20000)) < 0)
+			return error;
+		dev->cb.delay_ms(2000);
+		break;
+
+	case interface_usb:
+		if ((error = write_then_wait_ack(dev, dev->wbuf, 9, 20000)) < 0)
+			return error;
+
+		return re_enum_helper(dev);
+	}
+
+	return 0;
+}
+
+static int api_protocol_write_data_v6(struct ilitek_ts_device *dev, void *data)
+{
+	int wlen;
+
+	if (!data)
+		return -EINVAL;
+
+	wlen = *(int *)data;
+
+	return write_then_wait_ack(dev, dev->wbuf, wlen, 5000);
+}
+
+static int api_protocol_write_data_m2v(struct ilitek_ts_device *dev, void *data)
+{
+	int wlen;
+
+	if (!data)
+		return -EINVAL;
+
+	wlen = *(int *)data;
+
+	return write_then_wait_ack(dev, dev->wbuf, wlen, 30000);
+}
+
+static int api_protocol_access_slave(struct ilitek_ts_device *dev, void *data)
+{
+	int error;
+	struct ilitek_slave_access *access;
+
+	if (!data)
+		return -EINVAL;
+
+	access = (struct ilitek_slave_access *)data;
+
+	dev->wbuf[1] = access->slave_id;
+	dev->wbuf[2] = access->func;
+	memset(dev->rbuf, 0, sizeof(dev->rbuf));
+
+	switch (access->func) {
+	case M2V_GET_CHECKSUM:
+		error = dev->cb.write_then_read(dev->wbuf, 3, dev->rbuf, 3,
+						dev->_private);
+
+		*((uint32_t *)access->data) = (le16(dev->rbuf + 1) << 8) +
+			dev->rbuf[0];
+
+		break;
+
+	case M2V_GET_MOD:
+		error = dev->cb.write_then_read(dev->wbuf, 3, dev->rbuf, 1,
+						dev->_private);
+
+		*((uint8_t *)access->data) = dev->rbuf[0];
+
+		break;
+
+	case M2V_GET_FW_VER:
+		error = dev->cb.write_then_read(dev->wbuf, 3, dev->rbuf, 8,
+						dev->_private);
+
+		memcpy((uint8_t *)access->data, dev->rbuf, 8);
+
+		break;
+
+	case M2V_WRITE_ENABLE:
+		dev->wbuf[3] = ((uint8_t *)access->data)[0];
+		dev->wbuf[4] = ((uint8_t *)access->data)[1];
+		dev->wbuf[5] = ((uint8_t *)access->data)[2];
+		dev->wbuf[6] = ((uint8_t *)access->data)[3];
+		dev->wbuf[7] = ((uint8_t *)access->data)[4];
+		dev->wbuf[8] = ((uint8_t *)access->data)[5];
+
+		error = dev->cb.write_then_read(dev->wbuf, 9, NULL, 0,
+						dev->_private);
+		break;
+
+	default:
+		error = write_then_wait_ack(dev, dev->wbuf, 3, 5000);
+		break;
+	};
+
+	return error;
+}
+
+static int api_protocol_set_ap_mode(struct ilitek_ts_device *dev, void *data)
+{
+	UNUSED(data);
+
+	return dev->cb.write_then_read(dev->wbuf, 1, NULL, 0, dev->_private);
+}
+
+static int api_protocol_set_bl_mode(struct ilitek_ts_device *dev, void *data)
+{
+	UNUSED(data);
+
+	return dev->cb.write_then_read(dev->wbuf, 1, NULL, 0, dev->_private);
+}
+
+static int api_protocol_set_idle(struct ilitek_ts_device *dev, void *data)
+{
+	UNUSED(data);
+
+	return dev->cb.write_then_read(dev->wbuf, 2, NULL, 0, dev->_private);
+}
+
+static int api_protocol_set_sleep(struct ilitek_ts_device *dev, void *data)
+{
+	UNUSED(data);
+
+	return dev->cb.write_then_read(dev->wbuf, 1, NULL, 0, dev->_private);
+}
+
+static int api_protocol_set_wakeup(struct ilitek_ts_device *dev, void *data)
+{
+	UNUSED(data);
+
+	return dev->cb.write_then_read(dev->wbuf, 1, NULL, 0, dev->_private);
+}
+
+static int api_protocol_set_func_mode(struct ilitek_ts_device *dev, void *data)
+{
+	int error;
+	bool get = (data) ? *(bool *)data : true;
+
+	if (!data)
+		return -EINVAL;
+
+	if (get) {
+		if ((error = dev->cb.write_then_read(dev->wbuf, 1, dev->rbuf, 3,
+				dev->_private)) < 0)
+			return error;
+
+		dev->func_mode = dev->rbuf[2];
+		TP_MSG("[FW Mode] 0x%hhu\n", dev->func_mode);
+
+		return 0;
+	}
+
+	if (dev->protocol.flag == PTL_V3) {
+		if ((error = dev->cb.write_then_read(dev->wbuf, 4, NULL, 0,
+				dev->_private)) < 0 ||
+				(error = api_check_busy(dev, 1000, 100)) < 0)
+			return error;
+		return 0;
+	} else if (dev->protocol.flag == PTL_V6) {
+		if ((error = write_then_wait_ack(dev, dev->wbuf, 4, 1000)) < 0)
+			return error;
+		return 0;
+	}
+
+	return -EINVAL;
+}
+
+static int api_protocol_c_model_info(struct ilitek_ts_device *dev, void *data)
+{
+	UNUSED(data);
+
+	return dev->cb.write_then_read(dev->wbuf, 12, NULL, 0, dev->_private);
+}
+
+static int api_protocol_tuning_para_v3(struct ilitek_ts_device *dev, void *data)
+{
+	UNUSED(data);
+
+	return dev->cb.write_then_read(dev->wbuf, 2, NULL, 0, dev->_private);
+}
+
+int api_protocol_set_cmd(struct ilitek_ts_device *dev, uint8_t idx, void *data)
+{
+	int error;
+
+	if (!dev || idx >= ARRAY_SIZE(protocol_maps))
+		return -EINVAL;
+
+	if (!(dev->protocol.flag & protocol_maps[idx].flag)) {
+		TP_ERR("Unexpected cmd: %s for 0x%hhx only, now is 0x%hhx\n",
+			protocol_maps[idx].desc, protocol_maps[idx].flag,
+			dev->protocol.flag);
+		return -EINVAL;
+	}
+
+	dev->wbuf[0] = protocol_maps[idx].cmd;
+	if ((error = protocol_maps[idx].func(dev, data)) < 0) {
+		TP_ERR("failed to execute cmd: 0x%hhx %s, err: %d\n",
+			protocol_maps[idx].cmd, protocol_maps[idx].desc, error);
+		return error;
+	}
+
+	return 0;
+}
+
+int api_set_ctrl_mode(struct ilitek_ts_device *dev, uint8_t mode, bool eng)
+{
+	int error;
+	uint8_t cmd = 0;
+
+	memset(dev->wbuf, 0, 3);
+
+	if (dev->protocol.flag == PTL_V3) {
+		/* V3 only support suspend and normal mode */
+		if (mode != mode_normal && mode != mode_suspend)
+			return -EPROTONOSUPPORT;
+		dev->wbuf[1] = (mode == mode_suspend) ? 0x01 : 0x00;
+		cmd = SET_TEST_MOD;
+	} else if (dev->protocol.flag == PTL_V6) {
+		dev->wbuf[1] = mode;
+		dev->wbuf[2] = (eng) ? 0x01 : 0x00;
+		cmd = SET_MOD_CTRL;
+	}
+
+	if ((error = api_protocol_set_cmd(dev, cmd, NULL)) < 0)
+		return error;
+
+	dev->cb.delay_ms(100);
+
+	return 0;
+}
+
+uint16_t api_get_block_crc_by_addr(struct ilitek_ts_device *dev, uint8_t type,
+					uint32_t start, uint32_t end)
+{
+	memset(dev->wbuf, 0, 64);
+
+	dev->wbuf[2] = start;
+	dev->wbuf[3] = (start >> 8) & 0xFF;
+	dev->wbuf[4] = (start >> 16) & 0xFF;
+	dev->wbuf[5] = end & 0xFF;
+	dev->wbuf[6] = (end >> 8) & 0xFF;
+	dev->wbuf[7] = (end >> 16) & 0xFF;
+	if (api_protocol_set_cmd(dev, GET_BLK_CRC, &type) < 0)
+		return 0;
+
+	return le16(dev->rbuf);
+}
+
+int api_set_data_len(struct ilitek_ts_device *dev, uint16_t data_len)
+{
+	memset(dev->wbuf, 0, 64);
+
+	dev->wbuf[1] = data_len & 0xFF;
+	dev->wbuf[2] = (data_len >> 8) & 0xFF;
+
+	return api_protocol_set_cmd(dev, SET_DATA_LEN, NULL);
+}
+
+int api_write_enable_v6(struct ilitek_ts_device *dev, bool in_ap, bool is_slave,
+					uint32_t start, uint32_t end)
+{
+	uint8_t type;
+
+	memset(dev->wbuf, 0, 64);
+	dev->wbuf[1] = 0x5A;
+	dev->wbuf[2] = 0xA5;
+	dev->wbuf[3] = start & 0xFF;
+	dev->wbuf[4] = (start >> 8) & 0xFF;
+	dev->wbuf[5] = start >> 16;
+	dev->wbuf[6] = end & 0xFF;
+	dev->wbuf[7] = (end >> 8) & 0xFF;
+	dev->wbuf[8] = end >> 16;
+
+	type = (in_ap) ? 0x1 : 0x0;
+	type |= (is_slave) ? 0x2 : 0x0;
+
+	return api_protocol_set_cmd(dev, SET_FLASH_EN, &type);
+}
+
+int api_write_data_v6(struct ilitek_ts_device *dev, int wlen)
+{
+	return api_protocol_set_cmd(dev, WRITE_DATA_V6, &wlen);
+}
+
+int api_access_slave(struct ilitek_ts_device *dev, uint8_t id, uint8_t func,
+					void *data)
+{
+	struct ilitek_slave_access access;
+
+	access.slave_id = id;
+	access.func = func;
+	access.data = data;
+
+	return api_protocol_set_cmd(dev, ACCESS_SLAVE, &access);
+}
+
+int api_write_enable_v3(struct ilitek_ts_device *dev, bool in_ap, bool write_ap,
+					uint32_t end, uint32_t checksum)
+{
+	memset(dev->wbuf, 0, 64);
+	dev->wbuf[1] = 0x5A;
+	dev->wbuf[2] = 0xA5;
+	dev->wbuf[3] = (write_ap) ? 0x0 : 0x1;
+	dev->wbuf[4] = (end >> 16) & 0xFF;
+	dev->wbuf[5] = (end >> 8) & 0xFF;
+	dev->wbuf[6] = end & 0xFF;
+	dev->wbuf[7] = (checksum >> 16) & 0xFF;
+	dev->wbuf[8] = (checksum >> 8) & 0xFF;
+	dev->wbuf[9] = checksum & 0xFF;
+
+	return api_protocol_set_cmd(dev, WRITE_ENABLE, &in_ap);
+}
+
+int api_write_data_v3(struct ilitek_ts_device *dev)
+{
+	return api_protocol_set_cmd(dev, WRITE_DATA_V3, NULL);
+}
+
+int api_check_busy(struct ilitek_ts_device *dev, int timeout_ms, int delay_ms)
+{
+	uint8_t busy;
+
+	memset(dev->wbuf, 0, 64);
+
+	dev->cb.delay_ms(5);
+
+	while (timeout_ms > 0) {
+		api_protocol_set_cmd(dev, GET_SYS_BUSY, &busy);
+		if (busy == ILITEK_TP_SYSTEM_READY)
+			return 0;
+
+		/* delay ms for each check busy */
+		dev->cb.delay_ms(delay_ms);
+		timeout_ms -= delay_ms;
+	}
+
+	return -ETIME;
+}
+
+int api_to_bl_mode(struct ilitek_ts_device *dev, bool to_bl,
+					uint32_t start, uint32_t end)
+{
+	int cnt = 0, retry = 15;
+	const uint8_t target_mode = (to_bl) ? 0x55 : 0x5A;
+
+	do {
+		if (api_protocol_set_cmd(dev, GET_MCU_MOD, NULL) < 0)
+			continue;
+
+		if (dev->ic[0].mode == target_mode)
+			goto success_change_mode;
+
+		if (to_bl) {
+			if (dev->protocol.flag == PTL_V3 &&
+			    api_write_enable_v3(dev, true, false, 0, 0) < 0)
+				continue;
+			else if (dev->protocol.flag == PTL_V6 &&
+					api_write_enable_v6(dev, true, false, 0, 0) < 0)
+				continue;
+
+			api_protocol_set_cmd(dev, SET_BL_MODE, NULL);
+
+			/*
+			 * Lego's old BL may trigger unexpected INT after 0xC2,
+			 * so make I2C driver handle it ASAP.
+			 */
+			if (dev->protocol.flag == PTL_V6 &&
+					dev->_interface == interface_i2c)
+				dev->cb.init_ack(dev->_private);
+		} else {
+			if (dev->protocol.flag == PTL_V3 &&
+					api_write_enable_v3(dev, true, false, 0, 0) < 0)
+				continue;
+			else if (dev->protocol.flag == PTL_V6 &&
+				api_write_enable_v6(dev, false, false, start, end) < 0)
+				continue;
+
+			api_protocol_set_cmd(dev, SET_AP_MODE, NULL);
+		}
+
+		switch (dev->_interface) {
+		case interface_hid_over_i2c:
+		case interface_i2c:
+			dev->cb.delay_ms(1000 + 100 * cnt);
+			break;
+		case interface_usb:
+			do {
+				if (!re_enum_helper(dev) &&
+						!api_protocol_set_cmd(dev, GET_MCU_MOD, NULL) &&
+						dev->ic[0].mode == target_mode)
+					goto success_change_mode;
+			} while (cnt++ < retry);
+			break;
+		}
+	} while (cnt++ < retry);
+
+	TP_ERR("current mode: 0x%hhx, change to %s mode failed\n",
+		dev->ic[0].mode, (to_bl) ? "BL" : "AP");
+	return -EFAULT;
+
+success_change_mode:
+	TP_MSG("current mode: 0x%hhx %s mode\n", dev->ic[0].mode,
+		(to_bl) ? "BL" : "AP");
+
+	api_protocol_set_cmd(dev, GET_FW_VER, NULL);
+
+	return 0;
+}
+
+int api_set_idle(struct ilitek_ts_device *dev, bool enable)
+{
+	memset(dev->wbuf, 0, 64);
+	dev->wbuf[1] = (enable) ? 1 : 0;
+	return api_protocol_set_cmd(dev, SET_MCU_IDLE, NULL);
+}
+
+int api_set_func_mode(struct ilitek_ts_device *dev, uint8_t mode)
+{
+	int error;
+	bool get = false;
+
+	memset(dev->wbuf, 0, 64);
+
+	switch (dev->protocol.flag) {
+	case PTL_V3:
+		dev->wbuf[1] = 0x55;
+		dev->wbuf[2] = 0xAA;
+		break;
+	case PTL_V6:
+		dev->wbuf[1] = 0x5A;
+		dev->wbuf[2] = 0xA5;
+		break;
+	default:
+		TP_ERR("unrecognized protocol: %x, flag: %hhu",
+			dev->protocol.ver, dev->protocol.flag);
+		return -EINVAL;
+	}
+	dev->wbuf[3] = mode;
+
+	if (dev->protocol.ver < 0x30400) {
+		TP_ERR("protocol: 0x%x not support\n", dev->protocol.ver);
+		return -EINVAL;
+	}
+
+	if ((error = api_protocol_set_cmd(dev, SET_FUNC_MOD, &get)) < 0 ||
+			(error = api_get_func_mode(dev)) < 0)
+		return error;
+
+	return (dev->func_mode == mode) ? 0 : -EFAULT;
+}
+
+int api_get_func_mode(struct ilitek_ts_device *dev)
+{
+	bool get = true;
+
+	return api_protocol_set_cmd(dev, SET_FUNC_MOD, &get);
+}
+
+int api_erase_data_v3(struct ilitek_ts_device *dev)
+{
+	int error;
+
+	memset(dev->wbuf, 0xff, sizeof(dev->wbuf));
+
+	TP_MSG("erase data flash for V3 protocol: %#x\n", dev->protocol.ver);
+
+	if ((dev->protocol.ver & 0xFFFF00) == BL_PROTOCOL_V1_7) {
+		if ((error = api_write_enable_v3(dev, false, false,
+						 0xf01f, 0)) < 0)
+			return error;
+
+		dev->cb.delay_ms(10);
+
+		if ((error = api_protocol_set_cmd(dev, WRITE_DATA_V3,
+				NULL)) < 0)
+			return error;
+
+		dev->cb.delay_ms(500);
+	} else if (dev->protocol.flag == PTL_V3) {
+		if ((error = api_write_enable_v3(dev, true, false, 0, 0)) < 0)
+			return error;
+
+		dev->cb.delay_ms(100);
+
+		dev->wbuf[1] = 0x02;
+		if ((error = api_protocol_set_cmd(dev, TUNING_PARA_V3,
+				NULL)) < 0)
+			return error;
+
+		switch (dev->_interface) {
+		case interface_usb:
+			return re_enum_helper(dev);
+		default:
+			dev->cb.delay_ms(1500);
+			break;
+		}
+	}
+
+	return 0;
+}
+
+int api_write_data_m2v(struct ilitek_ts_device *dev, int wlen)
+{
+	return api_protocol_set_cmd(dev, WRITE_DATA_M2V, &wlen);
+}
+
+int api_to_bl_mode_m2v(struct ilitek_ts_device *dev, bool to_bl)
+{
+	int cnt = 0, retry = 15;
+	const uint8_t target_mode = (to_bl) ? 0x55 : 0x5A;
+	uint8_t mode;
+
+	if (dev->_interface != interface_usb)
+		return -EINVAL;
+
+	do {
+		if (api_access_slave(dev, 0x80, M2V_GET_MOD, &mode) < 0)
+			continue;
+
+		if (mode == target_mode)
+			goto success_change_mode;
+
+		if (to_bl && api_access_slave(dev, 0x80, SLAVE_SET_BL,
+					      NULL) < 0)
+			continue;
+		else if (api_access_slave(dev, 0x80, SLAVE_SET_AP, NULL) < 0)
+			continue;
+
+		do {
+			if (!re_enum_helper(dev) &&
+					!api_access_slave(dev, 0x80, M2V_GET_MOD, &mode) &&
+					mode == target_mode)
+				goto success_change_mode;
+			dev->cb.delay_ms(5000);
+		} while (cnt++ < retry);
+		break;
+	} while (cnt++ < retry);
+
+	TP_ERR("M2V current mode: 0x%hhx, change to %s mode failed\n",
+		mode, (to_bl) ? "BL" : "AP");
+	return -EFAULT;
+
+success_change_mode:
+	TP_MSG("M2V current mode: 0x%hhx %s mode\n", mode,
+			(to_bl) ? "BL" : "AP");
+
+	return 0;
+}
+
+int api_update_ts_info(void *handle)
+{
+	int error;
+	struct ilitek_ts_device *dev = (struct ilitek_ts_device *)handle;
+
+	dev->protocol.flag = PTL_V6;
+	dev->tp_info.ic_num = 1;
+
+	if ((error = api_set_ctrl_mode(dev, mode_suspend, false)) < 0 ||
+			(error = api_protocol_set_cmd(dev, GET_PTL_VER, NULL)) < 0 ||
+			(error = api_protocol_set_cmd(dev, GET_MCU_MOD, NULL)) < 0 ||
+			(error = api_protocol_set_cmd(dev, GET_MCU_VER, NULL)) < 0 ||
+			(error = api_protocol_set_cmd(dev, GET_FW_VER, NULL)) < 0 ||
+			(error = api_protocol_set_cmd(dev, GET_AP_CRC, NULL)) < 0)
+		return error;
+
+	if (dev->protocol.flag == PTL_V6 &&
+			((error = api_protocol_set_cmd(dev, GET_MCU_INFO, NULL)) < 0 ||
+			(error = api_protocol_set_cmd(dev, GET_PRODUCT_INFO, NULL)) < 0 ||
+			(error = api_protocol_set_cmd(dev, GET_FWID, NULL)) < 0))
+		return error;
+
+	/* BL mode should perform FW upgrade afterward */
+	if (dev->ic[0].mode != 0x5A)
+		return 0;
+
+	/* V3 need to get DF CRC */
+	if (dev->protocol.flag == PTL_V3 &&
+			(error = api_protocol_set_cmd(dev, GET_DF_CRC, NULL)) < 0)
+		return error;
+
+	if ((error = api_protocol_set_cmd(dev, GET_CORE_VER, NULL)) < 0 ||
+			(error = api_protocol_set_cmd(dev, GET_SCRN_RES, NULL)) < 0 ||
+			(error = api_protocol_set_cmd(dev, GET_TP_INFO, NULL)) < 0 ||
+			(error = api_get_func_mode(dev)) < 0)
+		return error;
+
+	if (dev->tp_info.ic_num > 1 &&
+			((error = api_protocol_set_cmd(dev, GET_AP_CRC,
+			&dev->tp_info.ic_num)) < 0 ||
+			(error = api_protocol_set_cmd(dev, GET_MCU_MOD,
+			&dev->tp_info.ic_num)) < 0))
+		return error;
+
+	if ((error = api_set_ctrl_mode(dev, mode_normal, false)) < 0)
+		return error;
+
+	return 0;
+}
+
+void __ilitek_get_ts_info(void *handle, struct ilitek_tp_info_v6 *tp_info)
+{
+	struct ilitek_ts_device *dev = (struct ilitek_ts_device *)handle;
+
+	if (!tp_info || !dev)
+		return;
+
+	memcpy(tp_info, &dev->tp_info, sizeof(struct ilitek_tp_info_v6));
+}
+
+void *ilitek_dev_init(uint8_t _interface, struct ilitek_ts_callback *callback,
+					void *_private)
+{
+	struct ilitek_ts_device *dev;
+
+	TP_MSG("CommonFlow-Protocol code version: %#x\n",
+		PROTOCOL_CODE_VERSION);
+
+	dev = (struct ilitek_ts_device *)MALLOC(sizeof(*dev));
+	if (!dev)
+		return NULL;
+
+	/* initial all member to 0/ false/ NULL */
+	memset(dev, 0, sizeof(*dev));
+
+	if (callback) {
+		memcpy(&dev->cb, callback, sizeof(struct ilitek_ts_callback));
+		if (dev->cb.msg)
+			g_msg = dev->cb.msg;
+	}
+
+	dev->_interface = _interface;
+	dev->_private = _private;
+
+	/* get tp dev first */
+	if (api_update_ts_info(dev) < 0)
+		goto err_free;
+
+	return dev;
+
+err_free:
+	FREE(dev);
+	return NULL;
+}
+
+void ilitek_dev_exit(void *handle)
+{
+	struct ilitek_ts_device *dev = (struct ilitek_ts_device *)handle;
+
+	if (dev)
+		FREE(dev);
 }
