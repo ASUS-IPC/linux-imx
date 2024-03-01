@@ -6341,7 +6341,7 @@ static void rpi_backlight_enble_work(struct work_struct *work)
 		if (rpi_panel->backlight) {
 			backlight_update_status(rpi_panel->backlight);
 		} else {
-			pr_err("%s: failed to get rpi_panel->backlight\n");
+			pr_err("%s: failed to get rpi_panel->backlight\n", __func__);
 		}
 }
 #endif
