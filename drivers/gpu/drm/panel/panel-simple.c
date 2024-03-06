@@ -1443,15 +1443,15 @@ static void panel_simple_shutdown(struct device *dev)
 }
 #if defined(CONFIG_SENSORS_BACKLIGHT_THERMAL)
 static const struct display_timing koe_tx38d204vm0baa_timing = {
-	.pixelclock = { 86400000, 88622000, 96400000},
+	.pixelclock = { 86400000, 91018000, 96400000},
 	.hactive = { 1920, 1920, 1920 },//typ. total-active (998-960)*2=76
-	.hfront_porch = { 20, 20, 40 },
-	.hback_porch = { 30, 36, 60 },
-	.hsync_len = { 20, 20, 40 },
+	.hfront_porch = { 20, 24, 40 },
+	.hback_porch = { 30, 24, 60 },
+	.hsync_len = { 20, 28, 40 },
 	.vactive = { 720, 720, 720},//typ, total-active 740-720=20
-	.vfront_porch = { 2, 5, 15 },
+	.vfront_porch = { 2, 10, 15 },
 	.vback_porch = { 3, 10, 30 },
-	.vsync_len = { 2, 5, 15 },
+	.vsync_len = { 2, 20, 15 },
 	.flags = DISPLAY_FLAGS_DE_HIGH,
 };
 

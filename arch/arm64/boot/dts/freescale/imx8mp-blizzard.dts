@@ -1109,7 +1109,8 @@
 	<800000000>,
 	<393216000>,
 	<361267200>,
-	<620354000>;//add for koe lvds typ. pixel clock 88.622M
+	//<620354000>;//add for koe lvds typ. pixel clock 88.622M
+	<637126000>;//add for koe lvds typ. pixel clock 91.018M for high temp enter test mode issue
 };
 
 &ldb_phy {
