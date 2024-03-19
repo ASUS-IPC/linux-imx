@@ -842,6 +842,12 @@ static unsigned int mxc_jpeg_setup_cfg_stream(void *cfg_stream_vaddr,
 					      u32 fourcc,
 					      u16 w, u16 h)
 {
+	/*
+	 * There is a hardware issue that first 128 bytes of configuration data
+	 * can't be loaded correctly.
+	 * To avoid this issue, we need to write the configuration from
+	 * an offset which should be no less than 0x80 (128 bytes).
+	 */
 	unsigned int offset = 0x80;
 	u8 *cfg = (u8 *)cfg_stream_vaddr;
 	struct mxc_jpeg_sof *sof;
@@ -998,7 +1004,7 @@ static void mxc_jpeg_config_enc_desc(struct vb2_buffer *out_buf,
 			      &h, h, MXC_JPEG_MAX_HEIGHT, q_data->fmt->v_align, 0);
 	mxc_jpeg_set_res(desc, w, h);
 	mxc_jpeg_set_line_pitch(desc, q_data->bytesperline[0]);
-	mxc_jpeg_set_bufsize(desc, q_data->sizeimage[0]);
+	mxc_jpeg_set_bufsize(desc, ALIGN(vb2_plane_size(dst_buf, 0), 1024));
 	img_fmt = mxc_jpeg_fourcc_to_imgfmt(q_data->fmt->fourcc);
 	if (img_fmt == MXC_JPEG_INVALID)
 		dev_err(jpeg->dev, "No valid image format detected\n");
@@ -1223,6 +1229,7 @@ static int mxc_jpeg_decoder_cmd(struct file *file, void *priv,
 {
 	struct v4l2_fh *fh = file->private_data;
 	struct mxc_jpeg_ctx *ctx = mxc_jpeg_fh_to_ctx(fh);
+	unsigned long flags;
 	int ret;
 
 	ret = v4l2_m2m_ioctl_try_decoder_cmd(file, fh, cmd);
@@ -1232,7 +1239,9 @@ static int mxc_jpeg_decoder_cmd(struct file *file, void *priv,
 	if (!vb2_is_streaming(v4l2_m2m_get_src_vq(fh->m2m_ctx)))
 		return 0;
 
+	spin_lock_irqsave(&ctx->mxc_jpeg->hw_lock, flags);
 	ret = v4l2_m2m_ioctl_decoder_cmd(file, priv, cmd);
+	spin_unlock_irqrestore(&ctx->mxc_jpeg->hw_lock, flags);
 	if (ret < 0)
 		return ret;
 
@@ -1253,6 +1262,7 @@ static int mxc_jpeg_encoder_cmd(struct file *file, void *priv,
 {
 	struct v4l2_fh *fh = file->private_data;
 	struct mxc_jpeg_ctx *ctx = mxc_jpeg_fh_to_ctx(fh);
+	unsigned long flags;
 	int ret;
 
 	ret = v4l2_m2m_ioctl_try_encoder_cmd(file, fh, cmd);
@@ -1263,7 +1273,9 @@ static int mxc_jpeg_encoder_cmd(struct file *file, void *priv,
 	    !vb2_is_streaming(v4l2_m2m_get_dst_vq(fh->m2m_ctx)))
 		return 0;
 
+	spin_lock_irqsave(&ctx->mxc_jpeg->hw_lock, flags);
 	ret = v4l2_m2m_ioctl_encoder_cmd(file, fh, cmd);
+	spin_unlock_irqrestore(&ctx->mxc_jpeg->hw_lock, flags);
 	if (ret < 0)
 		return 0;
 
@@ -1746,19 +1758,24 @@ static void mxc_jpeg_encode_ctrls(struct mxc_jpeg_ctx *ctx)
 
 static int mxc_jpeg_ctrls_setup(struct mxc_jpeg_ctx *ctx)
 {
+	int err;
+
 	v4l2_ctrl_handler_init(&ctx->ctrl_handler, 2);
 
 	if (ctx->mxc_jpeg->mode == MXC_JPEG_ENCODE)
 		mxc_jpeg_encode_ctrls(ctx);
 
 	if (ctx->ctrl_handler.error) {
-		int err = ctx->ctrl_handler.error;
+		err = ctx->ctrl_handler.error;
 
 		v4l2_ctrl_handler_free(&ctx->ctrl_handler);
 		return err;
 	}
 
-	return v4l2_ctrl_handler_setup(&ctx->ctrl_handler);
+	err = v4l2_ctrl_handler_setup(&ctx->ctrl_handler);
+	if (err)
+		v4l2_ctrl_handler_free(&ctx->ctrl_handler);
+	return err;
 }
 
 static int mxc_jpeg_open(struct file *file)
@@ -2182,9 +2199,9 @@ static int mxc_jpeg_dec_g_selection(struct file *file, void *fh, struct v4l2_sel
 	switch (s->target) {
 	case V4L2_SEL_TGT_COMPOSE:
 	case V4L2_SEL_TGT_COMPOSE_DEFAULT:
-	case V4L2_SEL_TGT_COMPOSE_PADDED:
 		s->r = q_data_cap->crop;
 		break;
+	case V4L2_SEL_TGT_COMPOSE_PADDED:
 	case V4L2_SEL_TGT_COMPOSE_BOUNDS:
 		s->r.left = 0;
 		s->r.top = 0;
@@ -2423,6 +2440,8 @@ static int mxc_jpeg_probe(struct platform_device *pdev)
 	unsigned int slot;
 
 	of_id = of_match_node(mxc_jpeg_match, dev->of_node);
+	if (!of_id)
+		return -ENODEV;
 	mode = *(const int *)of_id->data;
 
 	jpeg = devm_kzalloc(dev, sizeof(struct mxc_jpeg_dev), GFP_KERNEL);
@@ -2463,19 +2482,12 @@ static int mxc_jpeg_probe(struct platform_device *pdev)
 	jpeg->mode = mode;
 
 	/* Get clocks */
-	jpeg->clk_ipg = devm_clk_get(dev, "ipg");
-	if (IS_ERR(jpeg->clk_ipg)) {
-		dev_err(dev, "failed to get clock: ipg\n");
-		ret = PTR_ERR(jpeg->clk_ipg);
+	ret = devm_clk_bulk_get_all(&pdev->dev, &jpeg->clks);
+	if (ret < 0) {
+		dev_err(dev, "failed to get clock\n");
 		goto err_clk;
 	}
-
-	jpeg->clk_per = devm_clk_get(dev, "per");
-	if (IS_ERR(jpeg->clk_per)) {
-		dev_err(dev, "failed to get clock: per\n");
-		ret = PTR_ERR(jpeg->clk_per);
-		goto err_clk;
-	}
+	jpeg->num_clks = ret;
 
 	ret = mxc_jpeg_attach_pm_domains(jpeg);
 	if (ret < 0) {
@@ -2572,32 +2584,20 @@ static int mxc_jpeg_runtime_resume(struct device *dev)
 	struct mxc_jpeg_dev *jpeg = dev_get_drvdata(dev);
 	int ret;
 
-	ret = clk_prepare_enable(jpeg->clk_ipg);
+	ret = clk_bulk_prepare_enable(jpeg->num_clks, jpeg->clks);
 	if (ret < 0) {
-		dev_err(dev, "failed to enable clock: ipg\n");
-		goto err_ipg;
-	}
-
-	ret = clk_prepare_enable(jpeg->clk_per);
-	if (ret < 0) {
-		dev_err(dev, "failed to enable clock: per\n");
-		goto err_per;
+		dev_err(dev, "failed to enable clock\n");
+		return ret;
 	}
 
 	return 0;
-
-err_per:
-	clk_disable_unprepare(jpeg->clk_ipg);
-err_ipg:
-	return ret;
 }
 
 static int mxc_jpeg_runtime_suspend(struct device *dev)
 {
 	struct mxc_jpeg_dev *jpeg = dev_get_drvdata(dev);
 
-	clk_disable_unprepare(jpeg->clk_ipg);
-	clk_disable_unprepare(jpeg->clk_per);
+	clk_bulk_disable_unprepare(jpeg->num_clks, jpeg->clks);
 
 	return 0;
 }

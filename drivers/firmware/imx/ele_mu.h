@@ -8,6 +8,7 @@
 
 #include <linux/miscdevice.h>
 #include <linux/semaphore.h>
+#include <linux/mailbox_client.h>
 
 /* macro to log operation of a misc device */
 #define miscdev_dbg(p_miscdev, fmt, va_args...)                                \
@@ -134,7 +135,24 @@ struct ele_mu_priv {
 	struct ele_api_msg tx_msg, rx_msg;
 	struct completion done;
 	spinlock_t lock;
+	/* Flag to retain the state of initialization done at
+	 * the time of ele-mu probe.
+	 */
+	int flags;
+	int max_dev_ctx;
+	struct ele_mu_device_ctx **ctxs;
 };
 
 int get_ele_mu_priv(struct ele_mu_priv **export);
+
+int imx_ele_msg_send_rcv(struct ele_mu_priv *priv);
+#ifdef CONFIG_IMX_ELE_TRNG
+int ele_trng_init(struct device *dev);
+#else
+static inline int ele_trng_init(struct device *dev)
+{
+	return 0;
+}
+#endif
+
 #endif

@@ -1236,15 +1236,6 @@ _IsGPUIdle(
     IN gckHARDWARE Hardware
     )
 {
-    return Idle == 0x7FFFFFFF;
-}
-
-static gctBOOL
-_IsGPUIdle2(
-    IN gctUINT32 Idle,
-    IN gckHARDWARE Hardware
-    )
-{
     if (Hardware->identity.chipModel == 0x7000
         && Hardware->identity.chipRevision == 0x6205
         && Hardware->identity.productID == 0x70007
@@ -1252,10 +1243,6 @@ _IsGPUIdle2(
         && Hardware->identity.customerID == 0x12)
     {
         Idle = (Idle | (1 << 14));
-        if (Idle == 0x7FFFFFFF)
-        {
-            gckOS_Delay(Hardware->os, 2);
-        }
     }
 
     return Idle == 0x7FFFFFFF;
@@ -3089,9 +3076,16 @@ gckHARDWARE_InitializeHardware(
 
     if (_IsHardwareMatch(Hardware, gcv4000, 0x5222)
      || _IsHardwareMatch(Hardware, gcv2000, 0x5108)
+     || _IsHardwareMatch(Hardware, gcv7000, 0x6009)
      || _IsHardwareMatch(Hardware, gcv7000, 0x6202)
      || _IsHardwareMatch(Hardware, gcv7000, 0x6203)
      || _IsHardwareMatch(Hardware, gcv7000, 0x6204)
+     || _IsHardwareMatch(Hardware, gcv7000, 0x6205)
+     || _IsHardwareMatch(Hardware, gcv7000, 0x6212)
+     || _IsHardwareMatch(Hardware, gcv7000, 0x6214)
+     || _IsHardwareMatch(Hardware, gcv600, 0x4653)
+     || _IsHardwareMatch(Hardware, gcv8000, 0x6201)
+     || _IsHardwareMatch(Hardware, gcv8000, 0x6204)
      || (gckHARDWARE_IsFeatureAvailable(Hardware, gcvFEATURE_TX_DESCRIPTOR)
        && !gckHARDWARE_IsFeatureAvailable(Hardware, gcvFEATURE_TX_DESC_CACHE_CLOCKGATE_FIX)
         )
@@ -13893,7 +13887,7 @@ gckHARDWARE_ExecuteFunctions(
             }
 #endif
         }
-        while (!_IsGPUIdle2(idle, hardware));
+        while (!_IsGPUIdle(idle, hardware));
     }
 
     return gcvSTATUS_OK;
