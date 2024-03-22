@@ -663,7 +663,7 @@ static int panel_simple_unprepare(struct drm_panel *panel)
 	struct panel_simple *p = to_panel_simple(panel);
 	int ret;
 
-	printk(KERN_INFO "%s prepared=%d \n", __func__, p->prepared);
+	printk(KERN_INFO "%s prepared=%d +++\n", __func__, p->prepared);
 
 	/* Unpreparing when already unprepared is a no-op */
 	if (!p->prepared)
@@ -731,12 +731,15 @@ static int panel_simple_unprepare(struct drm_panel *panel)
 	}
 #endif
 
+#if 0
 	pm_runtime_mark_last_busy(panel->dev);
 	ret = pm_runtime_put_autosuspend(panel->dev);
 	if (ret < 0)
 		return ret;
-	p->prepared = false;
+#endif
 
+	p->prepared = false;
+	printk(KERN_INFO "%s prepared=%d ---\n", __func__, p->prepared);
 	return 0;
 }
 
@@ -848,7 +851,7 @@ static int panel_simple_prepare(struct drm_panel *panel)
 	struct panel_simple *p = to_panel_simple(panel);
 	int ret;
 
-	printk(KERN_INFO "%s prepared=%d \n", __func__, p->prepared);
+	printk(KERN_INFO "%s prepared=%d +++\n", __func__, p->prepared);
 
 	/* Preparing when already prepared is a no-op */
 	if (p->prepared)
@@ -864,14 +867,16 @@ static int panel_simple_prepare(struct drm_panel *panel)
 	}
 #endif
 
+#if 0
 	ret = pm_runtime_get_sync(panel->dev);
 	if (ret < 0) {
 		pm_runtime_put_autosuspend(panel->dev);
 		return ret;
 	}
+#endif
 
 	p->prepared = true;
-
+	printk(KERN_INFO "%s prepared=%d ---\n", __func__, p->prepared);
 	return 0;
 }
 
@@ -1365,6 +1370,7 @@ static int panel_simple_probe(struct device *dev, const struct panel_desc *desc,
 #if defined(CONFIG_SENSORS_BACKLIGHT_THERMAL)
 	bl = panel->backlight;
 #endif
+
 	/*
 	 * We use runtime PM for prepare / unprepare since those power the panel
 	 * on and off and those can be very slow operations. This is important
