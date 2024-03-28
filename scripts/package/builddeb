@@ -84,6 +84,7 @@ set_debarch() {
 
 # Some variables and settings used throughout the script
 version=$KERNELRELEASE
+short_version=$(echo $KERNELRELEASE | cut -b 1-7)
 revision=$(cat .version)
 if [ -n "$KDEB_PKGVERSION" ]; then
 	packageversion=$KDEB_PKGVERSION
@@ -91,13 +92,29 @@ else
 	packageversion=$version-$revision
 fi
 sourcename=$KDEB_SOURCENAME
+
+if test -e include/config/auto.conf; then
+	. include/config/auto.conf
+else
+	echo "Error: auto.conf not valid - run 'make prepare' to update it" >&2
+	exit 1
+fi
+
+echo "KDEB_PKGVERSION=$KDEB_PKGVERSION" > builddeb.txt
+echo "version=$version" >> builddeb.txt
+echo "revision=$revision" >> builddeb.txt
+echo "KERNELRELEASE=$KERNELRELEASE" >> builddeb.txt
+
+echo "KDEB_SOURCENAME=$KDEB_SOURCENAME" >> builddeb.txt
+echo "packageversion=$packageversion" >> builddeb.txt
+
 tmpdir="$objtree/debian/tmp"
 kernel_headers_dir="$objtree/debian/hdrtmp"
 libc_headers_dir="$objtree/debian/headertmp"
 dbg_dir="$objtree/debian/dbgtmp"
-packagename=linux-image-$version
-kernel_headers_packagename=linux-headers-$version
-libc_headers_packagename=linux-libc-dev
+packagename=linux-image-$short_version-${CONFIG_PROJECT_NAME}
+kernel_headers_packagename=linux-headers-$short_version-${CONFIG_PROJECT_NAME}
+libc_headers_packagename=linux-libc-dev-${CONFIG_PROJECT_NAME}
 dbg_packagename=$packagename-dbg
 debarch=
 forcearch=
@@ -126,7 +143,7 @@ BUILD_DEBUG="$(grep -s '^CONFIG_DEBUG_INFO=y' $KCONFIG_CONFIG || true)"
 # Setup the directory structure
 rm -rf "$tmpdir" "$kernel_headers_dir" "$libc_headers_dir" "$dbg_dir" $objtree/debian/files
 mkdir -m 755 -p "$tmpdir/DEBIAN"
-mkdir -p "$tmpdir/lib" "$tmpdir/boot"
+mkdir -p "$tmpdir/lib" "$tmpdir/boot" "$tmpdir/tmp"
 mkdir -p "$kernel_headers_dir/lib/modules/$version/"
 
 # Build and install the kernel
@@ -137,10 +154,21 @@ if [ "$ARCH" = "um" ] ; then
 	cp $KCONFIG_CONFIG "$tmpdir/usr/share/doc/$packagename/config"
 	gzip "$tmpdir/usr/share/doc/$packagename/config"
 else
-	cp System.map "$tmpdir/boot/System.map-$version"
-	cp $KCONFIG_CONFIG "$tmpdir/boot/config-$version"
+	if true;then
+		echo "Skip copy System.map and config"
+	else
+		cp System.map "$tmpdir/boot/System.map-$version"
+		cp $KCONFIG_CONFIG "$tmpdir/boot/config-$version"
+	fi
 fi
-cp "$($MAKE -s image_name)" "$tmpdir/$installed_image_path"
+
+if true;then
+	echo "Skip copy vmlinuz"
+else
+	cp "$($MAKE -s image_name)" "$tmpdir/$installed_image_path"
+fi
+
+cp debcontent_files/boot.img "$tmpdir/tmp"
 
 if grep -q "^CONFIG_OF=y" $KCONFIG_CONFIG ; then
 	# Only some architectures with OF support have this target
@@ -193,6 +221,10 @@ if grep -q '^CONFIG_BLK_DEV_INITRD=y' $KCONFIG_CONFIG; then
 else
 	want_initrd=No
 fi
+
+if true;then
+	cp debcontent_files/postinst $tmpdir/DEBIAN/
+else
 for script in postinst postrm preinst prerm ; do
 	mkdir -p "$tmpdir$debhookdir/$script.d"
 	cat <<EOF > "$tmpdir/DEBIAN/$script"
@@ -211,6 +243,7 @@ exit 0
 EOF
 	chmod 755 "$tmpdir/DEBIAN/$script"
 done
+fi
 
 # Try to determine maintainer and email values
 if [ -n "$DEBEMAIL" ]; then
@@ -218,15 +251,17 @@ if [ -n "$DEBEMAIL" ]; then
 elif [ -n "$EMAIL" ]; then
        email=$EMAIL
 else
-       email=$(id -nu)@$(hostname -f 2>/dev/null || hostname)
+       email=singhome1_lee@asus.com
 fi
+
 if [ -n "$DEBFULLNAME" ]; then
        name=$DEBFULLNAME
 elif [ -n "$NAME" ]; then
        name=$NAME
 else
-       name="Anonymous"
+       name="singhome1_lee"
 fi
+
 maintainer="$name <$email>"
 
 # Try to determine distribution
@@ -242,13 +277,22 @@ else
 fi
 
 # Generate a simple changelog template
+if [ "$CONFIG_PROJECT_NAME" = "pe100a" ]; then
+	cp debcontent_files/changelog.pe100a debian/changelog
+elif [ "$CONFIG_PROJECT_NAME" = "pv100a" ]; then
+	cp debcontent_files/changelog.pv100a debian/changelog
+elif [ "$CONFIG_PROJECT_NAME" = "imx8mq-im-a" ]; then
+	cp debcontent_files/changelog.imx8mq-im-a debian/changelog
+
+else
 cat <<EOF > debian/changelog
 $sourcename ($packageversion) $distribution; urgency=low
 
-  * Custom built Linux kernel.
+  * ${CONFIG_PROJECT_NAME} built Linux kernel.
 
  -- $maintainer  $(date -R)
 EOF
+fi
 
 # Generate copyright file
 cat <<EOF > debian/copyright
@@ -280,6 +324,7 @@ Section: kernel
 Priority: optional
 Maintainer: $maintainer
 Build-Depends: $build_depends
+Standards-Version: 4.6.0
 Homepage: http://www.kernel.org/
 EOF
 
@@ -409,7 +454,7 @@ EOF
 	dpkg-source -cdebian/control -ldebian/changelog --format="3.0 (custom)" --target-format="3.0 (quilt)" \
 		-b / ../${sourcename}_${version}.orig.tar.gz  ../${sourcename}_${packageversion}.debian.tar.gz
 	mv ${sourcename}_${packageversion}*dsc ..
-	dpkg-genchanges > ../${sourcename}_${packageversion}_${debarch}.changes
+	dpkg-genchanges -S > ../${sourcename}_${packageversion}_${debarch}.changes
 else
 	dpkg-genchanges -b > ../${sourcename}_${packageversion}_${debarch}.changes
 fi

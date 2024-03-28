@@ -23,10 +23,12 @@
 
 # Remove hyphens since they have special meaning in RPM filenames
 KERNELPATH := kernel-$(subst -,_,$(KERNELRELEASE))
-KDEB_SOURCENAME ?= linux-$(KERNELRELEASE)
+$(info KERNELRELEASE = $(KERNELRELEASE))
+KDEB_SOURCENAME = linux-$(firstword $(subst -, ,$(KERNELRELEASE)))
+$(info KDEB_SOURCENAME = $(KDEB_SOURCENAME))
 export KDEB_SOURCENAME
 # Include only those top-level files that are needed by make, plus the GPL copy
-TAR_CONTENT := $(KBUILD_ALLDIRS) .config .scmversion Makefile \
+TAR_CONTENT := $(KBUILD_ALLDIRS) debcontent_files .config .scmversion Makefile \
                Kbuild Kconfig COPYING $(wildcard localversion*)
 MKSPEC     := $(srctree)/scripts/package/mkspec
 

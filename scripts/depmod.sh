@@ -10,7 +10,9 @@ fi
 DEPMOD=$1
 KERNELRELEASE=$2
 SYMBOL_PREFIX=$3
-
+echo "DEPMOD=$DEPMOD" > depmod.txt
+echo "KERNELRELEASE=$KERNELRELEASE" >> depmod.txt
+echo "SYMBOL_PREFIX=$SYMBOL_PREFIX" >> depmod.txt
 if ! test -r System.map ; then
 	exit 0
 fi

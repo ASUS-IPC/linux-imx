@@ -1,0 +1,16 @@
+#!/bin/sh
+
+boot_img=/tmp/boot.img
+
+MMC=$(mount | grep " \/ " | cut -c  6-12)
+if [ "$MMC" != "mmcblk0" ]; then
+	echo "Starting install Boot to mmcblk1p1"
+	sudo dd if=$boot_img of=/dev/mmcblk1p1
+else
+	echo "Starting install Boot to mmcblk0p1"
+	sudo dd if=$boot_img of=/dev/mmcblk0p1
+fi
+
+sync
+echo "Boot image installation finish."
+echo "Please reboot the system"

@@ -88,6 +88,11 @@ config LOCALVERSION
 	  object and source tree, in that order.  Your total string can
 	  be a maximum of 64 characters.
 
+config PROJECT_NAME
+	string "Project Name - append to kernel release"
+	help
+	  define project name
+
 config LOCALVERSION_AUTO
 	bool "Automatically append version information to the version string"
 	default y
