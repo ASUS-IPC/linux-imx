@@ -341,10 +341,9 @@ static long rtc_dev_ioctl(struct file *file,
 		if (!strcmp(dev_name(&rtc->dev), CONFIG_RTC_HCTOSYS_DEVICE)) {
 			rtcX = rtc_class_open("rtc1");
 			if (rtcX == NULL) {
-				pr_err("unable to open rtc device (rtc1)\n");
 				rtcX = rtc_class_open("rtc2");
 				if (rtcX == NULL) {
-					pr_err("unable to open rtc device (rtc2)\n");
+					pr_err("unable to open rtc1 and rtc2 devices\n");
 					return rtc_set_time(rtc, &tm);
 				}
 			}
