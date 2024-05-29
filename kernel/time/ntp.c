@@ -581,6 +581,7 @@ static inline int update_persistent_clock64(struct timespec64 now64)
 static int update_rtc(struct timespec64 *to_set, unsigned long *offset_nsec)
 {
 	struct rtc_device *rtc;
+        struct rtc_device *rtcX;
 	struct rtc_time tm;
 	int err = -ENODEV;
 
@@ -600,6 +601,23 @@ static int update_rtc(struct timespec64 *to_set, unsigned long *offset_nsec)
 		*offset_nsec = rtc->set_offset_nsec;
 		err = -EAGAIN;
 	}
+
+        rtcX = rtc_class_open("rtc1");
+        if (rtcX == NULL) {
+               pr_err("unable to open rtc device (rtc1)\n");
+               rtcX = rtc_class_open("rtc2");
+               if (rtcX == NULL) {
+	               pr_err("unable to open rtc device (rtc2)\n");
+                       goto out_close;
+               }
+        }
+
+        err = rtc_set_time(rtcX, &tm);
+        if (err) {
+               pr_err("rtcX rtc_set_time fail \n");
+        }
+        rtc_class_close(rtcX);
+
 out_close:
 	rtc_class_close(rtc);
 	return err;
