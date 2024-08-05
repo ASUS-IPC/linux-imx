@@ -16,7 +16,8 @@
 #include "user_session.h"
 
 struct ksmbd_tree_conn_status
-ksmbd_tree_conn_connect(struct ksmbd_session *sess, char *share_name)
+ksmbd_tree_conn_connect(struct ksmbd_conn *conn, struct ksmbd_session *sess,
+			const char *share_name)
 {
 	struct ksmbd_tree_conn_status status = {-ENOENT, NULL};
 	struct ksmbd_tree_connect_response *resp = NULL;
@@ -25,7 +26,7 @@ ksmbd_tree_conn_connect(struct ksmbd_session *sess, char *share_name)
 	struct sockaddr *peer_addr;
 	int ret;
 
-	sc = ksmbd_share_config_get(share_name);
+	sc = ksmbd_share_config_get(conn->um, share_name);
 	if (!sc)
 		return status;
 
@@ -41,7 +42,7 @@ ksmbd_tree_conn_connect(struct ksmbd_session *sess, char *share_name)
 		goto out_error;
 	}
 
-	peer_addr = KSMBD_TCP_PEER_SOCKADDR(sess->conn);
+	peer_addr = KSMBD_TCP_PEER_SOCKADDR(conn);
 	resp = ksmbd_ipc_tree_connect_request(sess,
 					      sc,
 					      tree_conn,
@@ -56,6 +57,20 @@ ksmbd_tree_conn_connect(struct ksmbd_session *sess, char *share_name)
 		goto out_error;
 
 	tree_conn->flags = resp->connection_flags;
+	if (test_tree_conn_flag(tree_conn, KSMBD_TREE_CONN_FLAG_UPDATE)) {
+		struct ksmbd_share_config *new_sc;
+
+		ksmbd_share_config_del(sc);
+		new_sc = ksmbd_share_config_get(conn->um, share_name);
+		if (!new_sc) {
+			pr_err("Failed to update stale share config\n");
+			status.ret = -ESTALE;
+			goto out_error;
+		}
+		ksmbd_share_config_put(sc);
+		sc = new_sc;
+	}
+
 	tree_conn->user = sess->user;
 	tree_conn->share_conf = sc;
 	status.tree_conn = tree_conn;
@@ -94,18 +109,15 @@ int ksmbd_tree_conn_disconnect(struct ksmbd_session *sess,
 struct ksmbd_tree_connect *ksmbd_tree_conn_lookup(struct ksmbd_session *sess,
 						  unsigned int id)
 {
-	return xa_load(&sess->tree_conns, id);
-}
+	struct ksmbd_tree_connect *tcon;
 
-struct ksmbd_share_config *ksmbd_tree_conn_share(struct ksmbd_session *sess,
-						 unsigned int id)
-{
-	struct ksmbd_tree_connect *tc;
+	tcon = xa_load(&sess->tree_conns, id);
+	if (tcon) {
+		if (test_bit(TREE_CONN_EXPIRE, &tcon->status))
+			tcon = NULL;
+	}
 
-	tc = ksmbd_tree_conn_lookup(sess, id);
-	if (tc)
-		return tc->share_conf;
-	return NULL;
+	return tcon;
 }
 
 int ksmbd_tree_conn_session_logoff(struct ksmbd_session *sess)
@@ -113,6 +125,9 @@ int ksmbd_tree_conn_session_logoff(struct ksmbd_session *sess)
 	int ret = 0;
 	struct ksmbd_tree_connect *tc;
 	unsigned long id;
+
+	if (!sess)
+		return -EINVAL;
 
 	xa_for_each(&sess->tree_conns, id, tc)
 		ret |= ksmbd_tree_conn_disconnect(sess, tc);
