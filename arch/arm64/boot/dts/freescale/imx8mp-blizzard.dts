@@ -42,9 +42,10 @@
 		compatible = "asus-panel";
 		backlight = <&lvds_backlight>;
 		pinctrl-names = "default";
-		pinctrl-0 = <&pinctrl_lvds_pl_id0>, <&pinctrl_lvds_pl_id1>, <&pinctrl_lvds_vdd_en>, <&pinctrl_am_lvds_stbyb_en>, <&pinctrl_am_lvds_rstb_en>;
+		pinctrl-0 = <&pinctrl_lvds_pl_id0>, <&pinctrl_lvds_pl_id1>, <&pinctrl_lvds_pl_det>, <&pinctrl_lvds_vdd_en>, <&pinctrl_am_lvds_stbyb_en>, <&pinctrl_am_lvds_rstb_en>;
 		id0-gpios = <&gpio3 19 GPIO_ACTIVE_HIGH>;
 		id1-gpios = <&gpio3 20 GPIO_ACTIVE_HIGH>;
+		panel-det-gpios = <&gpio3 6 GPIO_ACTIVE_HIGH>;
 		enable-gpios = <&gpio5 5 GPIO_ACTIVE_HIGH>;
 		am-stbyb-gpios = <&gpio4 29 GPIO_ACTIVE_HIGH>;
 		am-rstb-gpios = <&gpio5 27 GPIO_ACTIVE_HIGH>;
@@ -502,7 +503,7 @@
 &flexspi {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_flexspi0>;
-	status = "okay";
+	status = "disabled";
 
 	flash0: mt25qu256aba@0 {
 		reg = <0>;
@@ -1811,6 +1812,12 @@
 	pinctrl_lvds_pl_id1: lvds_pl_id1 {
 		fsl,pins = <
 			MX8MP_IOMUXC_SAI5_RXC__GPIO3_IO20 0x19
+		>;
+	};
+
+	pinctrl_lvds_pl_det: lvds_pl_det {
+		fsl,pins = <
+			MX8MP_IOMUXC_NAND_DATA00__GPIO3_IO06 0x19
 		>;
 	};
 

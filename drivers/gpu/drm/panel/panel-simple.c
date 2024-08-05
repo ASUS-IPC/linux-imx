@@ -275,7 +275,7 @@ struct pwseq {
 };
 
 static struct backlight_device *bl;
-static int id0_gpio, id1_gpio;
+static int id0_gpio, id1_gpio, panel_det;
 static int panel_simple_enable_status = 0;
 #endif
 static inline struct panel_simple *to_panel_simple(struct drm_panel *panel)
@@ -5912,14 +5912,27 @@ static int panel_simple_platform_probe(struct platform_device *pdev)
 		}
 	}
 
+	panel_det = of_get_named_gpio(pdev->dev.of_node, "panel-det-gpios", 0);
+	if (!gpio_is_valid(panel_det)) {
+		printk("failed to get name gpio: panel-det-gpios, error: %d\n",panel_det);
+	} else {
+		ret = devm_gpio_request_one(&pdev->dev, panel_det, GPIOF_DIR_OUT, "GPIO_PANEL_DET");
+		if (ret < 0) {
+			printk("failed to request panel-det gpio: %d\n", ret);
+			return ret;
+		}
+	}
 	panelid = get_panelid();
 	if( panelid == 1) {
 		printk("Get panelid: %d, use ampire panel timing",panelid);
+		gpio_set_value(panel_det, 0);
 		id->data =  &am_1920720etzqw_00h;
 	} else if(panelid == 2) {
 		printk("Get panelid: %d, use koe panel timing",panelid);
+		gpio_set_value(panel_det, 1);
 	} else {
 		printk("Get unknown panelid: %d",panelid);
+		gpio_set_value(panel_det, 0);
 	}
 
 	file = proc_create("panelid", 0444, NULL, &panelid_ops);
