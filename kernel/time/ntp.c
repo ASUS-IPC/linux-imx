@@ -604,7 +604,6 @@ static int update_rtc(struct timespec64 *to_set, unsigned long *offset_nsec)
 
         rtcX = rtc_class_open("rtc1");
         if (rtcX == NULL) {
-               pr_err("unable to open rtc device (rtc1)\n");
                rtcX = rtc_class_open("rtc2");
                if (rtcX == NULL) {
 	               pr_err("unable to open rtc device (rtc2)\n");
