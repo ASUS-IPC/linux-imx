@@ -342,6 +342,12 @@ config RESET_ZYNQ
 	help
 	  This enables the reset controller driver for Xilinx Zynq SoCs.
 
+config RESET_PLATFORM
+	bool "Platform Reset Driver"
+	default n
+	help
+	  This enables the reset driver to control platform reset gpio.
+
 source "drivers/reset/starfive/Kconfig"
 source "drivers/reset/sti/Kconfig"
 source "drivers/reset/hisilicon/Kconfig"
