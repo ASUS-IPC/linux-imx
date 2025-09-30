@@ -81,6 +81,14 @@
 		};
 	};
 
+        vgen5_reg: vgen5 {
+		compatible = "regulator-fixed";
+		regulator-name = "pcie_vph_dummy";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		regulator-always-on;
+	};
+
 	reg_usdhc2_vmmc: regulator-vsd-3v3 {
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_reg_usdhc2>;
@@ -654,6 +662,7 @@
 		 <&pcie0_refclk>,
 		 <&clk IMX8MQ_CLK_PCIE1_PHY>,
 		 <&clk IMX8MQ_CLK_PCIE1_AUX>;
+        vph-supply = <&vgen5_reg>;
 	status = "okay";
 };
 
@@ -662,6 +671,7 @@
 		 <&pcie0_refclk>,
 		 <&clk IMX8MQ_CLK_PCIE2_PHY>,
 		 <&clk IMX8MQ_CLK_PCIE2_AUX>;
+        vph-supply = <&vgen5_reg>;
 	status = "okay";
 };
 
