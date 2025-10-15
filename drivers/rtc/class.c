@@ -391,6 +391,11 @@ int __devm_rtc_register_device(struct module *owner, struct rtc_device *rtc)
 	struct rtc_wkalrm alrm;
 	int err;
 
+#ifdef CONFIG_RTC_ASUS_SYNC_TIME
+	struct rtc_device *rtcX, *rtc_hctosys_device;
+	struct rtc_time tm;
+#endif
+
 	if (!rtc->ops) {
 		dev_dbg(&rtc->dev, "no ops set\n");
 		return -EINVAL;
@@ -426,6 +431,43 @@ int __devm_rtc_register_device(struct module *owner, struct rtc_device *rtc)
 
 	dev_info(rtc->dev.parent, "registered as %s\n",
 		 dev_name(&rtc->dev));
+
+#ifdef CONFIG_RTC_ASUS_SYNC_TIME
+	rtcX = rtc_class_open("rtc1");
+	if (rtcX == NULL) {
+		pr_info("unable to open rtc device (rtc1)\n");
+		rtcX = rtc_class_open("rtc2");
+		if (rtcX == NULL) {
+			pr_info("unable to open rtc device (rtc2)\n");
+		}
+	}
+
+	if (rtcX == NULL) {
+		pr_info("can't found any external rtc now\n");
+	} else {
+		err = rtc_read_time(rtcX, &tm);
+		if (err) {
+			dev_err(rtc->dev.parent,
+					"hctosys: rtcX unable to read the hardware clock\n");
+			rtc_class_close(rtcX);
+		} else {
+			rtc_class_close(rtcX);
+			rtc_hctosys_device = rtc_class_open(CONFIG_RTC_HCTOSYS_DEVICE);
+			if (rtc_hctosys_device == NULL) {
+				pr_info("__rtc_register_device can't found %s\n", CONFIG_RTC_HCTOSYS_DEVICE);
+			} else {
+				err = rtc_set_time(rtc_hctosys_device, &tm);
+				if (err) {
+					pr_err("rtc_hctosys: unable to set the hardware clock\n");
+				} else {
+					pr_info("Sync the %s to system time\n", CONFIG_RTC_HCTOSYS_DEVICE);
+					rtc_hctosys(rtc_hctosys_device);
+				}
+				rtc_class_close(rtc_hctosys_device);
+			}
+		}
+	}
+#endif
 
 #ifdef CONFIG_RTC_HCTOSYS_DEVICE
 	if (!strcmp(dev_name(&rtc->dev), CONFIG_RTC_HCTOSYS_DEVICE))

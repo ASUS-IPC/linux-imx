@@ -2015,4 +2015,10 @@ config RTC_DRV_POLARFIRE_SOC
 	  This driver can also be built as a module, if so, the module
 	  will be called "rtc-mpfs".
 
+config RTC_ASUS_SYNC_TIME
+	bool "Sync the RTC time between two RTC device"
+	default n
+	help
+	  If you say yes here, the rtc0 time would sync time from external rtc device.
+
 endif # RTC_CLASS
