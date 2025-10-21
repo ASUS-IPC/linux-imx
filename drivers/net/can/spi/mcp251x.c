@@ -1335,15 +1335,6 @@ static int mcp251x_can_probe(struct spi_device *spi)
 	if (ret)
 		goto out_free;
 
-	standby_gpio = of_get_named_gpio(np, "standby-gpios", 0);
-	dev_info(&spi->dev, "can bus standby gpio=%d, freq=%d\n", standby_gpio, freq);
-	if (gpio_is_valid(standby_gpio)) {
-		ret = devm_gpio_request_one(&spi->dev, standby_gpio, GPIOF_OUT_INIT_LOW, "CAN standby");
-		if (ret) {
-			dev_err(&spi->dev, "unable to get can standby gpio\n");
-		}
-	}
-
 	net->netdev_ops = &mcp251x_netdev_ops;
 	net->ethtool_ops = &mcp251x_ethtool_ops;
 	net->flags |= IFF_ECHO;

@@ -258,6 +258,16 @@
 		compatible = "platform-reset";
 		reset-gpio = <&gpio1 8 GPIO_ACTIVE_HIGH>;
 	};
+
+	reg_can0_stby: regulator-can0-stby {
+        compatible = "regulator-fixed";
+        regulator-name = "can0-stby";
+        pinctrl-names = "default";
+        pinctrl-0 = <&pinctrl_can0_standby>;
+        regulator-min-microvolt = <3300000>;
+        regulator-max-microvolt = <3300000>;
+        gpio = <&gpio4 20 GPIO_ACTIVE_LOW>;
+    };
 };
 
 &A53_0 {
@@ -987,7 +997,7 @@
 		>;
 	};
 
-    pinctrl_can_standby: can_standby {
+    pinctrl_can0_standby: can_standby {
 		fsl,pins = <
 			MX8MQ_IOMUXC_SAI1_MCLK_GPIO4_IO20		0x19
 		>;
@@ -1345,13 +1355,14 @@
 &ecspi2 {
 	fsl,spi-num-chipselects = <1>;
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_ecspi2>,<&pinctrl_ecspi2_cs>,<&pinctrl_can_standby>;
+	pinctrl-0 = <&pinctrl_ecspi2>,<&pinctrl_ecspi2_cs>;
 	cs-gpios = <&gpio5 13 GPIO_ACTIVE_HIGH>;
 	status = "okay";
 
 	can0: mcp2515@0 {
 		compatible = "microchip,mcp2515";
 		standby-gpios = <&gpio4 20 GPIO_ACTIVE_LOW>;
+		xceiver-supply = <&reg_can0_stby>;
 		reg = <0>;
 		spi-max-frequency = <5000000>;
 		clocks = <&can_osc>;
