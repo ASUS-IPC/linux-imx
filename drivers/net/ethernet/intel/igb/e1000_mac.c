@@ -1401,6 +1401,7 @@ s32 igb_id_led_init(struct e1000_hw *hw)
 	const u32 ledctl_off = E1000_LEDCTL_MODE_LED_OFF;
 	u16 data, i, temp;
 	const u16 led_mask = 0x0F;
+	const u32 global_blink_mode = 0x2;
 
 	/* i210 and i211 devices have different LED mechanism */
 	if ((hw->mac.type == e1000_i210) ||
@@ -1411,6 +1412,9 @@ s32 igb_id_led_init(struct e1000_hw *hw)
 
 	if (ret_val)
 		goto out;
+
+	u32 led_data = rd32(E1000_LEDCTL) | (global_blink_mode << 4);
+	wr32(E1000_LEDCTL, led_data);
 
 	mac->ledctl_default = rd32(E1000_LEDCTL);
 	mac->ledctl_mode1 = mac->ledctl_default;

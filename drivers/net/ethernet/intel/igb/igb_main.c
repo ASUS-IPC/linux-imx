@@ -3210,6 +3210,8 @@ static int igb_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	u8 part_str[E1000_PBANUM_LENGTH];
 	int err;
 
+	mdelay(500);
+
 	/* Catch broken hardware that put the wrong VF device ID in
 	 * the PCIe SR-IOV capability.
 	 */
@@ -3401,9 +3403,14 @@ static int igb_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	eth_hw_addr_set(netdev, hw->mac.addr);
 
 	if (!is_valid_ether_addr(netdev->dev_addr)) {
-		dev_err(&pdev->dev, "Invalid MAC Address\n");
-		err = -EIO;
-		goto err_eeprom;
+		eth_hw_addr_random(netdev);
+		dev_info(&pdev->dev, "Assigning random MAC address = %pM\n", netdev->dev_addr);
+		memcpy(hw->mac.addr, netdev->dev_addr, netdev->addr_len);
+		if (!is_valid_ether_addr(netdev->dev_addr)) {
+			dev_err(&pdev->dev, "Invalid MAC Address\n");
+			err = -EIO;
+			goto err_eeprom;
+		}
 	}
 
 	igb_set_default_mac_filter(adapter);
