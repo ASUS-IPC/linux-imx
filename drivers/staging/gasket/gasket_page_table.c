@@ -1591,3 +1591,5 @@ void gasket_free_coherent_memory_all(
 	gasket_dev->page_table[index]->coherent_pages = NULL;
 	gasket_dev->page_table[index]->num_coherent_pages = 0;
 }
+
+MODULE_IMPORT_NS(DMA_BUF);

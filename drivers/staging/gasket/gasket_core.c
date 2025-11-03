@@ -1838,7 +1838,7 @@ int gasket_register_device(const struct gasket_driver_desc *driver_desc)
 	mutex_init(&internal->mutex);
 	memset(internal->devs, 0, sizeof(struct gasket_dev *) * GASKET_DEV_MAX);
 	internal->class =
-		class_create(driver_desc->module, driver_desc->name);
+		class_create(driver_desc->name);
 
 	if (IS_ERR(internal->class)) {
 		pr_err("Cannot register %s class [ret=%ld]\n",

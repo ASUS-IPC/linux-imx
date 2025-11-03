@@ -5,6 +5,7 @@
 #include <linux/of_gpio.h>
 #include <linux/proc_fs.h>
 #include <linux/version.h>
+#include <linux/seq_file.h>
 
 static const char *boardinfo;
 static int pcbid = -1, skuid = -1, iobd = -1;
@@ -141,7 +142,7 @@ static int gpio_hwid_probe(struct platform_device *pdev)
 		boardinfo = "unknow";
 
 	pcb0_gpio = of_get_named_gpio(dev->of_node, "pcb0-gpios", 0);
-	if (!gpio_is_valid(pcb0_gpio) && (pcb0_gpio == ERR_PTR(-EPROBE_DEFER))) {
+	if (pcb0_gpio == -EPROBE_DEFER) {
 		printk("gpio_hwid_probe EPROBE_DEFER\n");
 		return -EPROBE_DEFER;
 	} else if (!gpio_is_valid(pcb0_gpio)) {
