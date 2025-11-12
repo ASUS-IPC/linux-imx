@@ -26,6 +26,8 @@
 #define ENETC_SIPCAPR0_QBV	BIT(4)
 #define ENETC_SIPCAPR0_QBU	BIT(3)
 #define ENETC_SIPCAPR0_RFS	BIT(2)
+#define ENETC_SIPCAPR0_LSO	BIT(1)
+#define ENETC_SIPCAPR0_RSC	BIT(0)
 #define ENETC_SIPCAPR1	0x24
 #define ENETC_SITGTGR	0x30
 #define ENETC_SIRBGCR	0x38
@@ -142,6 +144,10 @@ enum enetc_bdr_type {TX, RX};
 #define ENETC_RBBAR1	0x14
 #define ENETC_RBPIR	0x18
 #define ENETC_RBLENR	0x20
+#define ENETC_RBRSCR	0x30
+#define ENETC_RBRSCR_EN	BIT(31)
+#define ENETC_RBRSCR_SIZE_MASK	0xffff
+#define ENETC_RBRSCR_SIZE(n)	((n) & ENETC_RBRSCR_SIZE_MASK)
 #define ENETC_RBIER	0xa0
 #define ENETC_RBIER_RXTIE	BIT(0)
 #define ENETC_RBIDR	0xa4
@@ -390,6 +396,8 @@ enum enetc_bdr_type {TX, RX};
 /** Global regs, offset: 2_0000h */
 #define ENETC_GLOBAL_BASE	0x20000
 #define ENETC_G_EIPBRR0		0x0bf8
+#define IPBR0_IP_REV		GENMASK(15, 0)
+#define ENETC_REV_4_1		0x0401 /* Revision 4.1 */
 #define ENETC_G_EIPBRR1		0x0bfc
 #define ENETC_G_EPFBLPR(n)	(0xd00 + 4 * (n))
 #define ENETC_G_EPFBLPR1_XGMII	0x80000000

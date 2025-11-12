@@ -229,25 +229,45 @@ static void tca_blk_orientation_set(struct tca_blk *tca,
 
 	mutex_lock(&tca->mutex);
 
+	if (orientation == TYPEC_ORIENTATION_NONE) {
+		/*
+		 * use Controller Synced Mode for TCA low power enable and
+		 * put PHY to USB safe state.
+		 */
+		val = readl(tca->base + TCA_GCFG);
+		val = FIELD_PREP(TCA_GCFG_OP_MODE, TCA_GCFG_OP_MODE_SYNCMODE);
+		writel(val, tca->base + TCA_GCFG);
+
+		val = readl(tca->base + TCA_TCPC);
+		val = TCA_TCPC_VALID | TCA_TCPC_LOW_POWER_EN;
+		writel(val, tca->base + TCA_TCPC);
+
+		goto out;
+	}
+
+	/* use System Configuration Mode for TCA mux control. */
+	val = readl(tca->base + TCA_GCFG);
+	val = FIELD_PREP(TCA_GCFG_OP_MODE, TCA_GCFG_OP_MODE_SYSMODE);
+	writel(val, tca->base + TCA_GCFG);
+
 	/* Disable TCA module */
 	val = readl(tca->base + TCA_SYSMODE_CFG);
 	val |= TCA_SYSMODE_TCPC_DISABLE;
 	writel(val, tca->base + TCA_SYSMODE_CFG);
 
-	tca->orientation = orientation;
-
 	if (orientation == TYPEC_ORIENTATION_REVERSE)
 		val |= TCA_SYSMODE_TCPC_FLIP;
 	else if (orientation == TYPEC_ORIENTATION_NORMAL)
 		val &= ~TCA_SYSMODE_TCPC_FLIP;
-	else	/* TYPEC_ORIENTATION_NONE */
-		;
+
+	writel(val, tca->base + TCA_SYSMODE_CFG);
 
 	/* Enable TCA module */
-	writel(val, tca->base + TCA_SYSMODE_CFG);
 	val &= ~TCA_SYSMODE_TCPC_DISABLE;
 	writel(val, tca->base + TCA_SYSMODE_CFG);
 
+out:
+	tca->orientation = orientation;
 	mutex_unlock(&tca->mutex);
 }
 
@@ -265,11 +285,6 @@ static void tca_blk_init(struct tca_blk *tca)
 	/* clear reset */
 	val |= TCA_CLK_RST_SW;
 	writel(val, tca->base + TCA_CLK_RST);
-
-	/* use System Configuration Mode for TypeC_MUX direct control. */
-	val = readl(tca->base + TCA_GCFG);
-	val = FIELD_PREP(TCA_GCFG_OP_MODE, TCA_GCFG_OP_MODE_SYSMODE);
-	writel(val, tca->base + TCA_GCFG);
 
 	tca_blk_orientation_set(tca, tca->orientation);
 }
@@ -314,6 +329,28 @@ static u32 phy_tx_vref_tune_from_property(u32 percent)
 	return DIV_ROUND_CLOSEST(percent - 94U, 2);
 }
 
+static u32 imx95_phy_tx_vref_tune_from_property(u32 percent)
+{
+	percent = clamp(percent, 90U, 108U);
+
+	switch (percent) {
+	case 90 ... 91:
+		percent = 0;
+		break;
+	case 92 ... 96:
+		percent -= 91;
+		break;
+	case 97 ... 104:
+		percent -= 92;
+		break;
+	case 105 ... 108:
+		percent -= 93;
+		break;
+	}
+
+	return percent;
+}
+
 static u32 phy_tx_rise_tune_from_property(u32 percent)
 {
 	switch (percent) {
@@ -328,6 +365,22 @@ static u32 phy_tx_rise_tune_from_property(u32 percent)
 	}
 }
 
+static u32 imx95_phy_tx_rise_tune_from_property(u32 percent)
+{
+	percent = clamp(percent, 90U, 120U);
+
+	switch (percent) {
+	case 90 ... 99:
+		return 3;
+	case 101 ... 115:
+		return 1;
+	case 116 ... 120:
+		return 0;
+	default:
+		return 2;
+	}
+}
+
 static u32 phy_tx_preemp_amp_tune_from_property(u32 microamp)
 {
 	microamp = min(microamp, 1800U);
@@ -338,12 +391,12 @@ static u32 phy_tx_preemp_amp_tune_from_property(u32 microamp)
 static u32 phy_tx_vboost_level_from_property(u32 microvolt)
 {
 	switch (microvolt) {
-	case 0 ... 960:
-		return 0;
-	case 961 ... 1160:
-		return 2;
-	default:
+	case 1156:
+		return 5;
+	case 844:
 		return 3;
+	default:
+		return 4;
 	}
 }
 
@@ -373,6 +426,29 @@ static u32 phy_comp_dis_tune_from_property(u32 percent)
 		return 7;
 	}
 }
+
+static u32 imx95_phy_comp_dis_tune_from_property(u32 percent)
+{
+	percent = clamp(percent, 94, 104);
+
+	switch (percent) {
+	case 94 ... 95:
+		percent = 0;
+		break;
+	case 96 ... 98:
+		percent -= 95;
+		break;
+	case 99 ... 102:
+		percent -= 96;
+		break;
+	case 103 ... 104:
+		percent -= 97;
+		break;
+	}
+
+	return percent;
+}
+
 static u32 phy_pcs_tx_swing_full_from_property(u32 percent)
 {
 	percent = min(percent, 100U);
@@ -584,10 +660,17 @@ static void debug_remove_files(struct imx8mq_usb_phy *imx_phy)
 static void imx8m_get_phy_tuning_data(struct imx8mq_usb_phy *imx_phy)
 {
 	struct device *dev = imx_phy->phy->dev.parent;
+	bool is_imx95 = false;
+
+	if (device_is_compatible(dev, "fsl,imx95-usb-phy"))
+		is_imx95 = true;
 
 	if (device_property_read_u32(dev, "fsl,phy-tx-vref-tune-percent",
 				     &imx_phy->tx_vref_tune))
 		imx_phy->tx_vref_tune = PHY_TUNE_DEFAULT;
+	else if (is_imx95)
+		imx_phy->tx_vref_tune =
+			imx95_phy_tx_vref_tune_from_property(imx_phy->tx_vref_tune);
 	else
 		imx_phy->tx_vref_tune =
 			phy_tx_vref_tune_from_property(imx_phy->tx_vref_tune);
@@ -595,6 +678,9 @@ static void imx8m_get_phy_tuning_data(struct imx8mq_usb_phy *imx_phy)
 	if (device_property_read_u32(dev, "fsl,phy-tx-rise-tune-percent",
 				     &imx_phy->tx_rise_tune))
 		imx_phy->tx_rise_tune = PHY_TUNE_DEFAULT;
+	else if (is_imx95)
+		imx_phy->tx_rise_tune =
+			imx95_phy_tx_rise_tune_from_property(imx_phy->tx_rise_tune);
 	else
 		imx_phy->tx_rise_tune =
 			phy_tx_rise_tune_from_property(imx_phy->tx_rise_tune);
@@ -616,11 +702,14 @@ static void imx8m_get_phy_tuning_data(struct imx8mq_usb_phy *imx_phy)
 	if (device_property_read_u32(dev, "fsl,phy-comp-dis-tune-percent",
 				     &imx_phy->comp_dis_tune))
 		imx_phy->comp_dis_tune = PHY_TUNE_DEFAULT;
+	else if (is_imx95)
+		imx_phy->comp_dis_tune =
+			imx95_phy_comp_dis_tune_from_property(imx_phy->comp_dis_tune);
 	else
 		imx_phy->comp_dis_tune =
 			phy_comp_dis_tune_from_property(imx_phy->comp_dis_tune);
 
-	if (device_property_read_u32(dev, "fsl,pcs-tx-deemph-3p5db-attenuation-db",
+	if (device_property_read_u32(dev, "fsl,phy-pcs-tx-deemph-3p5db-attenuation-db",
 				     &imx_phy->pcs_tx_deemph_3p5db))
 		imx_phy->pcs_tx_deemph_3p5db = PHY_TUNE_DEFAULT;
 	else

@@ -5,6 +5,7 @@
 
 /dts-v1/;
 
+#include <dt-bindings/leds/common.h>
 #include <dt-bindings/phy/phy-imx8-pcie.h>
 #include <dt-bindings/pwm/pwm.h>
 #include <dt-bindings/usb/pd.h>
@@ -143,6 +144,15 @@
 		enable-active-high;
 	};
 
+	reg_vcc_12v: regulator-vcc-12v {
+		compatible = "regulator-fixed";
+		regulator-name = "VCC_12V";
+		regulator-min-microvolt = <12000000>;
+		regulator-max-microvolt = <12000000>;
+		gpio = <&pcal6524 1 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+	};
+
 	reg_vref_1v8: regulator-adc-vref {
 		compatible = "regulator-fixed";
 		regulator-name = "vref_1v8";
@@ -157,7 +167,6 @@
 		regulator-max-microvolt = <5000000>;
 		gpio = <&pcal6524 3 GPIO_ACTIVE_HIGH>;
 		enable-active-high;
-		regulator-always-on;
 	};
 
 	usdhc3_pwrseq: usdhc3_pwrseq {
@@ -191,6 +200,7 @@
 		regulator-max-microvolt = <3300000>;
 		gpio = <&pcal6524 10 GPIO_ACTIVE_HIGH>;
 		enable-active-high;
+		regulator-always-on;
 	};
 
 	cm7: imx95-cm7 {
@@ -401,11 +411,20 @@
 		#address-cells = <1>;
 		#size-cells = <0>;
 		reg = <0x62>;
+		nxp,inverted-out;
 
-		led_baclklight: led@0 {
-			label = "backlight";
+		led_backlight0: led@0 {
 			reg = <0>;
-			linux,default-trigger = "none";
+			function = LED_FUNCTION_BACKLIGHT;
+			color = <LED_COLOR_ID_WHITE>;
+			function-enumerator = <0>;
+		};
+
+		led_backlight1: led@1 {
+			reg = <1>;
+			function = LED_FUNCTION_BACKLIGHT;
+			color = <LED_COLOR_ID_WHITE>;
+			function-enumerator = <1>;
 		};
 	};
 };
@@ -471,6 +490,7 @@
 	pinctrl-2 = <&pinctrl_usdhc2_200mhz>, <&pinctrl_usdhc2_gpio>;
 	pinctrl-3 = <&pinctrl_usdhc2>, <&pinctrl_usdhc2_gpio>;
 	cd-gpios = <&gpio3 00 GPIO_ACTIVE_LOW>;
+	fsl,cd-gpio-wakeup-disable;
 	vmmc-supply = <&reg_usdhc2_vmmc>;
 	bus-width = <4>;
 	status = "okay";
@@ -535,7 +555,6 @@
 
 	ethphy0: ethernet-phy@1 {
 		reg = <1>;
-		eee-broken-1000t;
 		reset-gpios = <&pcal6524 4 GPIO_ACTIVE_LOW>;
 		reset-assert-us = <10000>;
 		reset-deassert-us = <80000>;
@@ -544,7 +563,6 @@
 
 	ethphy1: ethernet-phy@2 {
 		reg = <2>;
-		eee-broken-1000t;
 		reset-gpios = <&pcal6524 5 GPIO_ACTIVE_LOW>;
 		reset-assert-us = <10000>;
 		reset-deassert-us = <80000>;
@@ -605,7 +623,12 @@
 };
 
 &usb3_phy {
+	fsl,phy-pcs-tx-deemph-3p5db-attenuation-db = <17>;
+	fsl,phy-pcs-tx-swing-full-percent = <100>;
+	fsl,phy-tx-preemp-amp-tune-microamp = <600>;
+	fsl,phy-tx-vboost-level-microvolt = <1156>;
 	status = "okay";
+
 	port {
 		usb3_data_ss: endpoint {
 			remote-endpoint = <&typec_con_ss>;
@@ -779,6 +802,7 @@
 	pinctrl_touch: touchgrp {
 		fsl,pins = <
 			IMX95_PAD_XSPI1_DATA7__GPIO5_IO_BIT7			0x31e
+			IMX95_PAD_CCM_CLKO3__GPIO4_IO_BIT28				0x31e
 		>;
 	};
 
@@ -832,8 +856,8 @@
 
 	pinctrl_spdif: spdifgrp {
 		fsl,pins = <
-			IMX95_PAD_GPIO_IO22__SPDIF_IN				0x31e
-			IMX95_PAD_GPIO_IO23__SPDIF_OUT				0x31e
+			IMX95_PAD_GPIO_IO22__SPDIF_IN				0x3fe
+			IMX95_PAD_GPIO_IO23__SPDIF_OUT				0x3fe
 		>;
 	};
 

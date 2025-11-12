@@ -175,6 +175,7 @@ struct mxc_isi_plat_data {
 	bool buf_active_reverse;
 	bool has_36bit_dma;
 	bool raw32_chan_cfg;
+	bool buf_max_size;
 };
 
 struct mxc_isi_dma_buffer {
@@ -351,6 +352,8 @@ int mxc_isi_video_buffer_prepare(struct mxc_isi_dev *isi, struct vb2_buffer *vb2
 #ifdef CONFIG_VIDEO_IMX8_ISI_M2M
 int mxc_isi_m2m_register(struct mxc_isi_dev *isi, struct v4l2_device *v4l2_dev);
 int mxc_isi_m2m_unregister(struct mxc_isi_dev *isi);
+void mxc_isi_m2m_suspend(struct mxc_isi_pipe *pipe);
+int mxc_isi_m2m_resume(struct mxc_isi_pipe *pipe);
 #else
 static inline int mxc_isi_m2m_register(struct mxc_isi_dev *isi,
 				       struct v4l2_device *v4l2_dev)
@@ -358,6 +361,15 @@ static inline int mxc_isi_m2m_register(struct mxc_isi_dev *isi,
 	return 0;
 }
 static inline int mxc_isi_m2m_unregister(struct mxc_isi_dev *isi)
+{
+	return 0;
+}
+
+static inline void mxc_isi_m2m_suspend(struct mxc_isi_pipe *pipe)
+{
+}
+
+static inline int mxc_isi_m2m_resume(struct mxc_isi_pipe *pipe)
 {
 	return 0;
 }
@@ -396,6 +408,9 @@ void mxc_isi_channel_set_inbuf(struct mxc_isi_pipe *pipe, dma_addr_t dma_addr);
 void mxc_isi_channel_set_outbuf(struct mxc_isi_pipe *pipe,
 				const dma_addr_t dma_addrs[3],
 				enum mxc_isi_buf_id buf_id);
+void mxc_isi_channel_set_max_size(struct mxc_isi_pipe *pipe,
+				  const struct vb2_v4l2_buffer *v4l2_buf,
+				  const bool buf_max_size);
 
 u32 mxc_isi_channel_irq_status(struct mxc_isi_pipe *pipe, bool clear);
 void mxc_isi_channel_irq_clear(struct mxc_isi_pipe *pipe);

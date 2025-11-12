@@ -10,6 +10,7 @@
 #include "wave6-regdefine.h"
 #include "wave6.h"
 #include "wave6-vpu-dbg.h"
+#include "wave6-trace.h"
 
 static int wave6_check_dec_open_param(struct vpu_instance *inst, struct dec_open_param *param)
 {
@@ -149,7 +150,6 @@ int wave6_vpu_dec_get_aux_buffer_size(struct vpu_instance *inst,
 				      struct dec_aux_buffer_size_info info,
 				      uint32_t *size)
 {
-	struct vpu_attr *attr = &inst->dev->attr;
 	struct dec_info *p_dec_info = &inst->codec_info->dec_info;
 	int width = info.width;
 	int height = info.height;
@@ -212,7 +212,8 @@ int wave6_vpu_dec_get_aux_buffer_size(struct vpu_instance *inst,
 			buf_size = WAVE6_DEC_AVC_MVCOL_BUF_SIZE(width, height);
 			break;
 		case W_AV1_DEC:
-			buf_size = WAVE6_DEC_AV1_MVCOL_BUF_SIZE_1(width, height) +
+			buf_size = WAVE6_DEC_AV1_MVCOL_BUF_SIZE_1(ALIGN(width, 64),
+								  ALIGN(width, 256), height) +
 				WAVE6_DEC_AV1_MVCOL_BUF_SIZE_2(width, height);
 			break;
 		default:
@@ -228,22 +229,16 @@ int wave6_vpu_dec_get_aux_buffer_size(struct vpu_instance *inst,
 		if (inst->std != W_VP9_DEC)
 			return -EINVAL;
 
-		if (attr->support_command_queue)
-			buf_size = WAVE6_VP9_SEGMAP_BUF_SIZE(width, height) *
-				   (COMMAND_QUEUE_DEPTH + 3);
-		else
-			buf_size = WAVE6_VP9_SEGMAP_BUF_SIZE(width, height) * 2;
+		buf_size = WAVE6_VP9_SEGMAP_BUF_SIZE(width, height) * (COMMAND_QUEUE_DEPTH + 3);
 	} else if (info.type == AUX_BUF_PRE_ENT) {
-		if (!attr->support_command_queue)
-			return -EINVAL;
-
 		switch (inst->std) {
 		case W_VP9_DEC:
 			buf_size = WAVE6_DEC_VP9_MVCOL_BUF_SIZE_1(width, height) +
 				WAVE6_DEC_VP9_MVCOL_BUF_SIZE_2(width, height);
 			break;
 		case W_AV1_DEC:
-			buf_size = WAVE6_DEC_AV1_MVCOL_BUF_SIZE_1(width, height) +
+			buf_size = WAVE6_DEC_AV1_MVCOL_BUF_SIZE_1(ALIGN(width, 64),
+								  ALIGN(width, 256), height) +
 				WAVE6_DEC_AV1_MVCOL_BUF_SIZE_2(width, height);
 			break;
 		default:
@@ -386,44 +381,6 @@ int wave6_vpu_dec_register_display_buffer_ex(struct vpu_instance *inst, struct f
 		return ret;
 
 	ret = wave6_vpu_dec_register_display_buffer(inst, fb);
-
-	mutex_unlock(&vpu_dev->hw_lock);
-
-	return ret;
-}
-
-int wave6_vpu_dec_update_frame_buffer(struct vpu_instance *inst, struct frame_buffer *fb, int mv_index)
-{
-	struct vpu_device *vpu_dev = inst->dev;
-	int ret;
-
-	ret = mutex_lock_interruptible(&vpu_dev->hw_lock);
-	if (ret)
-		return ret;
-
-	ret = wave6_vpu_dec_update_fb(inst, fb, mv_index);
-
-	mutex_unlock(&vpu_dev->hw_lock);
-
-	return ret;
-}
-
-int wave6_vpu_dec_get_update_frame_buffer_info(struct vpu_instance *inst,
-					       struct dec_update_fb_info *info)
-{
-	int ret;
-	struct vpu_device *vpu_dev = inst->dev;
-
-	if (!info)
-		return -EINVAL;
-
-	ret = mutex_lock_interruptible(&vpu_dev->hw_lock);
-	if (ret)
-		return ret;
-
-	memset(info, 0, sizeof(*info));
-
-	ret = wave6_vpu_dec_get_update_fb_info(inst, info);
 
 	mutex_unlock(&vpu_dev->hw_lock);
 
@@ -580,26 +537,26 @@ int wave6_vpu_dec_give_command(struct vpu_instance *inst, enum codec_command cmd
 		int i;
 
 		for (i = 0; i < WAVE6_MAX_FBS; i++) {
-			wave6_vdi_free_dma_memory(inst->dev, &inst->frame_vbuf[i]);
+			wave6_free_dma(&inst->frame_vbuf[i]);
 			memset(&inst->frame_buf[i], 0, sizeof(struct frame_buffer));
 			memset(&p_dec_info->disp_buf[i], 0, sizeof(struct frame_buffer));
 
-			wave6_vdi_free_dma_memory(inst->dev, &inst->aux_vbuf[AUX_BUF_MV_COL][i]);
+			wave6_free_dma(&inst->aux_vbuf[AUX_BUF_MV_COL][i]);
 			memset(&p_dec_info->vb_mv[i], 0, sizeof(struct vpu_buf));
 
-			wave6_vdi_free_dma_memory(inst->dev, &inst->aux_vbuf[AUX_BUF_FBC_Y_TBL][i]);
+			wave6_free_dma(&inst->aux_vbuf[AUX_BUF_FBC_Y_TBL][i]);
 			memset(&p_dec_info->vb_fbc_y_tbl[i], 0, sizeof(struct vpu_buf));
 
-			wave6_vdi_free_dma_memory(inst->dev, &inst->aux_vbuf[AUX_BUF_FBC_C_TBL][i]);
+			wave6_free_dma(&inst->aux_vbuf[AUX_BUF_FBC_C_TBL][i]);
 			memset(&p_dec_info->vb_fbc_c_tbl[i], 0, sizeof(struct vpu_buf));
 
-			wave6_vdi_free_dma_memory(inst->dev, &inst->aux_vbuf[AUX_BUF_DEF_CDF][i]);
+			wave6_free_dma(&inst->aux_vbuf[AUX_BUF_DEF_CDF][i]);
 			memset(&p_dec_info->vb_def_cdf, 0, sizeof(struct vpu_buf));
 
-			wave6_vdi_free_dma_memory(inst->dev, &inst->aux_vbuf[AUX_BUF_SEG_MAP][i]);
+			wave6_free_dma(&inst->aux_vbuf[AUX_BUF_SEG_MAP][i]);
 			memset(&p_dec_info->vb_seg_map, 0, sizeof(struct vpu_buf));
 
-			wave6_vdi_free_dma_memory(inst->dev, &inst->aux_vbuf[AUX_BUF_PRE_ENT][i]);
+			wave6_free_dma(&inst->aux_vbuf[AUX_BUF_PRE_ENT][i]);
 			memset(&p_dec_info->vb_pre_ent, 0, sizeof(struct vpu_buf));
 		}
 		break;
@@ -896,7 +853,7 @@ int wave6_vpu_enc_register_aux_buffer(struct vpu_instance *inst,
 }
 
 int wave6_vpu_enc_register_frame_buffer_ex(struct vpu_instance *inst, int num, unsigned int stride,
-					int height, enum tiled_map_type map_type)
+					   int height, enum tiled_map_type map_type)
 {
 	struct enc_info *p_enc_info = &inst->codec_info->enc_info;
 	int ret;
@@ -943,7 +900,7 @@ static int wave6_check_enc_param(struct vpu_instance *inst, struct enc_param *pa
 		return -EINVAL;
 
 	if (p_enc_info->open_param.wave_param.enc_bit_rate == 0 && inst->std == W_HEVC_ENC) {
-		if (param->force_pic_qp_enable == 1) {
+		if (param->force_pic_qp_enable) {
 			if (param->force_pic_qp_i < 0 || param->force_pic_qp_i > 63)
 				return -EINVAL;
 
@@ -960,9 +917,9 @@ static int wave6_check_enc_param(struct vpu_instance *inst, struct enc_param *pa
 	if ((param->pic_stream_buffer_addr % 8 || param->pic_stream_buffer_size == 0))
 		return -EINVAL;
 
-	if ((p_enc_info->open_param.src_format == FORMAT_RGB_32BIT_PACKED) ||
-	    (p_enc_info->open_param.src_format == FORMAT_RGB_P10_32BIT_PACKED) ||
-	    (p_enc_info->open_param.src_format == FORMAT_RGB_24BIT_PACKED))
+	if (p_enc_info->open_param.src_format == FORMAT_RGB_32BIT_PACKED ||
+	    p_enc_info->open_param.src_format == FORMAT_RGB_P10_32BIT_PACKED ||
+	    p_enc_info->open_param.src_format == FORMAT_RGB_24BIT_PACKED)
 		is_rgb_format = true;
 
 	if (is_rgb_format) {
@@ -992,35 +949,7 @@ static int wave6_check_enc_param(struct vpu_instance *inst, struct enc_param *pa
 			return -EINVAL;
 	}
 
-	if (inst->std == W_AVC_ENC) {
-		if (param->intra_4x4 != 0)
-			return -EINVAL;
-	} else {
-		if (param->intra_4x4 > 3 || param->intra_4x4 == 1)
-			return -EINVAL;
-	}
-
 	return 0;
-}
-
-static uint64_t wave6_get_timestamp(struct vpu_instance *inst)
-{
-	struct enc_info *p_enc_info;
-	u64 pts;
-	u32 fps;
-
-	if (!inst->codec_info)
-		return 0;
-
-	p_enc_info = &inst->codec_info->enc_info;
-	fps = p_enc_info->open_param.wave_param.frame_rate;
-	if (fps == 0)
-		fps = 30;
-
-	pts = p_enc_info->cur_pts;
-	p_enc_info->cur_pts += 90000 / fps; /* 90_k_hz/fps */
-
-	return pts;
 }
 
 int wave6_vpu_enc_start_one_frame(struct vpu_instance *inst, struct enc_param *param, u32 *fail_res)
@@ -1042,9 +971,6 @@ int wave6_vpu_enc_start_one_frame(struct vpu_instance *inst, struct enc_param *p
 	if (ret)
 		return ret;
 
-	p_enc_info->pts_map[param->src_idx] = p_enc_info->open_param.enable_pts ?
-					      wave6_get_timestamp(inst) : param->pts;
-
 	ret = wave6_vpu_encode(inst, param, fail_res);
 
 	mutex_unlock(&vpu_dev->hw_lock);
@@ -1054,22 +980,21 @@ int wave6_vpu_enc_start_one_frame(struct vpu_instance *inst, struct enc_param *p
 
 int wave6_vpu_enc_get_output_info(struct vpu_instance *inst, struct enc_output_info *info)
 {
-	struct enc_info *p_enc_info = &inst->codec_info->enc_info;
 	int ret;
 	struct vpu_device *vpu_dev = inst->dev;
+
+	if (!info)
+		return -EINVAL;
 
 	ret = mutex_lock_interruptible(&vpu_dev->hw_lock);
 	if (ret)
 		return ret;
 
-	ret = wave6_vpu_enc_get_result(inst, info);
-	if (ret) {
-		info->pts = 0;
-		goto unlock;
-	}
+	memset(info, 0, sizeof(*info));
 
-	if (info->recon_frame_index >= 0)
-		info->pts = p_enc_info->pts_map[info->enc_src_idx];
+	ret = wave6_vpu_enc_get_result(inst, info);
+	if (ret)
+		goto unlock;
 
 unlock:
 	mutex_unlock(&vpu_dev->hw_lock);
@@ -1205,7 +1130,6 @@ int wave6_vpu_enc_complete_seq_update(struct vpu_instance *inst, struct enc_init
 	return 0;
 }
 
-
 const char *wave6_vpu_instance_state_name(u32 state)
 {
 	switch (state) {
@@ -1221,6 +1145,8 @@ const char *wave6_vpu_instance_state_name(u32 state)
 
 void wave6_vpu_set_instance_state(struct vpu_instance *inst, u32 state)
 {
+	trace_set_state(inst, state);
+
 	dprintk(inst->dev->dev, "[%d] %s -> %s\n",
 		inst->id,
 		wave6_vpu_instance_state_name(inst->state),
@@ -1229,9 +1155,4 @@ void wave6_vpu_set_instance_state(struct vpu_instance *inst, u32 state)
 	inst->state = state;
 	if (state == VPU_INST_STATE_PIC_RUN && !inst->performance.ts_first)
 		inst->performance.ts_first = ktime_get_raw();
-}
-
-void wave6_vpu_wait_active(struct vpu_instance *inst)
-{
-	wave6_vpu_check_state(inst->dev);
 }

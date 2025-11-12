@@ -56,6 +56,18 @@ enum max96724_gmsl_speed {
 	MAX96724_GMSL_6G		= 2,
 };
 
+
+enum max96724_i2c_speed {
+	MAX96724_I2C_BPS_9920,
+	MAX96724_I2C_BPS_33200,
+	MAX96724_I2C_BPS_99200,
+	MAX96724_I2C_BPS_123000,
+	MAX96724_I2C_BPS_203000,
+	MAX96724_I2C_BPS_397000,
+	MAX96724_I2C_BPS_625000,
+	MAX96724_I2C_BPS_980000,
+};
+
 struct max96724_source {
 	struct v4l2_subdev *sd;
 	struct fwnode_handle *fwnode;
@@ -456,6 +468,7 @@ static int max96724_dt_parse_sink_ep(struct max96724_priv *priv, struct device_n
 	struct max96724_source *source;
 	struct device_node *csi_ep;
 	struct of_endpoint csi_of_ep;
+	unsigned int csi_port;
 
 	/* Skip if the corresponding GMSL link is unavailable. */
 	if (!(priv->gmsl_link_mask & BIT(ep->port)))
@@ -465,7 +478,14 @@ static int max96724_dt_parse_sink_ep(struct max96724_priv *priv, struct device_n
 		csi_ep = of_graph_get_remote_endpoint(node);
 		of_graph_parse_endpoint(csi_ep, &csi_of_ep);
 
-		priv->csi2_video_pipe_mask[csi_of_ep.port - MAX96724_SRC_PAD] |= BIT(ep->port);
+		csi_port = csi_of_ep.port - MAX96724_SRC_PAD;
+
+		if (csi_port > 1) {
+			dev_err(dev, "Wrong CSI port, deserializer has only 2 ports.\n");
+			return -EINVAL;
+		}
+
+		priv->csi2_video_pipe_mask[csi_port] |= BIT(ep->port);
 		of_node_put(csi_ep);
 		return 0;
 	}
@@ -514,14 +534,16 @@ static int max96724_parse_dt(struct max96724_priv *priv)
 			continue;
 		}
 
-		max96724_dt_parse_sink_ep(priv, node, &ep);
+		ret = max96724_dt_parse_sink_ep(priv, node, &ep);
+		if (ret)
+			return ret;
 	}
 	of_node_put(node);
 
 	return 0;
 }
 
-static unsigned int max96724_reset_gmsl_links(struct max96724_priv *priv)
+static unsigned int max96724_check_gmsl_links(struct max96724_priv *priv)
 {
 	unsigned int locked_links_mask = 0;
 	unsigned int links_mask = priv->gmsl_link_mask;
@@ -535,9 +557,6 @@ static unsigned int max96724_reset_gmsl_links(struct max96724_priv *priv)
 
 	regmap_update_bits(priv->rmap, MAX96724_DEV_REG6,
 			   LINK_EN_A | LINK_EN_B | LINK_EN_C | LINK_EN_D,
-			   priv->gmsl_link_mask);
-	regmap_update_bits(priv->rmap, MAX96724_TOP_CTRL_CTRL1,
-			   RESET_ONESHOT_A | RESET_ONESHOT_B | RESET_ONESHOT_C | RESET_ONESHOT_D,
 			   priv->gmsl_link_mask);
 
 	timeout = jiffies + msecs_to_jiffies(100);
@@ -568,13 +587,32 @@ static int max96724_chip_init(struct max96724_priv *priv)
 {
 	unsigned int locked_links;
 	struct device *dev = &priv->client->dev;
+	int i, retries = 3;
+
+	while (retries--) {
+		locked_links = max96724_check_gmsl_links(priv);
+		if (locked_links == priv->gmsl_link_mask)
+			break;
+
+		regmap_write(priv->rmap, MAX96724_TOP_CTRL_PWR1, RESET_ALL);
+		usleep_range(2000, 2500);
+	}
+
+	if (locked_links == 0) {
+		dev_err(dev, "No GMSL link has locked after 3 retries. Abort!\n");
+		return -ENODEV;
+	}
+
+	dev_info(dev, "GMSL link mask: configured = 0x%x, locked = 0x%x\n",
+		 priv->gmsl_link_mask, locked_links);
+
+	/* Disable links that didn't lock. Perhaps user didn't connect all sensors. */
+	regmap_update_bits(priv->rmap, MAX96724_DEV_REG6,
+			   LINK_EN_A | LINK_EN_B | LINK_EN_C | LINK_EN_D,
+			   locked_links);
 
 	/* Disable remote control channel on all links. */
 	regmap_write(priv->rmap, MAX96724_DEV_REG3, 0xff);
-
-	/* Disable all GMSL links. We'll enable only the ones we need later. */
-	regmap_update_bits(priv->rmap, MAX96724_DEV_REG6,
-			   LINK_EN_A | LINK_EN_B | LINK_EN_C | LINK_EN_D, 0);
 
 	/* Disable all video pipes access. */
 	regmap_write(priv->rmap, MAX96724_DEV_REG4, 0);
@@ -588,14 +626,10 @@ static int max96724_chip_init(struct max96724_priv *priv)
 	/* Disable all video pipes */
 	regmap_write(priv->rmap, MAX96724_VIDEO_PIPE_SEL_VIDEO_PIPE_EN, 0);
 
-	locked_links = max96724_reset_gmsl_links(priv);
-	if (locked_links == 0) {
-		dev_err(dev, "No GMSL link has locked. Abort!\n");
-		return -ENODEV;
-	}
-
-	dev_info(dev, "GMSL link mask: configured = 0x%x, locked = 0x%x\n",
-		 priv->gmsl_link_mask, locked_links);
+	/* Set I2C speed on al GMSL ports to 980kbps */
+	for (i = 0; i < 4; i++)
+		regmap_update_bits(priv->rmap, MAX96724_CC_G2P0_I2C_1(i), MST_BT_P0_A_MASK,
+				   MAX96724_I2C_BPS_980000 << MST_BT_P0_A_SHIFT);
 
 	priv->gmsl_link_mask = locked_links;
 	priv->gmsl_links_used = hweight8(locked_links);
@@ -1040,8 +1074,8 @@ static int max96724_enable_streams(struct v4l2_subdev *sd, struct v4l2_subdev_st
 	struct device *dev = &priv->client->dev;
 	struct v4l2_subdev *remote_sd;
 	int ret = 0;
-	u32 remote_pad;
-	u64 sink_streams;
+	u32 remote_pad = 0;
+	u64 sink_streams = 0;
 	u64 sources_mask = streams_mask;
 
 	mutex_lock(&priv->lock);
@@ -1097,10 +1131,10 @@ static int max96724_disable_streams(struct v4l2_subdev *sd, struct v4l2_subdev_s
 	struct max96724_priv *priv = container_of(sd, struct max96724_priv, sd);
 	struct device *dev = &priv->client->dev;
 	struct v4l2_subdev *remote_sd;
-	u64 sink_streams;
+	u64 sink_streams = 0;
 	u64 sources_mask = streams_mask;
-	u32 remote_pad;
-	int ret;
+	u32 remote_pad = 0;
+	int ret = 0;
 
 	mutex_lock(&priv->lock);
 
@@ -1139,7 +1173,7 @@ static int max96724_disable_streams(struct v4l2_subdev *sd, struct v4l2_subdev_s
 unlock:
 	mutex_unlock(&priv->lock);
 
-	return 0;
+	return ret;
 }
 
 static int max96724_get_frame_desc(struct v4l2_subdev *sd, unsigned int pad,
@@ -1164,7 +1198,7 @@ static int max96724_get_frame_desc(struct v4l2_subdev *sd, unsigned int pad,
 
 	for_each_active_route(&state->routing, route) {
 		struct v4l2_mbus_frame_desc_entry *source_entry = NULL;
-		struct v4l2_mbus_frame_desc source_fd;
+		struct v4l2_mbus_frame_desc source_fd = {0};
 
 		if (route->source_pad != pad)
 			continue;
@@ -1232,6 +1266,8 @@ static int max96724_enum_mbus_code(struct v4l2_subdev *sd, struct v4l2_subdev_st
 
 		fmt = v4l2_subdev_state_get_opposite_stream_format(sd_state, code->pad,
 								   code->stream);
+		if (!fmt)
+			return -EINVAL;
 
 		code->code = fmt->code;
 

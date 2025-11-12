@@ -270,7 +270,7 @@ int max96717_gmsl_speed_set(struct max96717 *ser, enum max96717_gmsl_speed speed
 {
 	struct regmap *rmap = ser->rmap;
 	int ret;
-	int reg_val;
+	int reg_val = 0;
 
 	/* Set GMSL link speed to 6Gbps */
 	ret = regmap_update_bits(rmap, MAX96717_DEV_REG1, TX_RATE_MASK, speed << TX_RATE_SHIFT);
@@ -303,6 +303,18 @@ int max96717_soft_bpp_override(struct max96717 *ser, int bpp)
 	return regmap_write(ser->rmap, MAX96717_FRONTTOP_22, SOFT_BPPZ_EN | (bpp & 0x1f));
 }
 EXPORT_SYMBOL(max96717_soft_bpp_override);
+
+int max96717_set_i2c_speed(struct max96717 *ser, enum max96717_i2c_speed speed)
+{
+	return regmap_update_bits(ser->rmap, MAX96717_CC_I2C_1, MST_BT_MASK, speed << MST_BT_SHIFT);
+}
+EXPORT_SYMBOL(max96717_set_i2c_speed);
+
+int max96717_reset_chip(struct max96717 *ser)
+{
+	return regmap_write(ser->rmap, MAX96717_TCTRL_CTRL0, RESET_ALL);
+}
+EXPORT_SYMBOL(max96717_reset_chip);
 
 int max96717_hw_init(struct max96717 *ser, unsigned int reset_pin, unsigned int clock_pin)
 {

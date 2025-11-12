@@ -6,6 +6,7 @@
 #include <linux/arm-smccc.h>
 #include <linux/clk.h>
 #include <linux/device.h>
+#include <linux/firmware/imx/se_api.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/of_device.h>
@@ -89,7 +90,21 @@ struct operating_mode {
 	struct critical_clk_path paths[CLK_PATH_END];
 };
 
-static struct operating_mode system_run_mode = {
+static struct operating_mode system_run_mode;
+
+static struct operating_mode system_run_mode_91 = {
+	.paths = {
+		CLK_PATH(m33_root, 250000000, 200000000, 133000000),
+		CLK_PATH(wakeup_axi, 400000000, 250000000, 200000000),
+		CLK_PATH(media_axi, 400000000, 333000000, 200000000),
+		CLK_PATH(ml_axi, 1000000000, 800000000, 500000000),
+		CLK_PATH(nic_axi, 500000000, 333000000, 250000000),
+		CLK_PATH(a55_periph, 400000000, 333000000, 200000000),
+		CLK_PATH(a55_core, 1700000000, 1400000000, 900000000),
+	},
+};
+
+static struct operating_mode system_run_mode_93 = {
 	.paths = {
 		CLK_PATH(m33_root, 250000000, 200000000, 133000000),
 		CLK_PATH(wakeup_axi, 400000000, 312500000, 200000000),
@@ -116,6 +131,7 @@ static unsigned int num_fsp;
 static unsigned int fsp_table[3];
 static struct regulator *soc_reg;
 static struct regmap *regmap;
+static struct device *se_dev;
 DEFINE_MUTEX(mode_mutex);
 
 /* both HWFFC & SWFFC need to call this function */
@@ -146,7 +162,9 @@ static void sys_freq_scaling(enum mode_type new_mode)
 
 	if (new_mode == OD_MODE) {
 		/* increase the voltage first */
+		imx_se_voltage_change_req(se_dev, true);
 		regulator_set_voltage_tol(soc_reg, VDD_SOC_OD_VOLTAGE, 0);
+		imx_se_voltage_change_req(se_dev, false);
 
 		/* Increase the NIC_AXI first */
 		clk_set_parent(path[NIC_AXI].clk, clks[SYS_PLL_PFD0].clk);
@@ -178,18 +196,30 @@ static void sys_freq_scaling(enum mode_type new_mode)
 		/*
 		 * if switch from LD mode to ND mode, voltage should be increase firstly.
 		 */
-		if (system_run_mode.current_mode == LD_MODE)
+		if (system_run_mode.current_mode == LD_MODE || no_od_mode) {
 			regulator_set_voltage_tol(soc_reg, VDD_SOC_ND_VOLTAGE, 0);
+			if (of_machine_is_compatible("fsl,imx93"))
+				clk_set_parent(path[NIC_AXI].clk, clks[SYS_PLL_PFD1].clk);
+			else
+				clk_set_parent(path[NIC_AXI].clk, clks[SYS_PLL_PFD0].clk);
+
+			clk_set_rate(path[NIC_AXI].clk, path[NIC_AXI].mode_rate[ND_MODE]);
+		}
 
 		for (i = 0; i < CLK_PATH_END; i++) {
 			if (i == M33_ROOT) {
 				clk_set_parent(path[i].clk, clks[SYS_PLL_PFD1_DIV2].clk);
 			} else if (i == MEDIA_AXI || i == A55_PERIPH) {
 				clk_set_parent(path[i].clk, clks[SYS_PLL_PFD0].clk);
-			} else if (i == ML_AXI || i == NIC_AXI) {
+			} else if (i == ML_AXI) {
 				clk_set_parent(path[i].clk, clks[SYS_PLL_PFD1].clk);
+			} else if (i == NIC_AXI) {
+				continue;
 			} else if (i == WAKEUP_AXI) {
-				clk_set_parent(path[i].clk, clks[SYS_PLL_PFD2].clk);
+				if (of_machine_is_compatible("fsl,imx93"))
+					clk_set_parent(path[i].clk, clks[SYS_PLL_PFD2].clk);
+				else if (of_machine_is_compatible("fsl,imx91"))
+					clk_set_parent(path[i].clk, clks[SYS_PLL_PFD0].clk);
 			}
 
 				clk_set_rate(path[i].clk, path[i].mode_rate[ND_MODE]);
@@ -198,8 +228,15 @@ static void sys_freq_scaling(enum mode_type new_mode)
 		/* Scaling down the ddr frequency. */
 		scaling_dram_freq(no_od_mode ? 0x0 : 0x1);
 
-		if (system_run_mode.current_mode != LD_MODE)
+		if (system_run_mode.current_mode != LD_MODE && !no_od_mode) {
+			if (of_machine_is_compatible("fsl,imx93"))
+				clk_set_parent(path[NIC_AXI].clk, clks[SYS_PLL_PFD1].clk);
+			else
+				clk_set_parent(path[NIC_AXI].clk, clks[SYS_PLL_PFD0].clk);
+
+			clk_set_rate(path[NIC_AXI].clk, path[NIC_AXI].mode_rate[ND_MODE]);
 			regulator_set_voltage_tol(soc_reg, VDD_SOC_ND_VOLTAGE, 0);
+		}
 
 		pr_info("System switching to ND mode...\n");
 	} else if (new_mode == LD_MODE || new_mode == SWFFC_MODE) {
@@ -231,7 +268,13 @@ static void sys_freq_scaling(enum mode_type new_mode)
 		/* Scaling down the ddr frequency. */
 		scaling_dram_freq(new_mode == LD_MODE ? 0x1 : 0x2);
 
+		if (!no_od_mode)
+			imx_se_voltage_change_req(se_dev, true);
+
 		regulator_set_voltage_tol(soc_reg, VDD_SOC_LD_VOLTAGE, 0);
+
+		if (!no_od_mode)
+			imx_se_voltage_change_req(se_dev, false);
 
 		pr_info("System switching to LD/SWFFC mode...\n");
 	}
@@ -281,6 +324,10 @@ static ssize_t lpm_enable_store(struct device *dev,
 
 	if (new_mode == OD_MODE && no_od_mode)
 		return -EINVAL;
+
+	/* Skip if set to the same mode */
+	if (new_mode == system_run_mode.current_mode)
+		return count;
 
 	/* make sure auto clock gating is disabled before DDR frequency scaling */
 	regmap_update_bits(regmap, AUTO_CG_CTRL, AUTO_CG_EN, 0);
@@ -379,7 +426,14 @@ static int imx93_lpm_probe(struct platform_device *pdev)
 {
 	int i, err;
 	struct arm_smccc_res res;
-	struct critical_clk_path *path = system_run_mode.paths;
+	struct critical_clk_path *path;
+
+	if (of_machine_is_compatible("fsl,imx93"))
+		system_run_mode = system_run_mode_93;
+	else
+		system_run_mode = system_run_mode_91;
+
+	path = system_run_mode.paths;
 
 	/*
 	 * get the supported frequency number, if only
@@ -419,6 +473,12 @@ static int imx93_lpm_probe(struct platform_device *pdev)
 	soc_reg = devm_regulator_get(&pdev->dev, "soc");
 	if (IS_ERR(soc_reg))
 		return PTR_ERR(soc_reg);
+
+	se_dev = imx_get_se_data_info(SOC_ID_OF_IMX93, 0);
+	if (!se_dev) {
+		dev_err(&pdev->dev, "get se-fw2 failed\n");
+		return -ENODEV;
+	}
 
 	/*
 	 * initial auto clock gating ssi strap, set to 32768 by default,

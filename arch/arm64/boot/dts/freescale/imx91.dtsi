@@ -451,9 +451,10 @@
 				#clock-cells = <1>;
 				clocks = <&osc_32k>, <&osc_24m>, <&clk_ext1>;
 				clock-names = "osc_32k", "osc_24m", "clk_ext1";
-				assigned-clocks = <&clk IMX91_CLK_AUDIO_PLL>, <&clk IMX91_CLK_A55>;
-				assigned-clock-parents = <0>, <&clk IMX91_CLK_SYS_PLL_PFD0>;
-				assigned-clock-rates = <393216000>, <500000000>;
+				assigned-clocks = <&clk IMX91_CLK_AUDIO_PLL>, <&clk IMX91_CLK_VIDEO_PLL>,
+						  <&clk IMX91_CLK_A55>;
+				assigned-clock-parents = <0>, <0>, <&clk IMX91_CLK_SYS_PLL_PFD0>;
+				assigned-clock-rates = <393216000>, <594000000>, <500000000>;
 				status = "okay";
 			};
 
@@ -939,7 +940,7 @@
 					     <GIC_SPI 203 IRQ_TYPE_LEVEL_HIGH>,
 						 /* XCVR IRQ 1 */
 					     <GIC_SPI 204 IRQ_TYPE_LEVEL_HIGH>;
-				clocks = <&clk IMX91_CLK_BUS_WAKEUP>,
+				clocks = <&clk IMX91_CLK_SPDIF_IPG>,
 					 <&clk IMX91_CLK_SPDIF_GATE>,
 					 <&clk IMX91_CLK_DUMMY>,
 					 <&clk IMX91_CLK_AUD_XCVR_GATE>;
@@ -1228,9 +1229,9 @@
 					clock-names = "per", "axi";
 					assigned-clocks = <&clk IMX91_CLK_MEDIA_AXI>,
 							  <&clk IMX91_CLK_MEDIA_APB>;
-					assigned-clock-parents = <&clk IMX91_CLK_SYS_PLL_PFD1>,
+					assigned-clock-parents = <&clk IMX91_CLK_SYS_PLL_PFD0>,
 								 <&clk IMX91_CLK_SYS_PLL_PFD1_DIV2>;
-					assigned-clock-rates = <400000000>, <133333333>;
+					assigned-clock-rates = <333333334>, <133333333>;
 					interface = <2 0 2>;
 					no-reset-control;
 					power-domains = <&media_blk_ctrl IMX91_MEDIABLK_PD_ISI>;
@@ -1325,12 +1326,12 @@
 				reg = <0xc0 0x10>;
 			};
 
-			tmu_trim1: mac-address@28 {
-				reg = <0x28 0x4>;
+			tmu_trim1: tmu-trim@a0 {
+				reg = <0xa0 0x4>;
 			};
 
-			tmu_trim2: mac-address@29 {
-				reg = <0x29 0x4>;
+			tmu_trim2: tmu-trim@a4 {
+				reg = <0xa4 0x4>;
 			};
 
 			eth_mac1: mac-address@4ec {
@@ -1432,7 +1433,7 @@
 					  <&clk IMX91_CLK_MEDIA_APB>;
 			assigned-clock-parents = <&clk IMX91_CLK_24M>,
 						 <&clk IMX91_CLK_VIDEO_PLL>,
-						 <&clk IMX91_CLK_SYS_PLL_PFD1>,
+						 <&clk IMX91_CLK_SYS_PLL_PFD0>,
 						 <&clk IMX91_CLK_SYS_PLL_PFD1_DIV2>;
 			power-domains = <&media_blk_ctrl IMX91_MEDIABLK_PD_LCDIF>;
 			status = "disabled";
@@ -1518,8 +1519,8 @@
 		status = "disabled";
 	};
 
-	ele_fw2: se-fw2 {
-		compatible = "fsl,imx93-se-fw";
+	ele_fw2: secure-enclave {
+		compatible = "fsl,imx93-se";
 		mbox-names = "tx", "rx";
 		mboxes = <&s4muap 0 0>,
 			<&s4muap 1 0>;

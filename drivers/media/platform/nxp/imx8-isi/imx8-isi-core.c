@@ -296,6 +296,7 @@ static const struct mxc_isi_plat_data mxc_imx8mn_data = {
 	.gasket_ops		= &mxc_imx8_gasket_ops,
 	.has_36bit_dma		= false,
 	.raw32_chan_cfg		= false,
+	.buf_max_size		= false,
 };
 
 static const struct mxc_isi_plat_data mxc_imx8mp_data = {
@@ -311,6 +312,7 @@ static const struct mxc_isi_plat_data mxc_imx8mp_data = {
 	.gasket_ops		= &mxc_imx8_gasket_ops,
 	.has_36bit_dma		= true,
 	.raw32_chan_cfg		= false,
+	.buf_max_size		= false,
 };
 
 static const struct mxc_isi_plat_data mxc_imx93_data = {
@@ -326,6 +328,7 @@ static const struct mxc_isi_plat_data mxc_imx93_data = {
 	.gasket_ops		= &mxc_imx93_gasket_ops,
 	.has_36bit_dma		= false,
 	.raw32_chan_cfg		= false,
+	.buf_max_size		= false,
 };
 
 static const struct mxc_isi_plat_data mxc_imx95_data = {
@@ -341,6 +344,7 @@ static const struct mxc_isi_plat_data mxc_imx95_data = {
 	.gasket_ops             = &mxc_imx95_gasket_ops,
 	.has_36bit_dma		= true,
 	.raw32_chan_cfg		= true,
+	.buf_max_size		= true,
 };
 
 /* -----------------------------------------------------------------------------
@@ -356,6 +360,7 @@ static int mxc_isi_pm_suspend(struct device *dev)
 		struct mxc_isi_pipe *pipe = &isi->pipes[i];
 
 		mxc_isi_video_suspend(pipe);
+		mxc_isi_m2m_suspend(pipe);
 	}
 
 	return pm_runtime_force_suspend(dev);
@@ -383,6 +388,13 @@ static int mxc_isi_pm_resume(struct device *dev)
 			 * Record the last error as it's as meaningful as any,
 			 * and continue resuming the other pipelines.
 			 */
+			err = ret;
+		}
+
+		ret = mxc_isi_m2m_resume(pipe);
+		if (ret) {
+			dev_err(dev, "Failed to resume ISI%u (%d) for m2m\n", i,
+				ret);
 			err = ret;
 		}
 	}

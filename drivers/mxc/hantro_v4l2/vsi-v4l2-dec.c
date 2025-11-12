@@ -838,6 +838,7 @@ static void vsi_dec_buf_queue(struct vb2_buffer *vb)
 		set_bit(BUF_FLAG_QUEUED, &ctx->srcvbufflag[vb->index]);
 		list_add_tail(&vsibuf->list, &ctx->input_list);
 		ctx->queued_srcnum++;
+		ctx->performance.input_buf_num++;
 	}
 	ret = vsiv4l2_execcmd(ctx, V4L2_DAEMON_VIDIOC_BUF_RDY, vb);
 }
@@ -855,16 +856,27 @@ static int vsi_dec_buf_prepare(struct vb2_buffer *vb)
 static int vsi_dec_start_streaming(struct vb2_queue *q, unsigned int count)
 {
 	struct vsi_v4l2_ctx *ctx = fh_to_ctx(q->drv_priv);
+	struct vb2_queue *vq_peer;
 
-	if (V4L2_TYPE_IS_OUTPUT(q->type))
+	if (V4L2_TYPE_IS_OUTPUT(q->type)) {
 		ctx->out_sequence = 0;
-	else
+		vq_peer = &ctx->output_que;
+	} else {
 		ctx->cap_sequence = 0;
+		vq_peer = &ctx->input_que;
+	}
+
+	if (vb2_is_streaming(vq_peer))
+		ctx->performance.ts_start = ktime_get_raw();
 
 	return 0;
 }
-static void vsi_dec_stop_streaming(struct vb2_queue *vq)
+static void vsi_dec_stop_streaming(struct vb2_queue *q)
 {
+	struct vsi_v4l2_ctx *ctx = fh_to_ctx(q->drv_priv);
+
+	if (V4L2_TYPE_IS_OUTPUT(q->type))
+		vsi_v4l2_reset_performance(ctx);
 }
 
 static void vsi_dec_buf_finish(struct vb2_buffer *vb)
@@ -913,7 +925,7 @@ static int vsi_v4l2_dec_s_ctrl(struct v4l2_ctrl *ctrl)
 	case V4L2_CID_MPEG_VIDEO_HEVC_PROFILE:
 		ret = vsi_set_profile(ctx, ctrl->id, ctrl->val);
 		return ret;
-	case V4L2_CID_DIS_REORDER:
+	case V4L2_CID_MPEG_VIDEO_DEC_DISPLAY_DELAY_ENABLE:
 		ctx->mediacfg.decparams.io_buffer.no_reordering_decoding = ctrl->val;
 		break;
 	case V4L2_CID_SECUREMODE:
@@ -999,16 +1011,6 @@ static const struct v4l2_ctrl_ops vsi_dec_ctrl_ops = {
 static struct v4l2_ctrl_config vsi_v4l2_dec_ctrl_defs[] = {
 	{
 		.ops = &vsi_dec_ctrl_ops,
-		.id = V4L2_CID_DIS_REORDER,
-		.name = "frame disable reorder ctrl",
-		.type = V4L2_CTRL_TYPE_BOOLEAN,
-		.min = 0,
-		.max = 1,
-		.step = 1,
-		.def = 0,
-	},
-	{
-		.ops = &vsi_dec_ctrl_ops,
 		.type_ops = &vsi_dec_type_ops,
 		.id = V4L2_CID_HDR10META,
 		.name = "vsi get 10bit meta",
@@ -1068,6 +1070,22 @@ static struct v4l2_ctrl_config vsi_v4l2_dec_ctrl_defs[] = {
 		.def = 1,
 	},
 	{
+		.id = V4L2_CID_MPEG_VIDEO_DEC_DISPLAY_DELAY_ENABLE,
+		.type = V4L2_CTRL_TYPE_BOOLEAN,
+		.min = 0,
+		.max = 1,
+		.step = 1,
+		.def = 0,
+	},
+	{
+		.id = V4L2_CID_MPEG_VIDEO_DEC_DISPLAY_DELAY,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = 0,
+		.max = 0,
+		.step = 1,
+		.def = 0,
+	},
+	{
 		.ops = &vsi_dec_ctrl_ops,
 		.id = V4L2_CID_SECUREMODE,
 		.name = "en/disable secure mode",
@@ -1081,6 +1099,7 @@ static struct v4l2_ctrl_config vsi_v4l2_dec_ctrl_defs[] = {
 
 static int vsi_dec_setup_ctrls(struct v4l2_ctrl_handler *handler)
 {
+	struct vsi_v4l2_ctx *ctx = container_of(handler, struct vsi_v4l2_ctx, ctrlhdl);
 	int i, ctrl_num = ARRAY_SIZE(vsi_v4l2_dec_ctrl_defs);
 	struct v4l2_ctrl *ctrl = NULL;
 
@@ -1090,6 +1109,12 @@ static int vsi_dec_setup_ctrls(struct v4l2_ctrl_handler *handler)
 		return handler->error;
 
 	for (i = 0; i < ctrl_num; i++) {
+		if (!vsi_v4l2_ctrl_is_applicable(ctx, vsi_v4l2_dec_ctrl_defs[i].id)) {
+			v4l2_klog(LOGLVL_CONFIG, "ctrl %d is not applicable for vsidec\n",
+				  vsi_v4l2_dec_ctrl_defs[i].id);
+			continue;
+		}
+
 		vsi_v4l2_update_ctrlcfg(&vsi_v4l2_dec_ctrl_defs[i]);
 		if (is_vsi_ctrl(vsi_v4l2_dec_ctrl_defs[i].id))
 			ctrl = v4l2_ctrl_new_custom(handler, &vsi_v4l2_dec_ctrl_defs[i], NULL);
@@ -1195,6 +1220,9 @@ static int v4l2_dec_open(struct file *filp)
 	atomic_set(&ctx->srcframen, 0);
 	atomic_set(&ctx->dstframen, 0);
 	ctx->status = VSI_STATUS_INIT;
+	ctx->tgid = current->tgid;
+	ctx->pid = current->pid;
+	vsi_v4l2_create_dbgfs_file(ctx);
 
 	//dev->vdev->queue = q;
 	//single queue is used for v4l2 default ops such as ioctl, read, write and poll
@@ -1222,7 +1250,6 @@ static int v4l2_dec_mmap(struct file *filp, struct vm_area_struct *vma)
 		ret = vb2_mmap(&ctx->input_que, vma);
 	} else {
 		vma->vm_pgoff -= (OUTF_BASE >> PAGE_SHIFT);
-		offset -= OUTF_BASE;
 		ret = vb2_mmap(&ctx->output_que, vma);
 	}
 	return ret;
@@ -1311,7 +1338,6 @@ struct video_device *vsi_v4l2_probe_dec(struct platform_device *pdev, struct vsi
 	vdec = video_device_alloc();
 	if (!vdec) {
 		v4l2_err(&vpu->v4l2_dev, "Failed to allocate dec device\n");
-		ret = -ENOMEM;
 		goto err;
 	}
 

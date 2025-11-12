@@ -65,11 +65,15 @@
 // Power status
 #define NEUTRON_POWER_OFF    0
 #define NEUTRON_POWER_ON     1
+
+// Suspend delay time in millisecond
+#define NEUTRON_AUTOSUSPEND_DELAY 10000
 /****************************************************************************
  * Types
  ****************************************************************************/
 struct rproc;
 struct clk_bulk_data;
+struct neutron_buffer;
 
 /**
  * struct neutron_log_buffer - Neutron log buffer
@@ -108,6 +112,7 @@ struct neutron_device {
 	struct                         class *class;
 	dev_t                          devt;
 	unsigned int                   power_state;
+	u32                            firmw_id;
 };
 
 int neutron_dev_init(struct neutron_device *ndev,
@@ -119,6 +124,6 @@ void neutron_dev_deinit(struct neutron_device *ndev);
 int neutron_rproc_boot(struct neutron_device *ndev, const char *fw_name);
 int neutron_rproc_shutdown(struct neutron_device *ndev);
 int neutron_hw_reset(struct neutron_device *ndev);
-
+int neutron_firmw_reload(struct neutron_device *ndev, struct neutron_buffer *buf);
 #endif /* NEUTRON_DEVICE_H */
 
