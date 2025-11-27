@@ -39,7 +39,7 @@ int check_version(const struct load_info *info,
 			continue;
 
 		crcval = *crc;
-		if (strcmp(versions[i].name, symname) == 0)
+		if (versions[i].crc == crcval)
 			return 1;
 		pr_debug("Found checksum %X vs module %lX\n",
 			 crcval, versions[i].crc);
